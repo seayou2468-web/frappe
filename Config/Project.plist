@@ -39,11 +39,12 @@
 		<string>-resource-dir</string>
 		<string>$(BSROOT)/Include</string>
 		<string>-fobjc-arc</string>
+		<string>-I./extends</string>
 	</array>
 	<key>LDEDisplayName</key>
-	<string>t</string>
+	<string>Frappe</string>
 	<key>LDEExecutable</key>
-	<string>t</string>
+	<string>Frappe</string>
 	<key>LDELinkerFlags</key>
 	<array>
 		<string>-platform_version</string>
@@ -57,16 +58,28 @@
 		<string>-F$(SDKROOT)/System/Library/SubFrameworks</string>
 		<string>-F$(SDKROOT)/System/Library/PrivateFrameworks</string>
 		<string>-L$(BSROOT)/lib</string>
+		<string>-L./extends</string>
+		<string>-lidevice_ffi</string>
 		<string>-ObjC</string>
 		<string>-lc</string>
 		<string>-framework</string>
 		<string>Foundation</string>
 		<string>-framework</string>
 		<string>UIKit</string>
-    <string>-framework</string>
-    <string>CoreGraphics</string>
-    <string>-framework</string>
-    <string>QuartzCore</string>
+		<string>-framework</string>
+		<string>CoreGraphics</string>
+		<string>-framework</string>
+		<string>QuartzCore</string>
+		<string>-framework</string>
+		<string>PDFKit</string>
+		<string>-framework</string>
+		<string>AVFoundation</string>
+		<string>-framework</string>
+		<string>AVKit</string>
+		<string>-framework</string>
+		<string>Compression</string>
+		<string>-framework</string>
+		<string>UniformTypeIdentifiers</string>
 		<string>-lclang_rt.ios</string>
 	</array>
 	<key>LDEMinimumVersion</key>

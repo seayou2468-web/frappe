@@ -1,10 +1,14 @@
-// BottomMenuView.h
 #import <UIKit/UIKit.h>
 
-NS_ASSUME_NONNULL_BEGIN
+typedef NS_ENUM(NSInteger, BottomMenuAction) {
+    BottomMenuActionTabs,
+    BottomMenuActionFavorites,
+    BottomMenuActionSettings,
+    BottomMenuActionOthers
+};
 
 @interface BottomMenuView : UIView
-@property (nonatomic, copy) void (^onFavoriteTapped)(void);
-@end
 
-NS_ASSUME_NONNULL_END
+@property (copy, nonatomic) void (^onAction)(BottomMenuAction action);
+
+@end

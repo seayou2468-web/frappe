@@ -1,5 +1,5 @@
 #import "SceneDelegate.h"
-#import "ViewController.h"
+#import "FileBrowserViewController.h"
 
 @implementation SceneDelegate
 
@@ -13,10 +13,10 @@
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
 
     // UINavigationController でルートVCをラップ
-    ViewController *rootVC = [[ViewController alloc] initWithPath:@"/"];
+    FileBrowserViewController *rootVC = [[FileBrowserViewController alloc] initWithPath:@"/"];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
 
-    self.window.rootViewController = nav;
+    self.window.rootFileBrowserViewController = nav;
     [self.window makeKeyAndVisible];
 }
 
