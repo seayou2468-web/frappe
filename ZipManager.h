@@ -1,7 +1,16 @@
 #import <Foundation/Foundation.h>
 
+typedef NS_ENUM(NSInteger, ArchiveFormat) {
+    ArchiveFormatZip,
+    ArchiveFormatTar,
+    ArchiveFormatGzip,
+    ArchiveFormat7z,
+    ArchiveFormatRar,
+    ArchiveFormatUnknown
+};
+
 @interface ZipManager : NSObject
-+ (BOOL)unzipFileAtPath:(NSString *)zipPath toDestination:(NSString *)destPath password:(NSString *)password error:(NSError **)error;
-+ (BOOL)zipFiles:(NSArray<NSString *> *)filePaths toPath:(NSString *)zipPath password:(NSString *)password error:(NSError **)error;
-+ (BOOL)isEncrypted:(NSString *)path;
++ (BOOL)extractArchiveAtPath:(NSString *)archivePath toDestination:(NSString *)destPath password:(NSString *)password error:(NSError **)error;
++ (BOOL)compressFiles:(NSArray<NSString *> *)filePaths toPath:(NSString *)archivePath format:(ArchiveFormat)format password:(NSString *)password error:(NSError **)error;
++ (ArchiveFormat)formatForPath:(NSString *)path;
 @end

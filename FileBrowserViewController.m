@@ -38,19 +38,23 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-    self.navigationController.navigationBarHidden = YES;
+
+    // Set up standard Navigation Bar
+    self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
+    self.navigationController.navigationBar.translucent = YES;
+
     [self setupUI];
     [self reloadData];
 }
 
 - (void)setupUI {
-    self.pathBar = [[PathBarView alloc] init];
-    self.pathBar.translatesAutoresizingMaskIntoConstraints = NO;
-    [ThemeEngine applyGlassStyleToView:self.pathBar cornerRadius:12];
+    // Integrate Path Bar into TitleView
+    self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(0, 0, 200, 36)];
+    [ThemeEngine applyGlassStyleToView:self.pathBar cornerRadius:8];
     [self.pathBar updatePath:self.currentPath];
     __weak typeof(self) weakSelf = self;
     self.pathBar.onPathChanged = ^(NSString *newPath) { [weakSelf navigateToPath:newPath]; };
-    [self.view addSubview:self.pathBar];
+    self.navigationItem.titleView = self.pathBar;
 
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -71,6 +75,7 @@
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
 
+    // Bottom menu stays at the bottom of the view
     self.bottomMenu = [[BottomMenuView alloc] init];
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
@@ -78,19 +83,18 @@
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.pathBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:5],
-        [self.pathBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:10],
-        [self.pathBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-10],
-        [self.pathBar.heightAnchor constraintEqualToConstant:44],
-        [self.searchBar.topAnchor constraintEqualToAnchor:self.pathBar.bottomAnchor constant:5],
+        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+
         [self.searchScope.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
         [self.searchScope.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+
         [self.tableView.topAnchor constraintEqualToAnchor:self.searchScope.bottomAnchor constant:5],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
+
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
@@ -165,35 +169,43 @@
     else if ([@[@"png", @"jpg", @"jpeg", @"gif"] containsObject:ext]) vc = [[ImageViewerViewController alloc] initWithPath:item.fullPath];
     else if ([@[@"mp4", @"mov", @"mp3", @"wav"] containsObject:ext]) vc = [[MediaPlayerViewController alloc] initWithPath:item.fullPath];
     else if ([ext isEqualToString:@"pdf"]) vc = [[PDFViewerViewController alloc] initWithPath:item.fullPath];
-    else if ([@[@"zip", @"rar", @"7z", @"tar", @"gz"] containsObject:ext]) { [self showZipOptionsForItem:item]; return; }
+    else if ([ZipManager formatForPath:item.fullPath] != ArchiveFormatUnknown) { [self showArchiveOptionsForItem:item]; return; }
     else vc = [[HexEditorViewController alloc] initWithPath:item.fullPath];
     if (vc) [self.navigationController pushViewController:vc animated:YES];
 }
 
 #pragma mark - Archiving
-- (void)showZipOptionsForItem:(FileItem *)item {
+- (void)showArchiveOptionsForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:item.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     [alert addAction:[UIAlertAction actionWithTitle:@"Extract" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self promptForZipPasswordForPath:item.fullPath isExtracting:YES];
+        [self promptForArchivePasswordForPath:item.fullPath isExtracting:YES];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)promptForZipPasswordForPath:(NSString *)path isExtracting:(BOOL)isExtracting {
+- (void)promptForArchivePasswordForPath:(NSString *)path isExtracting:(BOOL)isExtracting {
+    ArchiveFormat format = [ZipManager formatForPath:path];
+    if (format == ArchiveFormatTar || format == ArchiveFormatGzip) {
+        [self processArchiveAtPath:path password:nil isExtracting:isExtracting];
+        return;
+    }
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Password" message:@"Enter password" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.secureTextEntry = YES; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *pass = alert.textFields[0].text;
-        if (isExtracting) {
-            NSString *dest = [path stringByDeletingPathExtension];
-            [[NSFileManager defaultManager] createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
-            [ZipManager unzipFileAtPath:path toDestination:dest password:pass error:nil];
-            [self reloadData];
-        }
+        [self processArchiveAtPath:path password:alert.textFields[0].text isExtracting:isExtracting];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)processArchiveAtPath:(NSString *)path password:(NSString *)password isExtracting:(BOOL)isExtracting {
+    if (isExtracting) {
+        NSString *dest = [path stringByDeletingPathExtension];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
+        [ZipManager extractArchiveAtPath:path toDestination:dest password:password error:nil];
+        [self reloadData];
+    }
 }
 
 #pragma mark - Context Menu
@@ -212,9 +224,7 @@
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *zipPath = [item.fullPath stringByAppendingPathExtension:@"zip"];
-        [ZipManager zipFiles:@[item.fullPath] toPath:zipPath password:nil error:nil];
-        [self reloadData];
+        [self showCompressionOptionsForItem:item];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Share" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:item.fullPath]] applicationActivities:nil];
@@ -224,6 +234,22 @@
         [[FileManagerCore sharedManager] removeItemAtPath:item.fullPath error:nil];
         [self reloadData];
     }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showCompressionOptionsForItem:(FileItem *)item {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Compress As..." message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip), @"TAR": @(ArchiveFormatTar), @"TAR.GZ": @(ArchiveFormatGzip), @"7Z": @(ArchiveFormat7z)};
+    for (NSString *name in formats) {
+        [alert addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            ArchiveFormat f = [formats[name] integerValue];
+            NSString *ext = [name lowercaseString];
+            NSString *zipPath = [item.fullPath stringByAppendingPathExtension:ext];
+            [ZipManager compressFiles:@[item.fullPath] toPath:zipPath format:f password:nil error:nil];
+            [self reloadData];
+        }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
