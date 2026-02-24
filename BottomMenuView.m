@@ -1,7 +1,7 @@
 #import "BottomMenuView.h"
+#import "ThemeEngine.h"
 
 @interface BottomMenuView ()
-@property (strong, nonatomic) UIVisualEffectView *glassView;
 @property (strong, nonatomic) UIStackView *stackView;
 @end
 
@@ -16,40 +16,42 @@
 }
 
 - (void)setupUI {
-    self.glassView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
-    self.glassView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2].CGColor;
-    self.glassView.layer.borderWidth = 1.0;
-    self.glassView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self addSubview:self.glassView];
+    [ThemeEngine applyGlassStyleToView:self cornerRadius:0];
 
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.stackView.axis = UILayoutConstraintAxisHorizontal;
     self.stackView.distribution = UIStackViewDistributionFillEqually;
     self.stackView.alignment = UIStackViewAlignmentCenter;
-    [self.glassView.contentView addSubview:self.stackView];
+    [self addSubview:self.stackView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.glassView.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [self.glassView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-        [self.glassView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [self.glassView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-
-        [self.stackView.topAnchor constraintEqualToAnchor:self.glassView.contentView.topAnchor],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:self.glassView.contentView.bottomAnchor],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.glassView.contentView.leadingAnchor],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.glassView.contentView.trailingAnchor],
+        [self.stackView.topAnchor constraintEqualToAnchor:self.topAnchor],
+        [self.stackView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-20], // Space for home indicator
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
     ]];
 
-    [self addButtonWithTitle:@"Tabs" action:BottomMenuActionTabs];
-    [self addButtonWithTitle:@"Favs" action:BottomMenuActionFavorites];
-    [self addButtonWithTitle:@"Set" action:BottomMenuActionSettings];
-    [self addButtonWithTitle:@"Other" action:BottomMenuActionOthers];
+    [self addButtonWithTitle:@"Tabs" systemImage:@"square.on.square" action:BottomMenuActionTabs];
+    [self addButtonWithTitle:@"Favs" systemImage:@"star" action:BottomMenuActionFavorites];
+    [self addButtonWithTitle:@"Set" systemImage:@"gear" action:BottomMenuActionSettings];
+    [self addButtonWithTitle:@"Other" systemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
 }
 
-- (void)addButtonWithTitle:(NSString *)title action:(BottomMenuAction)action {
+- (void)addButtonWithTitle:(NSString *)title systemImage:(NSString *)imgName action:(BottomMenuAction)action {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+
+    UIImage *img = [UIImage systemImageNamed:imgName];
+    [btn setImage:img forState:UIControlStateNormal];
     [btn setTitle:title forState:UIControlStateNormal];
+    btn.tintColor = [UIColor whiteColor];
+    btn.titleLabel.font = [UIFont systemFontOfSize:10];
+
+    // Vertical alignment
+    btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
+    btn.configuration.imagePlacement = NSDirectionalRectEdgeTop;
+    btn.configuration.imagePadding = 5;
+
     btn.tag = action;
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.stackView addArrangedSubview:btn];

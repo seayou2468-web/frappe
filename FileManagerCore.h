@@ -1,23 +1,19 @@
 #import <Foundation/Foundation.h>
 
 @interface FileItem : NSObject
-@property (strong, nonatomic) NSString *name;
-@property (strong, nonatomic) NSString *fullPath;
-@property (assign, nonatomic) BOOL isDirectory;
-@property (assign, nonatomic) BOOL isSymbolicLink;
-@property (strong, nonatomic) NSString *linkTarget;
-@property (strong, nonatomic) NSDictionary *attributes;
+@property (nonatomic, copy) NSString *name;
+@property (nonatomic, copy) NSString *fullPath;
+@property (nonatomic, assign) BOOL isDirectory;
+@property (nonatomic, assign) BOOL isSymbolicLink;
+@property (nonatomic, copy) NSString *linkTarget;
+@property (nonatomic, assign) BOOL isLocked;
+@property (nonatomic, strong) NSDictionary *attributes;
 @end
 
 @interface FileManagerCore : NSObject
-
 + (instancetype)sharedManager;
-
 - (NSArray<FileItem *> *)contentsOfDirectoryAtPath:(NSString *)path;
 - (BOOL)removeItemAtPath:(NSString *)path error:(NSError **)error;
-- (BOOL)moveItemAtPath:(NSString *)src toPath:(NSString *)dst error:(NSError **)error;
-- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dst error:(NSError **)error;
-- (BOOL)createDirectoryAtPath:(NSString *)path error:(NSError **)error;
-- (NSArray<FileItem *> *)searchFilesWithKeyword:(NSString *)keyword inPath:(NSString *)path;
-
+- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error;
+- (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive;
 @end

@@ -1,7 +1,4 @@
 #import "FileManagerCore.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 @implementation FileItem
 @end
@@ -18,53 +15,45 @@
 }
 
 - (NSArray<FileItem *> *)contentsOfDirectoryAtPath:(NSString *)path {
-    NSMutableArray<FileItem *> *items = [NSMutableArray array];
-    DIR *dir = opendir([path UTF8String]);
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSError *error;
+    NSArray *contents = [fm contentsOfDirectoryAtPath:path error:&error];
 
-    if (!dir) {
-        // Access denied or not a directory - treat as empty as per requirements
+    if (error) {
+        // Handle inaccessible directory by returning a single item or specific state if desired
+        // but for now we just return empty as per user request
         return @[];
     }
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        NSString *name = [NSString stringWithUTF8String:entry->d_name];
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSString *name in contents) {
         NSString *fullPath = [path stringByAppendingPathComponent:name];
-
         FileItem *item = [[FileItem alloc] init];
         item.name = name;
         item.fullPath = fullPath;
 
-        struct stat st;
-        if (lstat([fullPath UTF8String], &st) == 0) {
-            item.isDirectory = S_ISDIR(st.st_mode);
-            item.isSymbolicLink = S_ISLNK(st.st_mode);
+        NSDictionary *attrs = [fm attributesOfItemAtPath:fullPath error:nil];
+        item.attributes = attrs;
+        item.isDirectory = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
+        item.isSymbolicLink = [[attrs fileType] isEqualToString:NSFileTypeSymbolicLink];
 
-            if (item.isSymbolicLink) {
-                char buf[PATH_MAX];
-                ssize_t len = readlink([fullPath UTF8String], buf, sizeof(buf)-1);
-                if (len != -1) {
-                    buf[len] = '\0';
-                    item.linkTarget = [NSString stringWithUTF8String:buf];
-                }
-            }
+        if (item.isSymbolicLink) {
+            item.linkTarget = [fm destinationOfSymbolicLinkAtPath:fullPath error:nil];
+        }
 
-            item.attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:fullPath error:nil];
+        // Check if locked (can't read contents)
+        if (item.isDirectory) {
+            item.isLocked = ![fm isReadableFileAtPath:fullPath];
         }
 
         [items addObject:item];
     }
-    closedir(dir);
 
     return [items sortedArrayUsingComparator:^NSComparisonResult(FileItem *obj1, FileItem *obj2) {
         if (obj1.isDirectory != obj2.isDirectory) {
             return obj1.isDirectory ? NSOrderedAscending : NSOrderedDescending;
         }
-        return [obj1.name localizedStandardCompare:obj2.name];
+        return [obj1.name compare:obj2.name options:NSCaseInsensitiveSearch];
     }];
 }
 
@@ -72,29 +61,33 @@
     return [[NSFileManager defaultManager] removeItemAtPath:path error:error];
 }
 
-- (BOOL)moveItemAtPath:(NSString *)src toPath:(NSString *)dst error:(NSError **)error {
-    return [[NSFileManager defaultManager] moveItemAtPath:src toPath:dst error:error];
+- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error {
+    return [[NSFileManager defaultManager] copyItemAtPath:src toPath:dest error:error];
 }
 
-- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dst error:(NSError **)error {
-    return [[NSFileManager defaultManager] copyItemAtPath:src toPath:dst error:error];
-}
+- (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive {
+    NSMutableArray *results = [NSMutableArray array];
+    NSFileManager *fm = [NSFileManager defaultManager];
 
-- (BOOL)createDirectoryAtPath:(NSString *)path error:(NSError **)error {
-    return [[NSFileManager defaultManager] createDirectoryAtURL:[NSURL fileURLWithPath:path] withIntermediateDirectories:YES attributes:nil error:error];
-}
+    NSDirectoryEnumerator *enumerator;
+    if (recursive) {
+        enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:path] includingPropertiesForKeys:nil options:0 errorHandler:nil];
+    } else {
+        // Shallow search just in current dir contents
+        for (FileItem *item in [self contentsOfDirectoryAtPath:path]) {
+            if ([item.name.lowercaseString containsString:query.lowercaseString]) {
+                [results addObject:item];
+            }
+        }
+        return results;
+    }
 
-- (NSArray<FileItem *> *)searchFilesWithKeyword:(NSString *)keyword inPath:(NSString *)path {
-    NSMutableArray<FileItem *> *results = [NSMutableArray array];
-    NSDirectoryEnumerator *enumerator = [[NSFileManager defaultManager] enumeratorAtPath:path];
-    NSString *file;
-    while ((file = [enumerator nextObject])) {
-        if ([file.lastPathComponent containsString:keyword]) {
-            NSString *fullPath = [path stringByAppendingPathComponent:file];
+    for (NSURL *url in enumerator) {
+        if ([url.lastPathComponent.lowercaseString containsString:query.lowercaseString]) {
             FileItem *item = [[FileItem alloc] init];
-            item.name = file.lastPathComponent;
-            item.fullPath = fullPath;
-            NSDictionary *attrs = [enumerator fileAttributes];
+            item.name = url.lastPathComponent;
+            item.fullPath = url.path;
+            NSDictionary *attrs = [fm attributesOfItemAtPath:url.path error:nil];
             item.isDirectory = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
             [results addObject:item];
         }

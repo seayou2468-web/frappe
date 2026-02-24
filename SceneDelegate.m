@@ -1,22 +1,12 @@
 #import "SceneDelegate.h"
-#import "FileBrowserViewController.h"
+#import "MainContainerViewController.h"
 
 @implementation SceneDelegate
 
-- (void)scene:(UIScene *)scene
-    willConnectToSession:(UISceneSession *)session
-    options:(UISceneConnectionOptions *)connectionOptions {
-
-    if (![scene isKindOfClass:[UIWindowScene class]]) return;
-
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
     UIWindowScene *windowScene = (UIWindowScene *)scene;
     self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
-
-    // UINavigationController でルートVCをラップ
-    FileBrowserViewController *rootVC = [[FileBrowserViewController alloc] initWithPath:@"/"];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
-
-    self.window.rootFileBrowserViewController = nav;
+    self.window.rootViewController = [[MainContainerViewController alloc] init];
     [self.window makeKeyAndVisible];
 }
 

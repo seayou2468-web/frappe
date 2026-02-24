@@ -80,6 +80,16 @@
 		<string>Compression</string>
 		<string>-framework</string>
 		<string>UniformTypeIdentifiers</string>
+		<string>-framework</string>
+		<string>SpringBoardServices</string>
+		<string>-framework</string>
+		<string>BackBoardServices</string>
+		<string>-framework</string>
+		<string>FrontBoardServices</string>
+		<string>-framework</string>
+		<string>CoreServices</string>
+		<string>-framework</string>
+		<string>MobileCoreServices</string>
 		<string>-lclang_rt.ios</string>
 	</array>
 	<key>LDEMinimumVersion</key>
