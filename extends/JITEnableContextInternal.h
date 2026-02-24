@@ -6,7 +6,7 @@
 //
 #include "idevice.h"
 #import "JITEnableContext.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 
 @interface JITEnableContext(Internal)

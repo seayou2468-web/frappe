@@ -7,7 +7,7 @@
 #include "profiles.h"
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 NSError* makeError(int code, NSString* msg) {
     return [NSError errorWithDomain:@"profiles" code:code userInfo:@{NSLocalizedDescriptionKey: msg}];

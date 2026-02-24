@@ -9,7 +9,7 @@
 #ifndef HEARTBEAT_H
 #define HEARTBEAT_H
 #include "idevice.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 typedef void (^HeartbeatCompletionHandlerC)(int result, const char *message);
 typedef void (^LogFuncC)(const char* message, ...);

@@ -7,7 +7,7 @@
 
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 @implementation JITEnableContext(Process)
 

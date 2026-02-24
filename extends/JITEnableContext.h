@@ -4,8 +4,8 @@
 //
 //  Created by s s on 2025/3/28.
 //
-@import Foundation;
-@import UIKit;
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include "idevice.h"
 #include "jit.h"
 #include "heartbeat.h"

@@ -7,7 +7,7 @@
 #include "mount.h"
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 NSError* makeError(int code, NSString* msg);
 size_t getMountedDeviceCount(IdeviceProviderHandle* provider, NSError** error) {

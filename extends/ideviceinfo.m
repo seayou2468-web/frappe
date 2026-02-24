@@ -11,7 +11,7 @@
 #include "idevice.h"
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 NSError* makeError(int code, NSString* msg);
 LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, IdevicePairingFile* g_sess_pf, NSError** error) {
