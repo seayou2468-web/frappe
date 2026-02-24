@@ -107,10 +107,22 @@
 }
 
 - (void)updateObject:(id)obj forKey:(id)key newValue:(id)newVal {
-    id oldVal = obj[key];
-    [[_plistUndoManager prepareWithInvocationTarget:self] updateObject:obj forKey:key newValue:oldVal];
-    if (newVal) obj[key] = newVal;
-    else [obj removeObjectForKey:key];
+    if ([obj isKindOfClass:[NSMutableDictionary class]]) {
+        id oldVal = obj[key];
+        [[_plistUndoManager prepareWithInvocationTarget:self] updateObject:obj forKey:key newValue:oldVal];
+        if (newVal) obj[key] = newVal;
+        else [obj removeObjectForKey:key];
+    } else if ([obj isKindOfClass:[NSMutableArray class]]) {
+        NSInteger index = [key integerValue];
+        id oldVal = (index < [obj count]) ? obj[index] : nil;
+        [[_plistUndoManager prepareWithInvocationTarget:self] updateObject:obj forKey:key newValue:oldVal];
+        if (newVal) {
+            if (index < [obj count]) obj[index] = newVal;
+            else [obj addObject:newVal];
+        } else {
+            if (index < [obj count]) [obj removeObjectAtIndex:index];
+        }
+    }
     [self refreshKeys];
 }
 
@@ -118,7 +130,6 @@
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
     if ([_currentObject isKindOfClass:[NSDictionary class]]) [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Key"; }];
 
-    NSArray *types = @[@"String", @"Number", @"Boolean", @"Date", @"Data", @"Array", @"Dictionary"];
     [alert addAction:[UIAlertAction actionWithTitle:@"Add" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *key = ([self.currentObject isKindOfClass:[NSDictionary class]]) ? alert.textFields[0].text : nil;
         [self showTypeSelectionForKey:key];
@@ -141,17 +152,16 @@
 
 - (void)createItemOfType:(NSString *)type forKey:(id)key {
     id val = nil;
-    if ([type isEqualToString:@"String"]) val = @"";
+    if ([type isEqualToString:@"String"]) val = [NSMutableString stringWithString:@""];
     else if ([type isEqualToString:@"Number"]) val = @0;
     else if ([type isEqualToString:@"Boolean"]) val = @NO;
     else if ([type isEqualToString:@"Date"]) val = [NSDate date];
-    else if ([type isEqualToString:@"Data"]) val = [NSData data];
+    else if ([type isEqualToString:@"Data"]) val = [NSMutableData data];
     else if ([type isEqualToString:@"Array"]) val = [NSMutableArray array];
     else if ([type isEqualToString:@"Dictionary"]) val = [NSMutableDictionary dictionary];
 
     if ([_currentObject isKindOfClass:[NSDictionary class]]) [self updateObject:_currentObject forKey:key newValue:val];
-    else [(NSMutableArray *)_currentObject addObject:val];
-    [self refreshKeys];
+    else [self updateObject:_currentObject forKey:@([_currentObject count]) newValue:val];
 }
 
 #pragma mark - TableView
@@ -168,7 +178,7 @@
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     }
     id key = _keys[indexPath.row];
-    id value = _currentObject[key];
+    id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
     cell.textLabel.text = [NSString stringWithFormat:@"%@", key];
     if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
         cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ (%lu)", [value class], (unsigned long)[value count]];
@@ -183,7 +193,7 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     id key = _keys[indexPath.row];
-    id value = _currentObject[key];
+    id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
     if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
         PlistEditorViewController *vc = [[PlistEditorViewController alloc] initWithValue:value key:[NSString stringWithFormat:@"%@", key] root:_rootObject undo:_plistUndoManager];
         [self.navigationController pushViewController:vc animated:YES];
@@ -193,7 +203,7 @@
 }
 
 - (void)editValueForKey:(id)key {
-    id value = _currentObject[key];
+    id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%@", value]; }];
 

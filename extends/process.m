@@ -17,6 +17,11 @@
         return nil;
     }
     
+    if (!provider) {
+        if (error) *error = [self errorWithStr:@"Provider not initialized!" code:-1];
+        return nil;
+    }
+
     IdeviceProviderHandle *providerToUse = provider;
     CoreDeviceProxyHandle *coreProxy = NULL;
     AdapterHandle *adapter = NULL;
@@ -29,7 +34,6 @@
     IdeviceFfiError *ffiError = NULL;
 
     do {
-
         ffiError = core_device_proxy_connect(providerToUse, &coreProxy);
         if (ffiError) {
             if (error) {
@@ -64,7 +68,6 @@
             break;
         }
 
-        coreProxy = NULL;
         ffiError = adapter_connect(adapter, rsdPort, (ReadWriteOpaque **)&stream);
         if (ffiError) {
             if (error) {
@@ -87,7 +90,6 @@
             break;
         }
 
-        stream = NULL;
         ffiError = app_service_connect_rsd(adapter, handshake, &appService);
         if (ffiError) {
             if (error) {
@@ -144,10 +146,6 @@
 }
 
 - (NSArray<NSDictionary*>*)_fetchProcessListLocked:(NSError**)error {
-    [self ensureHeartbeatWithError:error];
-    if(*error) {
-        return nil;
-    }
     return [self fetchProcessesViaAppServiceWithError:error];
 }
 
@@ -166,9 +164,14 @@
 - (BOOL)killProcessWithPID:(int)pid signal:(int)signal error:(NSError **)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
-        return nil;
+        return NO;
     }
     
+    if (!provider) {
+        if (error) *error = [self errorWithStr:@"Provider not initialized!" code:-1];
+        return NO;
+    }
+
     IdeviceProviderHandle *providerToUse = provider;
     CoreDeviceProxyHandle *coreProxy = NULL;
     AdapterHandle *adapter = NULL;
@@ -214,7 +217,6 @@
             break;
         }
 
-        coreProxy = NULL;
         ffiError = adapter_connect(adapter, rsdPort, (ReadWriteOpaque **)&stream);
         if (ffiError) {
             if (error) {
@@ -237,7 +239,6 @@
             break;
         }
 
-        stream = NULL;
         ffiError = app_service_connect_rsd(adapter, handshake, &appService);
         if (ffiError) {
             if (error) {
@@ -282,6 +283,5 @@
     }
     return success;
 }
-
 
 @end

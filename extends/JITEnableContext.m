@@ -203,26 +203,12 @@ static JITEnableContext* sharedJITContext = nil;
     return YES;
 }
 
-- (BOOL)debugAppWithBundleID:(NSString*)bundleID logger:(LogFunc)logger jsCallback:(DebugAppCallback)jsCallback {
-    NSError* err = nil;
-    [self ensureHeartbeatWithError:&err];
-    if(err) {
-        logger(err.localizedDescription);
-        return NO;
-    }
     
     return debug_app(provider,
                      [bundleID UTF8String],
                      [self createCLogger:logger], jsCallback) == 0;
 }
 
-- (BOOL)debugAppWithPID:(int)pid logger:(LogFunc)logger jsCallback:(DebugAppCallback)jsCallback {
-    NSError* err = nil;
-    [self ensureHeartbeatWithError:&err];
-    if(err) {
-        logger(err.localizedDescription);
-        return NO;
-    }
     
     return debug_app_pid(provider,
                      pid,

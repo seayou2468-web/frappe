@@ -93,6 +93,10 @@
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+
+        UIView *clayBg = [[ClayView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        cell.backgroundView = [[UIView alloc] init];
+        [cell.backgroundView addSubview:clayBg];
     }
 
     NSDictionary *proc = self.filteredProcesses[indexPath.row];
@@ -100,6 +104,10 @@
     cell.detailTextLabel.text = proc[@"path"];
 
     return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 70;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -117,10 +125,6 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Force Kill (SIGKILL)" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         NSError *err;
         [[JITEnableContext shared] killProcessWithPID:pid signal:9 error:&err];
-        [self loadProcesses];
-    }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"Refresh" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self loadProcesses];
     }]];
 

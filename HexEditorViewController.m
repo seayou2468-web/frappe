@@ -16,13 +16,13 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     self.title = [NSString stringWithFormat:@"Hex: %@", self.path.lastPathComponent];
 
     self.textView = [[UITextView alloc] initWithFrame:self.view.bounds];
     self.textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.textView.font = [UIFont fontWithName:@"Courier" size:12];
-    self.textView.editable = NO;
+    self.textView.font = [UIFont fontWithName:@"Menlo" size:10];
+    self.textView.editable = NO; self.textView.textColor = [UIColor whiteColor]; self.textView.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.textView];
 
     [self loadHex];

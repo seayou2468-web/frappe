@@ -3,6 +3,6 @@
 @interface PlistEditorViewController : UIViewController
 
 - (instancetype)initWithPath:(NSString *)path;
-- (instancetype)initWithValue:(id)value key:(NSString *)key root:(id)root;
+- (instancetype)initWithValue:(id)value key:(NSString *)key root:(id)root undo:(NSUndoManager *)undo;
 
 @end

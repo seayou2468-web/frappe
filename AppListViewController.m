@@ -115,6 +115,10 @@
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+
+        UIView *clayBg = [[ClayView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        cell.backgroundView = [[UIView alloc] init];
+        [cell.backgroundView addSubview:clayBg];
     }
 
     NSString *bid = self.filteredBundleIDs[indexPath.row];
@@ -128,6 +132,10 @@
     cell.imageView.clipsToBounds = YES;
 
     return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 70;
 }
 
 #pragma mark - UITableViewDelegate
@@ -149,20 +157,10 @@
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Show Info (Plist)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        // We could show a temp plist of the info
         NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", bundleID]];
         [info writeToFile:tmpPath atomically:YES];
         PlistEditorViewController *evc = [[PlistEditorViewController alloc] initWithPath:tmpPath];
         [self.navigationController pushViewController:evc animated:YES];
-    }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"Open Container" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *path = info[@"Container"] ?: info[@"Path"];
-        if (path) {
-            // Find FileBrowser in tabs or push new
-            // For now just push a new browser
-            // ...
-        }
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];

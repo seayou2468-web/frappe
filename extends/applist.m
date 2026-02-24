@@ -13,7 +13,6 @@
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
 
-NSError* makeError(int code, NSString* msg);
 static NSString *extractAppName(plist_t app)
 {
     plist_t displayNameNode = plist_dict_get_item(app, "CFBundleDisplayName");

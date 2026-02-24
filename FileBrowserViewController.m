@@ -38,19 +38,14 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-
-    // Set up standard Navigation Bar
     self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
     self.navigationController.navigationBar.translucent = YES;
-
     [self setupUI];
     [self reloadData];
 }
 
 - (void)setupUI {
-    // Integrate Path Bar into TitleView
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(0, 0, 200, 36)];
-    [ThemeEngine applyGlassStyleToView:self.pathBar cornerRadius:8];
     [self.pathBar updatePath:self.currentPath];
     __weak typeof(self) weakSelf = self;
     self.pathBar.onPathChanged = ^(NSString *newPath) { [weakSelf navigateToPath:newPath]; };
@@ -75,7 +70,6 @@
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
 
-    // Bottom menu stays at the bottom of the view
     self.bottomMenu = [[BottomMenuView alloc] init];
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
@@ -222,7 +216,9 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Favorite" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[BookmarksManager sharedManager] addBookmark:item.fullPath];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self showInfoForItem:item]; }]]
+    [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self showInfoForItem:item];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showCompressionOptionsForItem:item];
     }]];
@@ -238,9 +234,21 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+- (void)showInfoForItem:(FileItem *)item {
+    NSMutableString *info = [NSMutableString string];
+    [info appendFormat:@"Path: %@\n", item.fullPath];
+    [info appendFormat:@"Size: %@ bytes\n", item.attributes[NSFileSize]];
+    [info appendFormat:@"Modified: %@\n", item.attributes[NSFileModificationDate]];
+    [info appendFormat:@"Type: %@\n", item.attributes[NSFileType]];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)showCompressionOptionsForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Compress As..." message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip), @"TAR": @(ArchiveFormatTar), @"TAR.GZ": @(ArchiveFormatGzip), @"7Z": @(ArchiveFormat7z)};
+    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip), @"TAR": @(ArchiveFormatTar), @"TAR.GZ": @(ArchiveFormatGzip)};
     for (NSString *name in formats) {
         [alert addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             ArchiveFormat f = [formats[name] integerValue];
@@ -307,29 +315,4 @@
     }
     [self reloadData];
 }
-@end
-
-- (void)showInfoForItem:(FileItem *)item {
-    NSMutableString *info = [NSMutableString string];
-    [info appendFormat:@"Path: %@\n", item.fullPath];
-    [info appendFormat:@"Size: %@ bytes\n", item.attributes[NSFileSize]];
-    [info appendFormat:@"Modified: %@\n", item.attributes[NSFileModificationDate]];
-    [info appendFormat:@"Type: %@\n", item.attributes[NSFileType]];
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-
-- (void)showInfoForItem:(FileItem *)item {
-    NSMutableString *info = [NSMutableString string];
-    [info appendFormat:@"Path: %@\n", item.fullPath];
-    [info appendFormat:@"Size: %@ bytes\n", item.attributes[NSFileSize]];
-    [info appendFormat:@"Modified: %@\n", item.attributes[NSFileModificationDate]];
-    [info appendFormat:@"Type: %@\n", item.attributes[NSFileType]];
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
 @end

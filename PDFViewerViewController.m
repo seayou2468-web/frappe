@@ -13,7 +13,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     self.title = _path.lastPathComponent;
 
     PDFView *pdfView = [[PDFView alloc] initWithFrame:self.view.bounds];

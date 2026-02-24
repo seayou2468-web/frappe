@@ -39,7 +39,7 @@
 		<string>-resource-dir</string>
 		<string>$(BSROOT)/Include</string>
 		<string>-fobjc-arc</string>
-		<string>-I./extends</string>
+		<string>-I. -I./extends</string>
 	</array>
 	<key>LDEDisplayName</key>
 	<string>Frappe</string>

@@ -1,10 +1,3 @@
-//
-//  ideviceinfo.c
-//  StikDebug
-//
-//  Created by Stephen on 8/2/25.
-//
-
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include "ideviceinfo.h"
@@ -13,12 +6,15 @@
 #import "JITEnableContextInternal.h"
 #import <Foundation/Foundation.h>
 
-NSError* makeError(int code, NSString* msg);
+static NSError* _localError(int code, const char* msg) {
+    return [NSError errorWithDomain:@"DeviceInfo" code:code userInfo:@{NSLocalizedDescriptionKey: @(msg)}];
+}
+
 LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, IdevicePairingFile* g_sess_pf, NSError** error) {
     struct LockdowndClientHandle *   g_client   = NULL;
     struct IdeviceFfiError * err = lockdownd_connect(g_provider, &g_client);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = _localError(err->code, err->message);
         idevice_pairing_file_free(g_sess_pf);
         idevice_error_free(err);
         return 0;
@@ -27,7 +23,7 @@ LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, Ide
     err = lockdownd_start_session(g_client, g_sess_pf);
     idevice_pairing_file_free(g_sess_pf);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = _localError(err->code, err->message);
         idevice_error_free(err);
         lockdownd_client_free(g_client);
         g_client = NULL;
@@ -45,7 +41,7 @@ char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
     void *plist_obj = NULL;
     struct IdeviceFfiError *err = lockdownd_get_value(g_client, NULL, NULL, &plist_obj);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = _localError(err->code, err->message);
         idevice_error_free(err);
         return NULL;
     }
@@ -76,10 +72,7 @@ char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
 }
 
 - (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError**)error {
-    [self ensureHeartbeatWithError:error];
-    if(*error) {
-        return 0;
-    }
+    // heartbeat check might not be needed here if client is already open, but safe to keep
     return ideviceinfo_c_get_xml(lockdownClient, error);
 }
 @end

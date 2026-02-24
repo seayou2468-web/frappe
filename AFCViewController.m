@@ -30,7 +30,6 @@
 
 - (void)setupUI {
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(10, 100, self.view.bounds.size.width-20, 44)];
-    [ThemeEngine applyGlassStyleToView:self.pathBar cornerRadius:12];
     [self.pathBar updatePath:self.currentPath];
     [self.view addSubview:self.pathBar];
 
