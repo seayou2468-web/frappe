@@ -1,0 +1,4 @@
+このプロジェクトでは外部依存やmetal、swiftは一切使いません。
+使うのはc/c++/objc/objc++だけです。
+sdkはios26.1です。
+liquidglassを使ってください。
