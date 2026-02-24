@@ -1,3 +1,4 @@
+#import "ThemeEngine.h"
 #import "HexEditorViewController.h"
 
 @interface HexEditorViewController ()
@@ -15,7 +16,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor mainBackgroundColor];
     self.title = [NSString stringWithFormat:@"Hex: %@", self.path.lastPathComponent];
 
     self.textView = [[UITextView alloc] initWithFrame:self.view.bounds];

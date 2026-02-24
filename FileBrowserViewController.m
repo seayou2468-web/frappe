@@ -222,7 +222,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Favorite" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[BookmarksManager sharedManager] addBookmark:item.fullPath];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self showInfoForItem:item]; }]]
     [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showCompressionOptionsForItem:item];
     }]];
@@ -307,4 +307,29 @@
     }
     [self reloadData];
 }
+@end
+
+- (void)showInfoForItem:(FileItem *)item {
+    NSMutableString *info = [NSMutableString string];
+    [info appendFormat:@"Path: %@\n", item.fullPath];
+    [info appendFormat:@"Size: %@ bytes\n", item.attributes[NSFileSize]];
+    [info appendFormat:@"Modified: %@\n", item.attributes[NSFileModificationDate]];
+    [info appendFormat:@"Type: %@\n", item.attributes[NSFileType]];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+
+- (void)showInfoForItem:(FileItem *)item {
+    NSMutableString *info = [NSMutableString string];
+    [info appendFormat:@"Path: %@\n", item.fullPath];
+    [info appendFormat:@"Size: %@ bytes\n", item.attributes[NSFileSize]];
+    [info appendFormat:@"Modified: %@\n", item.attributes[NSFileModificationDate]];
+    [info appendFormat:@"Type: %@\n", item.attributes[NSFileType]];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 @end

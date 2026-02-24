@@ -79,6 +79,10 @@
 		<string>-framework</string>
 		<string>Compression</string>
 		<string>-framework</string>
+		<string>AppleArchive</string>
+		<string>-framework</string>
+		<string>ArchiveUtility</string>
+		<string>-framework</string>
 		<string>UniformTypeIdentifiers</string>
 		<string>-framework</string>
 		<string>SpringBoardServices</string>
@@ -93,13 +97,13 @@
 		<string>-lclang_rt.ios</string>
 	</array>
 	<key>LDEMinimumVersion</key>
-	<string>26.2</string>
+	<string>26.1</string>
 	<key>LDEOutputPath</key>
 	<string>$(CACHEROOT)/Payload/$(LDEDisplayName).app/$(LDEExecutable)</string>
 	<key>LDEProjectType</key>
 	<integer>1</integer>
 	<key>LDEVersion</key>
-	<string>26.2</string>
+	<string>26.1</string>
 	<key>NXProjectFormat</key>
 	<string>NXFalcon</string>
 </dict>
