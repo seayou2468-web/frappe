@@ -197,7 +197,7 @@ static JITEnableContext* sharedJITContext = nil;
 
 - (BOOL)ensureHeartbeatWithError:(NSError**)err {
     // if it's 15s after last heartbeat, we restart heartbeat.
-    if (!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15)) {
+    if (!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15) {
         return [self startHeartbeat:err];
     }
     return YES;
