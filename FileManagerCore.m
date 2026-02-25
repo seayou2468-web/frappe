@@ -20,8 +20,6 @@
     NSArray *contents = [fm contentsOfDirectoryAtPath:path error:&error];
 
     if (error) {
-        // Handle inaccessible directory by returning a single item or specific state if desired
-        // but for now we just return empty as per user request
         return @[];
     }
 
@@ -41,7 +39,6 @@
             item.linkTarget = [fm destinationOfSymbolicLinkAtPath:fullPath error:nil];
         }
 
-        // Check if locked (can't read contents)
         if (item.isDirectory) {
             item.isLocked = ![fm isReadableFileAtPath:fullPath];
         }
@@ -65,31 +62,36 @@
     return [[NSFileManager defaultManager] copyItemAtPath:src toPath:dest error:error];
 }
 
+- (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error {
+    if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    }
+    return [[NSFileManager defaultManager] createSymbolicLinkAtPath:path withDestinationPath:dest error:error];
+}
+
 - (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive {
     NSMutableArray *results = [NSMutableArray array];
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    NSDirectoryEnumerator *enumerator;
     if (recursive) {
-        enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:path] includingPropertiesForKeys:nil options:0 errorHandler:nil];
+        NSDirectoryEnumerator *enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:path] includingPropertiesForKeys:nil options:0 errorHandler:^BOOL(NSURL *url, NSError *error) { return YES; }];
+        for (NSURL *url in enumerator) {
+            if ([url.lastPathComponent.lowercaseString containsString:query.lowercaseString]) {
+                FileItem *item = [[FileItem alloc] init];
+                item.name = url.lastPathComponent;
+                item.fullPath = url.path;
+                NSDictionary *attrs = [fm attributesOfItemAtPath:url.path error:nil];
+                item.isDirectory = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
+                item.isSymbolicLink = [[attrs fileType] isEqualToString:NSFileTypeSymbolicLink];
+                if (item.isSymbolicLink) item.linkTarget = [fm destinationOfSymbolicLinkAtPath:url.path error:nil];
+                [results addObject:item];
+            }
+        }
     } else {
-        // Shallow search just in current dir contents
         for (FileItem *item in [self contentsOfDirectoryAtPath:path]) {
             if ([item.name.lowercaseString containsString:query.lowercaseString]) {
                 [results addObject:item];
             }
-        }
-        return results;
-    }
-
-    for (NSURL *url in enumerator) {
-        if ([url.lastPathComponent.lowercaseString containsString:query.lowercaseString]) {
-            FileItem *item = [[FileItem alloc] init];
-            item.name = url.lastPathComponent;
-            item.fullPath = url.path;
-            NSDictionary *attrs = [fm attributesOfItemAtPath:url.path error:nil];
-            item.isDirectory = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
-            [results addObject:item];
         }
     }
     return results;

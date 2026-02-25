@@ -1,24 +1,19 @@
 #import "FileBrowserViewController.h"
 #import "FileManagerCore.h"
-#import "PathBarView.h"
-#import "BottomMenuView.h"
 #import "ThemeEngine.h"
-#import "MainContainerViewController.h"
 #import "TabManager.h"
-#import "ZipManager.h"
+#import "MainContainerViewController.h"
 #import "BookmarksManager.h"
+#import "ZipManager.h"
 #import "PlistEditorViewController.h"
 #import "TextEditorViewController.h"
 #import "ImageViewerViewController.h"
 #import "MediaPlayerViewController.h"
 #import "PDFViewerViewController.h"
 #import "HexEditorViewController.h"
-#import "ProcessListViewController.h"
-#import "AppListViewController.h"
-#import "AFCViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate, UISearchBarDelegate>
+@interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<FileItem *> *items;
 @property (strong, nonatomic) PathBarView *pathBar;
@@ -108,6 +103,7 @@
 }
 
 - (void)navigateToPath:(NSString *)path {
+    if (!path) return;
     FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path];
     [self.navigationController pushViewController:vc animated:YES];
 }
@@ -116,8 +112,13 @@
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
     if (searchText.length == 0) { [self reloadData]; return; }
     NSString *searchPath = (self.searchScope.selectedSegmentIndex == 1) ? @"/" : self.currentPath;
-    self.items = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
-    [self.tableView reloadData];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSArray *results = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.items = results;
+            [self.tableView reloadData];
+        });
+    });
 }
 
 #pragma mark - TableView
@@ -134,6 +135,7 @@
         clayBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:clayBg];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
     FileItem *item = self.items[indexPath.row];
     cell.textLabel.text = item.name;
@@ -152,8 +154,12 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     FileItem *item = self.items[indexPath.row];
-    if (item.isDirectory && !item.isLocked) [self navigateToPath:item.fullPath];
-    else if (!item.isDirectory) [self openFile:item];
+    if (item.isSymbolicLink) {
+        [self navigateToPath:item.linkTarget];
+        return;
+    }
+    if (item.isDirectory) [self navigateToPath:item.fullPath];
+    else [self openFile:item];
 }
 
 - (void)openFile:(FileItem *)item {
@@ -220,6 +226,11 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showInfoForItem:item];
     }]];
+    if (item.isSymbolicLink) {
+        [alert addAction:[UIAlertAction actionWithTitle:@"Edit Link" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            [self showEditLinkForItem:item];
+        }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showCompressionOptionsForItem:item];
     }]];
@@ -244,6 +255,17 @@
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showEditLinkForItem:(FileItem *)item {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Link" message:@"Enter new destination path" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = item.linkTarget; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[FileManagerCore sharedManager] createSymbolicLinkAtPath:item.fullPath withDestinationPath:alert.textFields[0].text error:nil];
+        [self reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

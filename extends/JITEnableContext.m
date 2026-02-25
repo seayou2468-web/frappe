@@ -15,11 +15,13 @@
 #include "profiles.h"
 
 #include "JITEnableContext.h"
-//#import "StikDebug-Swift.h"
+#include "JITEnableContextInternal.h"
 #include <os/lock.h>
 #import <pthread.h>
 
 static JITEnableContext* sharedJITContext = nil;
+static int globalHeartbeatToken = 0;
+static NSDate *lastHeartbeatDate = nil;
 
 @implementation JITEnableContext {    
     int heartbeatToken;
@@ -27,7 +29,10 @@ static JITEnableContext* sharedJITContext = nil;
     os_unfair_lock heartbeatLock;
     BOOL heartbeatRunning;
     dispatch_semaphore_t heartbeatSemaphore;
-
+    dispatch_queue_t syslogQueue;
+    dispatch_queue_t processInspectorQueue;
+    BOOL syslogStreaming;
+    void* syslogClient;
 }
 
 + (instancetype)shared {
@@ -39,22 +44,24 @@ static JITEnableContext* sharedJITContext = nil;
 }
 
 - (instancetype)init {
-    NSFileManager* fm = [NSFileManager defaultManager];
-    NSURL* docPathUrl = [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* logURL = [docPathUrl URLByAppendingPathComponent:@"idevice_log.txt"];
-    idevice_init_logger(Info, Debug, (char*)logURL.path.UTF8String);
-    syslogQueue = dispatch_queue_create("com.stik.syslogrelay.queue", DISPATCH_QUEUE_SERIAL);
-    syslogStreaming = NO;
-    syslogClient = NULL;
-    dispatch_queue_attr_t qosAttr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
-    processInspectorQueue = dispatch_queue_create("com.stikdebug.processInspector", qosAttr);
-    
-    heartbeatToken = 0;
-    heartbeatLock = OS_UNFAIR_LOCK_INIT;
-    heartbeatRunning = NO;
-    heartbeatSemaphore = NULL;
-    lastHeartbeatError = nil;
+    self = [super init];
+    if (self) {
+        NSFileManager* fm = [NSFileManager defaultManager];
+        NSURL* docPathUrl = [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+        NSURL* logURL = [docPathUrl URLByAppendingPathComponent:@"idevice_log.txt"];
+        idevice_init_logger(Info, Debug, (char*)logURL.path.UTF8String);
+        syslogQueue = dispatch_queue_create("com.stik.syslogrelay.queue", DISPATCH_QUEUE_SERIAL);
+        syslogStreaming = NO;
+        syslogClient = NULL;
+        dispatch_queue_attr_t qosAttr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
+        processInspectorQueue = dispatch_queue_create("com.stikdebug.processInspector", qosAttr);
 
+        heartbeatToken = 0;
+        heartbeatLock = OS_UNFAIR_LOCK_INIT;
+        heartbeatRunning = NO;
+        heartbeatSemaphore = NULL;
+        lastHeartbeatError = nil;
+    }
     return self;
 }
 
@@ -71,17 +78,6 @@ static JITEnableContext* sharedJITContext = nil;
         NSString* fmt = [NSString stringWithCString:format encoding:NSASCIIStringEncoding];
         NSString* message = [[NSString alloc] initWithFormat:fmt arguments:args];
         NSLog(@"%@", message);
-
-//        if ([message containsString:@"ERROR"] || [message containsString:@"Error"]) {
-//            [[LogManagerBridge shared] addErrorLog:message];
-//        } else if ([message containsString:@"WARNING"] || [message containsString:@"Warning"]) {
-//            [[LogManagerBridge shared] addWarningLog:message];
-//        } else if ([message containsString:@"DEBUG"]) {
-//            [[LogManagerBridge shared] addDebugLog:message];
-//        } else {
-//            [[LogManagerBridge shared] addInfoLog:message];
-//        }
-
         if (logger) {
             logger(message);
         }
@@ -102,14 +98,14 @@ static JITEnableContext* sharedJITContext = nil;
 
     if (![fm fileExistsAtPath:pairingFileURL.path]) {
         NSLog(@"Pairing file not found!");
-        *error = [self errorWithStr:@"Pairing file not found!" code:-17];
+        if (error) *error = [self errorWithStr:@"Pairing file not found!" code:-17];
         return nil;
     }
 
     IdevicePairingFile* pairingFile = NULL;
     IdeviceFfiError* err = idevice_pairing_file_read(pairingFileURL.fileSystemRepresentation, &pairingFile);
     if (err) {
-        *error = [self errorWithStr:@"Failed to read pairing file!" code:err->code];
+        if (error) *error = [self errorWithStr:@"Failed to read pairing file!" code:err->code];
         return nil;
     }
     return pairingFile;
@@ -119,11 +115,9 @@ static JITEnableContext* sharedJITContext = nil;
     return provider;
 }
 
-// only block until first heartbeat is completed or failed.
 - (BOOL)startHeartbeat:(NSError**)err {
     os_unfair_lock_lock(&heartbeatLock);
     
-    // If heartbeat is already running, wait for it to complete
     if (heartbeatRunning) {
         dispatch_semaphore_t waitSemaphore = heartbeatSemaphore;
         os_unfair_lock_unlock(&heartbeatLock);
@@ -132,18 +126,17 @@ static JITEnableContext* sharedJITContext = nil;
             dispatch_semaphore_wait(waitSemaphore, DISPATCH_TIME_FOREVER);
             dispatch_semaphore_signal(waitSemaphore);
         }
-        *err = lastHeartbeatError;
-        return *err == nil;
+        if (err) *err = lastHeartbeatError;
+        return lastHeartbeatError == nil;
     }
     
-    // Mark heartbeat as running
     heartbeatRunning = YES;
     heartbeatSemaphore = dispatch_semaphore_create(0);
     dispatch_semaphore_t completionSemaphore = heartbeatSemaphore;
     os_unfair_lock_unlock(&heartbeatLock);
     
     IdevicePairingFile* pairingFile = [self getPairingFileWithError:err];
-    if (*err) {
+    if (err && *err) {
         os_unfair_lock_lock(&heartbeatLock);
         heartbeatRunning = NO;
         heartbeatSemaphore = NULL;
@@ -155,36 +148,33 @@ static JITEnableContext* sharedJITContext = nil;
     globalHeartbeatToken++;
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block bool completionCalled = false;
+    __block NSError *localError = nil;
     HeartbeatCompletionHandlerC Ccompletion = ^(int result, const char *message) {
         if(completionCalled) {
             return;
         }
         if (result != 0) {
-            *err = [self errorWithStr:[NSString stringWithCString:message
+            localError = [self errorWithStr:[NSString stringWithCString:message
                                                          encoding:NSASCIIStringEncoding] code:result];
-            self->lastHeartbeatError = *err;
+            self->lastHeartbeatError = localError;
         } else {
             self->lastHeartbeatError = nil;
+            lastHeartbeatDate = [NSDate date];
         }
         completionCalled = true;
-
         dispatch_semaphore_signal(semaphore);
     };
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        startHeartbeat(
-            pairingFile,
-            &self->provider,
-                       globalHeartbeatToken,Ccompletion
-        );
+        startHeartbeat(pairingFile, &self->provider, globalHeartbeatToken, Ccompletion);
     });
-    // allow 5 seconds for heartbeat, otherwise we declare timeout
+
     intptr_t isTimeout = dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, (uint64_t)(5 * NSEC_PER_SEC)));
     if(isTimeout) {
         Ccompletion(-1, "Heartbeat failed to complete in reasonable time.");
-    } else {
-        NSLog(@"Start heartbeat success %p", pthread_self());
     }
+
+    if (err) *err = localError;
 
     os_unfair_lock_lock(&heartbeatLock);
     heartbeatRunning = NO;
@@ -192,11 +182,10 @@ static JITEnableContext* sharedJITContext = nil;
     os_unfair_lock_unlock(&heartbeatLock);
     dispatch_semaphore_signal(completionSemaphore);
     
-    return *err == nil;
+    return localError == nil;
 }
 
 - (BOOL)ensureHeartbeatWithError:(NSError**)err {
-    // if it's 15s after last heartbeat, we restart heartbeat.
     if (!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15) {
         return [self startHeartbeat:err];
     }
@@ -209,9 +198,5 @@ static JITEnableContext* sharedJITContext = nil;
         idevice_provider_free(provider);
     }
 }
-
-
-
-
 
 @end

@@ -15,5 +15,6 @@
 - (NSArray<FileItem *> *)contentsOfDirectoryAtPath:(NSString *)path;
 - (BOOL)removeItemAtPath:(NSString *)path error:(NSError **)error;
 - (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error;
+- (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error;
 - (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive;
 @end
