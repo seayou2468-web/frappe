@@ -101,13 +101,13 @@ int simulate_location(const char *device_ip,
     }
 
     AdapterStreamHandle *stream = NULL;
-    if ((err = adapter_connect(g_adapter, rsd_port, &stream))) {
+    if ((err = adapter_connect(g_adapter, rsd_port, (struct ReadWriteOpaque **)&stream))) {
         idevice_error_free(err);
         cleanup_on_error();
         return IPA_ERR_STREAM;
     }
 
-    if ((err = rsd_handshake_new(stream, &g_handshake))) {
+    if ((err = rsd_handshake_new((struct ReadWriteOpaque *)stream, &g_handshake))) {
         idevice_error_free(err);
         adapter_close(stream);
         cleanup_on_error();

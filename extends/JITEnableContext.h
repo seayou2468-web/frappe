@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  JITEnableContext.h
 //  StikJIT
@@ -11,11 +12,11 @@
 #include "heartbeat.h"
 #include "mount.h"
 
-typedef void (^HeartbeatCompletionHandler)(int result, NSString *message);
-typedef void (^LogFuncC)(const char* message, ...);
-typedef void (^LogFunc)(NSString *message);
-typedef void (^SyslogLineHandler)(NSString *line);
-typedef void (^SyslogErrorHandler)(NSError *error);
+typedef void (^HeartbeatCompletionHandler)(int result, NSString * _Nullable message);
+typedef void (^LogFuncC)(const char* _Nullable message, ...);
+typedef void (^LogFunc)(NSString * _Nullable message);
+typedef void (^SyslogLineHandler)(NSString * _Nullable line);
+typedef void (^SyslogErrorHandler)(NSError * _Nullable error);
 
 @interface JITEnableContext : NSObject {
     // process
@@ -33,10 +34,10 @@ typedef void (^SyslogErrorHandler)(NSError *error);
     @protected LockdowndClientHandle *   g_client;
 }
 @property (class, readonly)JITEnableContext* shared;
-- (IdevicePairingFile*)getPairingFileWithError:(NSError**)error;
+- (IdevicePairingFile*)getPairingFileWithError:(NSError * _Nullable * _Nullable)error;
 - (IdeviceProviderHandle*)getTcpProviderHandle;
-- (BOOL)ensureHeartbeatWithError:(NSError**)err;
-- (BOOL)startHeartbeat:(NSError**)err;
+- (BOOL)ensureHeartbeatWithError:(NSError * _Nullable * _Nullable)err;
+- (BOOL)startHeartbeat:(NSError * _Nullable * _Nullable)err;
 
 @end
 
@@ -47,27 +48,27 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 @end
 
 @interface JITEnableContext(DDI)
-- (NSUInteger)getMountedDeviceCount:(NSError**)error __attribute__((swift_error(zero_result)));
-- (NSInteger)mountPersonalDDIWithImagePath:(NSString*)imagePath trustcachePath:(NSString*)trustcachePath manifestPath:(NSString*)manifestPath error:(NSError**)error __attribute__((swift_error(nonzero_result)));
+- (NSUInteger)getMountedDeviceCount:(NSError * _Nullable * _Nullable)error __attribute__((swift_error(zero_result)));
+- (NSInteger)mountPersonalDDIWithImagePath:(NSString*)imagePath trustcachePath:(NSString*)trustcachePath manifestPath:(NSString*)manifestPath error:(NSError * _Nullable * _Nullable)error __attribute__((swift_error(nonzero_result)));
 @end
 
 @interface JITEnableContext(Profile)
-- (NSArray<NSData*>*)fetchAllProfiles:(NSError **)error;
-- (BOOL)removeProfileWithUUID:(NSString*)uuid error:(NSError **)error;
-- (BOOL)addProfile:(NSData*)profile error:(NSError **)error;
+- (NSArray<NSData*>*)fetchAllProfiles:(NSError * _Nullable * _Nullable)error;
+- (BOOL)removeProfileWithUUID:(NSString*)uuid error:(NSError * _Nullable * _Nullable)error;
+- (BOOL)addProfile:(NSData*)profile error:(NSError * _Nullable * _Nullable)error;
 @end
 
 @interface JITEnableContext(Process)
-- (NSArray<NSDictionary*>*)fetchProcessListWithError:(NSError**)error;
-- (BOOL)killProcessWithPID:(int)pid signal:(int)signal error:(NSError **)error;
+- (NSArray<NSDictionary*>*)fetchProcessListWithError:(NSError * _Nullable * _Nullable)error;
+- (BOOL)killProcessWithPID:(int)pid signal:(int)signal error:(NSError * _Nullable * _Nullable)error;
 @end
 
 @interface JITEnableContext(App)
-- (UIImage*)getAppIconWithBundleId:(NSString*)bundleId error:(NSError**)error;
-- (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError**)error;
-- (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError**)error;
-- (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError**)error;
-- (NSDictionary<NSString*, id>*)getAllAppsInfoWithError:(NSError**)error;
+- (UIImage*)getAppIconWithBundleId:(NSString*)bundleId error:(NSError * _Nullable * _Nullable)error;
+- (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError * _Nullable * _Nullable)error;
+- (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError * _Nullable * _Nullable)error;
+- (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError * _Nullable * _Nullable)error;
+- (NSDictionary<NSString*, id>*)getAllAppsInfoWithError:(NSError * _Nullable * _Nullable)error;
 @end
 
 @interface JITEnableContext(Syslog)
@@ -77,12 +78,14 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 @end
 
 @interface JITEnableContext(DeviceInfo)
-- (LockdowndClientHandle*)ideviceInfoInit:(NSError**)error;
-- (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError**)error;
+- (LockdowndClientHandle*)ideviceInfoInit:(NSError * _Nullable * _Nullable)error;
+- (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError * _Nullable * _Nullable)error;
 @end
 
 @interface JITEnableContext(AFC)
 - (BOOL)afcIsPathDirectory:(NSString *)path;
-- (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError **)error;
-- (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError **)error;
+- (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError * _Nullable * _Nullable)error;
+- (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError * _Nullable * _Nullable)error;
 @end
+
+NS_ASSUME_NONNULL_END

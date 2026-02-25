@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  process.m
 //  StikDebug
@@ -11,7 +12,7 @@
 
 @implementation JITEnableContext(Process)
 
-- (NSArray<NSDictionary*>*)fetchProcessesViaAppServiceWithError:(NSError **)error {
+- (NSArray<NSDictionary*>*)fetchProcessesViaAppServiceWithError:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return nil;
@@ -145,11 +146,11 @@
     return result;
 }
 
-- (NSArray<NSDictionary*>*)_fetchProcessListLocked:(NSError**)error {
+- (NSArray<NSDictionary*>*)_fetchProcessListLocked:(NSError * _Nullable * _Nullable)error {
     return [self fetchProcessesViaAppServiceWithError:error];
 }
 
-- (NSArray<NSDictionary*>*)fetchProcessListWithError:(NSError**)error {
+- (NSArray<NSDictionary*>*)fetchProcessListWithError:(NSError * _Nullable * _Nullable)error {
     __block NSArray *result = nil;
     __block NSError *localError = nil;
     dispatch_sync(processInspectorQueue, ^{
@@ -161,7 +162,7 @@
     return result;
 }
 
-- (BOOL)killProcessWithPID:(int)pid signal:(int)signal error:(NSError **)error {
+- (BOOL)killProcessWithPID:(int)pid signal:(int)signal error:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return NO;
@@ -285,3 +286,4 @@
 }
 
 @end
+NS_ASSUME_NONNULL_END

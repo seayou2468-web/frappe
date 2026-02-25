@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  JITEnableContextInternal.h
 //  StikDebug
@@ -15,3 +16,4 @@
 - (NSError*)errorWithStr:(NSString*)str code:(int)code;
 
 @end
+NS_ASSUME_NONNULL_END

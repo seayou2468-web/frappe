@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include "ideviceinfo.h"
@@ -10,7 +11,7 @@ static NSError* _localError(int code, const char* msg) {
     return [NSError errorWithDomain:@"DeviceInfo" code:code userInfo:@{NSLocalizedDescriptionKey: @(msg)}];
 }
 
-LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, IdevicePairingFile* g_sess_pf, NSError** error) {
+LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, IdevicePairingFile* g_sess_pf, NSError * _Nullable * _Nullable error) {
     struct LockdowndClientHandle *   g_client   = NULL;
     struct IdeviceFfiError * err = lockdownd_connect(g_provider, &g_client);
     if (err) {
@@ -33,7 +34,7 @@ LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, Ide
     return g_client;
 }
 
-char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
+char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError * _Nullable * _Nullable error) {
     if (!g_client) {
         return NULL;
     }
@@ -58,7 +59,7 @@ char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
 
 @implementation JITEnableContext(DeviceInfo)
 
-- (LockdowndClientHandle*)ideviceInfoInit:(NSError**)error {
+- (LockdowndClientHandle*)ideviceInfoInit:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return 0;
@@ -71,8 +72,9 @@ char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
     return ideviceinfo_c_init(provider, pf, error);
 }
 
-- (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError**)error {
+- (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError * _Nullable * _Nullable)error {
     // heartbeat check might not be needed here if client is already open, but safe to keep
     return ideviceinfo_c_get_xml(lockdownClient, error);
 }
 @end
+NS_ASSUME_NONNULL_END

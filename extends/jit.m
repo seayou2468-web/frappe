@@ -32,7 +32,7 @@ void runDebugServerCommand(int pid,
     DebugserverCommandHandle *disableAckCommand = debugserver_command_new("QStartNoAckMode", NULL, 0);
     IdeviceFfiError* err = debug_proxy_send_command(debug_proxy, disableAckCommand, &disableResponse);
     debugserver_command_free(disableAckCommand);
-    logger("QStartNoAckMode result = %s, err = %d", disableResponse, err);
+    logger("QStartNoAckMode result = %s, err = %d", disableResponse, err ? err->code : 0);
     idevice_string_free(disableResponse);
     debug_proxy_set_ack_mode(debug_proxy, false);
     
@@ -40,12 +40,12 @@ void runDebugServerCommand(int pid,
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
         callback(pid, debug_proxy, remote_server, semaphore);
         dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-        err = debug_proxy_send_raw(debug_proxy, "\x03", 1);
+        err = debug_proxy_send_raw(debug_proxy, (const uint8_t *)"\x03", 1);
         usleep(500);
     } else {
         // Send vAttach command with PID in hex
         char attach_command[64];
-        snprintf(attach_command, sizeof(attach_command), "vAttach;%" PRIx64, pid);
+        snprintf(attach_command, sizeof(attach_command), "vAttach;%" PRIx64, (uint64_t)pid);
         
         DebugserverCommandHandle *attach_cmd = debugserver_command_new(attach_command, NULL, 0);
         if (attach_cmd == NULL) {
@@ -58,7 +58,7 @@ void runDebugServerCommand(int pid,
         debugserver_command_free(attach_cmd);
         
         if (err) {
-            logger("Failed to attach to process: %d", err);
+            logger("Failed to attach to process: %d", err ? err->code : 0);
         } else if (attach_response != NULL) {
             logger("Attach response: %s", attach_response);
             idevice_string_free(attach_response);
@@ -142,7 +142,7 @@ int debug_app(IdeviceProviderHandle* tcp_provider, const char *bundle_id, LogFun
       fprintf(stderr, "Failed to perform RSD handshake: [%d] %s\n", err->code,
               err->message);
       idevice_error_free(err);
-      adapter_close(stream);
+      adapter_stream_close(stream);
       adapter_free(adapter);
       return 1;
     }
@@ -270,7 +270,7 @@ int debug_app_pid(IdeviceProviderHandle* tcp_provider, int pid, LogFuncC logger,
       fprintf(stderr, "Failed to perform RSD handshake: [%d] %s\n", err->code,
               err->message);
       idevice_error_free(err);
-      adapter_close(stream);
+      adapter_stream_close(stream);
       adapter_free(adapter);
       return 1;
     }
@@ -415,7 +415,7 @@ cleanup:
         rsd_handshake_free(handshake);
     }
     if (stream) {
-        adapter_close(stream);
+        adapter_stream_close(stream);
     }
     if (adapter) {
         adapter_free(adapter);

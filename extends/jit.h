@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  jit.h
 //  StikJIT
@@ -10,7 +11,7 @@
 #define JIT_H
 #include "idevice.h"
 
-typedef void (^LogFuncC)(const char* message, ...);
+typedef void (^LogFuncC)(const char* _Nullable message, ...);
 typedef void (^DebugAppCallback)(int pid,
                                  struct DebugProxyHandle* debug_proxy,
                                  struct RemoteServerHandle* remote_server,
@@ -20,3 +21,5 @@ int debug_app_pid(IdeviceProviderHandle* tcp_provider, int pid, LogFuncC logger,
 int launch_app_via_proxy(IdeviceProviderHandle* tcp_provider, const char *bundle_id, int argc, const char* const* argv, LogFuncC logger);
 
 #endif /* JIT_H */
+
+NS_ASSUME_NONNULL_END

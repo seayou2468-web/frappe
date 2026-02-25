@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  applist.c
 //  StikJIT
@@ -325,7 +326,7 @@ id plist_to_objc_object(plist_t plist) {
 
 @implementation JITEnableContext(App)
 
-- (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError**)error {
+- (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return nil;
@@ -340,7 +341,7 @@ id plist_to_objc_object(plist_t plist) {
     return apps;
 }
 
-- (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError**)error {
+- (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return nil;
@@ -355,7 +356,7 @@ id plist_to_objc_object(plist_t plist) {
     return apps;
 }
 
-- (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError**)error {
+- (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return nil;
@@ -370,7 +371,7 @@ id plist_to_objc_object(plist_t plist) {
     return apps;
 }
 
-- (UIImage*)getAppIconWithBundleId:(NSString*)bundleId error:(NSError**)error {
+- (UIImage*)getAppIconWithBundleId:(NSString*)bundleId error:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) {
         return nil;
@@ -385,7 +386,7 @@ id plist_to_objc_object(plist_t plist) {
     return icon;
 }
 
-- (NSDictionary<NSString*, id>*)getAllAppsInfoWithError:(NSError**)error {
+- (NSDictionary<NSString*, id>*)getAllAppsInfoWithError:(NSError * _Nullable * _Nullable)error {
     if (!provider) {
         NSLog(@"Provider not initialized!");
         *error = [self errorWithStr:@"Provider not initialized!" code:-1];
@@ -402,3 +403,4 @@ id plist_to_objc_object(plist_t plist) {
 }
 
 @end
+NS_ASSUME_NONNULL_END

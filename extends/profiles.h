@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  profiles.h
 //  StikDebug
@@ -20,3 +21,4 @@ bool addProfile(IdeviceProviderHandle* _Nonnull provider, NSData* _Nonnull profi
                  error:(NSError * _Nullable * _Nullable)error;
 @end
 #endif
+NS_ASSUME_NONNULL_END

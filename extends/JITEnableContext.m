@@ -19,20 +19,16 @@
 #include <os/lock.h>
 #import <pthread.h>
 
-static JITEnableContext* sharedJITContext = nil;
-static int globalHeartbeatToken = 0;
-static NSDate *lastHeartbeatDate = nil;
+NS_ASSUME_NONNULL_BEGIN
+
+static JITEnableContext* _Nullable sharedJITContext = nil;
 
 @implementation JITEnableContext {    
     int heartbeatToken;
-    NSError* lastHeartbeatError;
+    NSError* _Nullable lastHeartbeatError;
     os_unfair_lock heartbeatLock;
     BOOL heartbeatRunning;
-    dispatch_semaphore_t heartbeatSemaphore;
-    dispatch_queue_t syslogQueue;
-    dispatch_queue_t processInspectorQueue;
-    BOOL syslogStreaming;
-    void* syslogClient;
+    dispatch_semaphore_t _Nullable heartbeatSemaphore;
 }
 
 + (instancetype)shared {
@@ -47,7 +43,7 @@ static NSDate *lastHeartbeatDate = nil;
     self = [super init];
     if (self) {
         NSFileManager* fm = [NSFileManager defaultManager];
-        NSURL* docPathUrl = [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+        NSURL* docPathUrl = (NSURL*)[fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
         NSURL* logURL = [docPathUrl URLByAppendingPathComponent:@"idevice_log.txt"];
         idevice_init_logger(Info, Debug, (char*)logURL.path.UTF8String);
         syslogQueue = dispatch_queue_create("com.stik.syslogrelay.queue", DISPATCH_QUEUE_SERIAL);
@@ -85,10 +81,10 @@ static NSDate *lastHeartbeatDate = nil;
     };
 }
 
-- (IdevicePairingFile*)getPairingFileWithError:(NSError**)error {
+- (IdevicePairingFile* _Nullable)getPairingFileWithError:(NSError* _Nullable * _Nullable)error {
     NSFileManager* fm = [NSFileManager defaultManager];
-    NSURL* docPathUrl = [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    NSString* currentDeviceUUIDStr = [NSUserDefaults.standardUserDefaults stringForKey:@"DeviceLibraryActiveDeviceID"];
+    NSURL* docPathUrl = (NSURL*)[fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    NSString* _Nullable currentDeviceUUIDStr = [NSUserDefaults.standardUserDefaults stringForKey:@"DeviceLibraryActiveDeviceID"];
     NSURL* pairingFileURL;
     if(!currentDeviceUUIDStr || [currentDeviceUUIDStr isEqualToString:@"00000000-0000-0000-0000-000000000001"]) {
         pairingFileURL = [docPathUrl URLByAppendingPathComponent:@"pairingFile.plist"];
@@ -115,11 +111,11 @@ static NSDate *lastHeartbeatDate = nil;
     return provider;
 }
 
-- (BOOL)startHeartbeat:(NSError**)err {
+- (BOOL)startHeartbeat:(NSError* _Nullable * _Nullable)err {
     os_unfair_lock_lock(&heartbeatLock);
     
     if (heartbeatRunning) {
-        dispatch_semaphore_t waitSemaphore = heartbeatSemaphore;
+        dispatch_semaphore_t _Nullable waitSemaphore = heartbeatSemaphore;
         os_unfair_lock_unlock(&heartbeatLock);
         
         if (waitSemaphore) {
@@ -132,23 +128,23 @@ static NSDate *lastHeartbeatDate = nil;
     
     heartbeatRunning = YES;
     heartbeatSemaphore = dispatch_semaphore_create(0);
-    dispatch_semaphore_t completionSemaphore = heartbeatSemaphore;
+    dispatch_semaphore_t _Nullable completionSemaphore = heartbeatSemaphore;
     os_unfair_lock_unlock(&heartbeatLock);
     
-    IdevicePairingFile* pairingFile = [self getPairingFileWithError:err];
+    IdevicePairingFile* _Nullable pairingFile = [self getPairingFileWithError:err];
     if (err && *err) {
         os_unfair_lock_lock(&heartbeatLock);
         heartbeatRunning = NO;
         heartbeatSemaphore = NULL;
         os_unfair_lock_unlock(&heartbeatLock);
-        dispatch_semaphore_signal(completionSemaphore);
+        if (completionSemaphore) dispatch_semaphore_signal(completionSemaphore);
         return NO;
     }
 
     globalHeartbeatToken++;
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block bool completionCalled = false;
-    __block NSError *localError = nil;
+    __block NSError * _Nullable localError = nil;
     HeartbeatCompletionHandlerC Ccompletion = ^(int result, const char *message) {
         if(completionCalled) {
             return;
@@ -180,12 +176,12 @@ static NSDate *lastHeartbeatDate = nil;
     heartbeatRunning = NO;
     heartbeatSemaphore = NULL;
     os_unfair_lock_unlock(&heartbeatLock);
-    dispatch_semaphore_signal(completionSemaphore);
+    if (completionSemaphore) dispatch_semaphore_signal(completionSemaphore);
     
     return localError == nil;
 }
 
-- (BOOL)ensureHeartbeatWithError:(NSError**)err {
+- (BOOL)ensureHeartbeatWithError:(NSError* _Nullable * _Nullable)err {
     if (!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15) {
         return [self startHeartbeat:err];
     }
@@ -200,3 +196,5 @@ static NSDate *lastHeartbeatDate = nil;
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

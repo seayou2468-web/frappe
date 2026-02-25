@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 #include "profiles.h"
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
@@ -5,7 +6,7 @@
 
 @implementation JITEnableContext(Profile)
 
-- (NSArray<NSData*>*)fetchAllProfiles:(NSError **)error {
+- (NSArray<NSData*>*)fetchAllProfiles:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) return nil;
 
@@ -40,7 +41,7 @@
     return ans;
 }
 
-- (BOOL)removeProfileWithUUID:(NSString*)uuid error:(NSError **)error {
+- (BOOL)removeProfileWithUUID:(NSString*)uuid error:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) return NO;
 
@@ -64,7 +65,7 @@
     return YES;
 }
 
-- (BOOL)addProfile:(NSData*)profile error:(NSError **)error {
+- (BOOL)addProfile:(NSData*)profile error:(NSError * _Nullable * _Nullable)error {
     [self ensureHeartbeatWithError:error];
     if(*error) return NO;
 
@@ -91,7 +92,7 @@
 @end
 
 @implementation CMSDecoderHelper
-+ (NSData*)decodeCMSData:(NSData *)cmsData error:(NSError **)error {
++ (NSData*)decodeCMSData:(NSData *)cmsData error:(NSError * _Nullable * _Nullable)error {
     if (!cmsData || cmsData.length == 0) return nil;
     NSData *xmlStart = [@"<?xml" dataUsingEncoding:NSASCIIStringEncoding];
     NSData *plistEnd = [@"</plist>" dataUsingEncoding:NSASCIIStringEncoding];
@@ -105,3 +106,5 @@
     return nil;
 }
 @end
+
+NS_ASSUME_NONNULL_END

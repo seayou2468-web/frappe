@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 //
 //  afc.m
 //  StikDebug
@@ -39,7 +40,7 @@
     return is_dir;
 }
 
-- (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError **)error {
+- (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError * _Nullable * _Nullable)error {
     if (!provider) {
         if (error) *error = [self errorWithStr:@"Provider not initialized!" code:-1];
         return nil;
@@ -75,7 +76,7 @@
     return results;
 }
 
-- (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError **)error {
+- (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError * _Nullable * _Nullable)error {
     if (!provider) {
         if (error) *error = [self errorWithStr:@"Provider not initialized!" code:-1];
         return NO;
@@ -108,3 +109,4 @@
 }
 
 @end
+NS_ASSUME_NONNULL_END

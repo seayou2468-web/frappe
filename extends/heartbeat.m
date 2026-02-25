@@ -1,3 +1,4 @@
+NS_ASSUME_NONNULL_BEGIN
 // Jackson Coxson
 // heartbeat.c
 
@@ -113,3 +114,4 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
         }
     }
 }
+NS_ASSUME_NONNULL_END
