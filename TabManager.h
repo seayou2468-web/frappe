@@ -2,10 +2,7 @@
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, TabType) {
-    TabTypeFileBrowser,
-    TabTypeAFC,
-    TabTypeAppList,
-    TabTypeProcessList
+    TabTypeFileBrowser
 };
 
 @interface TabInfo : NSObject
@@ -20,7 +17,7 @@ typedef NS_ENUM(NSInteger, TabType) {
 @property (nonatomic, strong, readonly) NSMutableArray<TabInfo *> *tabs;
 @property (nonatomic, assign) NSInteger activeTabIndex;
 
-- (void)addNewTabWithType:(TabType)type path:(NSString *)path;
+- (void)addNewTabWithType:(TabType)type path:(NSString * _Nullable)path;
 - (void)removeTabAtIndex:(NSInteger)index;
-- (TabInfo *)activeTab;
+- (TabInfo * _Nullable)activeTab;
 @end

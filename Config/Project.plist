@@ -39,7 +39,7 @@
 		<string>-resource-dir</string>
 		<string>$(BSROOT)/Include</string>
 		<string>-fobjc-arc</string>
-		<string>-I. -I./extends</string>
+		<string>-I.</string>
 	</array>
 	<key>LDEDisplayName</key>
 	<string>Frappe</string>
@@ -58,8 +58,6 @@
 		<string>-F$(SDKROOT)/System/Library/SubFrameworks</string>
 		<string>-F$(SDKROOT)/System/Library/PrivateFrameworks</string>
 		<string>-L$(BSROOT)/lib</string>
-		<string>-L./extends</string>
-		<string>-lidevice_ffi</string>
 		<string>-ObjC</string>
 		<string>-lc</string>
 		<string>-framework</string>
@@ -84,12 +82,6 @@
 		<string>ArchiveUtility</string>
 		<string>-framework</string>
 		<string>UniformTypeIdentifiers</string>
-		<string>-framework</string>
-		<string>SpringBoardServices</string>
-		<string>-framework</string>
-		<string>BackBoardServices</string>
-		<string>-framework</string>
-		<string>FrontBoardServices</string>
 		<string>-framework</string>
 		<string>CoreServices</string>
 		<string>-framework</string>

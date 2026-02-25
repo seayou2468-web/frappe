@@ -310,18 +310,6 @@
 }
 - (void)showOthersMenu {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Others" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Processes" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [[TabManager sharedManager] addNewTabWithType:TabTypeProcessList path:nil];
-        [(MainContainerViewController *)self.view.window.rootViewController displayActiveTab];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"App List" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [[TabManager sharedManager] addNewTabWithType:TabTypeAppList path:nil];
-        [(MainContainerViewController *)self.view.window.rootViewController displayActiveTab];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"AFC Manager" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [[TabManager sharedManager] addNewTabWithType:TabTypeAFC path:@"/"];
-        [(MainContainerViewController *)self.view.window.rootViewController displayActiveTab];
-    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Import from Files" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]];
         dp.delegate = self;

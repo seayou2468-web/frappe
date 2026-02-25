@@ -2,9 +2,6 @@
 #import "TabManager.h"
 #import "TabSwitcherViewController.h"
 #import "FileBrowserViewController.h"
-#import "ProcessListViewController.h"
-#import "AppListViewController.h"
-#import "AFCViewController.h"
 #import "ThemeEngine.h"
 
 @interface MainContainerViewController ()
@@ -37,15 +34,6 @@
     switch (active.type) {
         case TabTypeFileBrowser:
             vc = [[FileBrowserViewController alloc] initWithPath:active.currentPath];
-            break;
-        case TabTypeProcessList:
-            vc = [[ProcessListViewController alloc] init];
-            break;
-        case TabTypeAppList:
-            vc = [[AppListViewController alloc] init];
-            break;
-        case TabTypeAFC:
-            vc = [[AFCViewController alloc] initWithPath:@"/"];
             break;
         default:
             vc = [[FileBrowserViewController alloc] initWithPath:@"/"];

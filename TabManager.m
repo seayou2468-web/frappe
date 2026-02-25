@@ -30,9 +30,6 @@
 
     switch (type) {
         case TabTypeFileBrowser: tab.title = [path lastPathComponent] ?: @"Files"; break;
-        case TabTypeAFC: tab.title = @"AFC"; break;
-        case TabTypeAppList: tab.title = @"Apps"; break;
-        case TabTypeProcessList: tab.title = @"Processes"; break;
     }
 
     [_tabs addObject:tab];
