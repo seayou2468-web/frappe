@@ -13,8 +13,6 @@
 #import "HexEditorViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<FileItem *> *items;
@@ -188,15 +186,11 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)promptForArchivePasswordForPath:(NSString *)path isExtracting:(BOOL)isExtracting {
-    ArchiveFormat format = [ZipManager formatForPath:path];
-    if (format == ArchiveFormatTar || format == ArchiveFormatGzip) {
-        [self processArchiveAtPath:path password:nil isExtracting:isExtracting];
-        return;
-    }
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Password" message:@"Enter password" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.secureTextEntry = YES; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self processArchiveAtPath:path password:alert.textFields[0].text isExtracting:isExtracting];
+        NSString *pwd = alert.textFields[0].text;
+        [self processArchiveAtPath:path password:pwd.length > 0 ? pwd : nil isExtracting:isExtracting];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -273,7 +267,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)showCompressionOptionsForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Compress As..." message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip), @"TAR": @(ArchiveFormatTar), @"TAR.GZ": @(ArchiveFormatGzip)};
+    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip)};
     for (NSString *name in formats) {
         [alert addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             ArchiveFormat f = [formats[name] integerValue];
@@ -329,5 +323,3 @@ NS_ASSUME_NONNULL_BEGIN
     [self reloadData];
 }
 @end
-
-NS_ASSUME_NONNULL_END

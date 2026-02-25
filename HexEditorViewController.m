@@ -1,8 +1,6 @@
 #import "HexEditorViewController.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface HexEditorViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate>
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) NSData *data;
@@ -166,5 +164,3 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 @end
-
-NS_ASSUME_NONNULL_END

@@ -1,7 +1,5 @@
 #import <UIKit/UIKit.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface ThemeEngine : NSObject
 + (UIColor *)mainBackgroundColor;
 + (UIColor *)clayColor;
@@ -13,5 +11,3 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat cornerRadius;
 - (instancetype)initWithFrame:(CGRect)frame cornerRadius:(CGFloat)radius;
 @end
-
-NS_ASSUME_NONNULL_END

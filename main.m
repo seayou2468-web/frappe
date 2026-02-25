@@ -4,8 +4,6 @@
 #import <UIKit/UIKit.h>
 #import "AppDelegate.h"
 
-NS_ASSUME_NONNULL_BEGIN
-
 int main(int argc, char * argv[])
 {
     @autoreleasepool
@@ -18,5 +16,3 @@ int main(int argc, char * argv[])
         );
     }
 }
-
-NS_ASSUME_NONNULL_END

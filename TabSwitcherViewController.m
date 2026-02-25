@@ -2,8 +2,6 @@
 #import "TabManager.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface TabCell : UICollectionViewCell
 @property (nonatomic, strong) ClayView *container;
 @property (nonatomic, strong) UILabel *titleLabel;
@@ -96,5 +94,3 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 @end
-
-NS_ASSUME_NONNULL_END

@@ -75,12 +75,6 @@
 		<string>-framework</string>
 		<string>AVKit</string>
 		<string>-framework</string>
-		<string>Compression</string>
-		<string>-framework</string>
-		<string>AppleArchive</string>
-		<string>-framework</string>
-		<string>ArchiveUtility</string>
-		<string>-framework</string>
 		<string>UniformTypeIdentifiers</string>
 		<string>-framework</string>
 		<string>CoreServices</string>

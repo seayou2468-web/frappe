@@ -1,8 +1,6 @@
 #import "ThemeEngine.h"
 #import "ImageViewerViewController.h"
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface ImageViewerViewController () <UIScrollViewDelegate>
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) UIScrollView *scrollView;
@@ -39,5 +37,3 @@ NS_ASSUME_NONNULL_BEGIN
 - (UIView *)viewForZoomingInScrollView:(UIScrollView *)scrollView { return self.imageView; }
 
 @end
-
-NS_ASSUME_NONNULL_END
