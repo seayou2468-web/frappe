@@ -2,6 +2,8 @@
 #import "ThemeEngine.h"
 #import <AVKit/AVKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface MediaPlayerViewController ()
 @property (strong, nonatomic) AVPlayerViewController *playerVC;
 @property (strong, nonatomic) NSString *path;
@@ -36,3 +38,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

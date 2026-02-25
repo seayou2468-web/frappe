@@ -1,6 +1,8 @@
 #import "ThemeEngine.h"
 #import "PDFViewerViewController.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation PDFViewerViewController {
     NSString *_path;
 }
@@ -24,3 +26,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

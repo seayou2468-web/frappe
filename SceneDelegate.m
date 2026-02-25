@@ -1,6 +1,8 @@
 #import "SceneDelegate.h"
 #import "MainContainerViewController.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation SceneDelegate
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
@@ -11,3 +13,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

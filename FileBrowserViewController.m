@@ -13,6 +13,8 @@
 #import "HexEditorViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<FileItem *> *items;
@@ -327,3 +329,5 @@
     [self reloadData];
 }
 @end
+
+NS_ASSUME_NONNULL_END

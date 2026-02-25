@@ -1,5 +1,7 @@
 #import "PathBarView.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface PathBarView ()
 @property (strong, nonatomic) UITextField *textField;
 @property (strong, nonatomic) UIVisualEffectView *glassView;
@@ -66,3 +68,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef NS_ENUM(NSInteger, TabType) {
     TabTypeFileBrowser
 };
@@ -9,7 +11,7 @@ typedef NS_ENUM(NSInteger, TabType) {
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, copy) NSString *currentPath;
 @property (nonatomic, assign) TabType type;
-@property (nonatomic, strong) UIImage *screenshot;
+@property (nonatomic, strong, _Nullable) UIImage *screenshot;
 @end
 
 @interface TabManager : NSObject
@@ -21,3 +23,5 @@ typedef NS_ENUM(NSInteger, TabType) {
 - (void)removeTabAtIndex:(NSInteger)index;
 - (TabInfo * _Nullable)activeTab;
 @end
+
+NS_ASSUME_NONNULL_END

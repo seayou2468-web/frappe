@@ -1,5 +1,7 @@
 #import "ThemeEngine.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation ThemeEngine
 
 + (UIColor *)mainBackgroundColor {
@@ -111,3 +113,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

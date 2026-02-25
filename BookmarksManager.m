@@ -1,5 +1,7 @@
 #import "BookmarksManager.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation BookmarksManager
 
 + (instancetype)sharedManager {
@@ -37,3 +39,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

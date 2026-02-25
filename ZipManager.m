@@ -3,6 +3,8 @@
 #include "miniz.h"
 #import <AppleArchive/AppleArchive.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation ZipManager
 
 + (ArchiveFormat)formatForPath:(NSString *)path {
@@ -15,7 +17,7 @@
     return ArchiveFormatUnknown;
 }
 
-+ (BOOL)extractArchiveAtPath:(NSString *)archivePath toDestination:(NSString *)destPath password:(NSString *)password error:(NSError **)error {
++ (BOOL)extractArchiveAtPath:(NSString *)archivePath toDestination:(NSString *)destPath password:(NSString * _Nullable)password error:(NSError * _Nullable * _Nullable)error {
     ArchiveFormat format = [self formatForPath:archivePath];
 
     if (format == ArchiveFormatZip) {
@@ -69,7 +71,7 @@
     return NO;
 }
 
-+ (BOOL)compressFiles:(NSArray<NSString *> *)filePaths toPath:(NSString *)archivePath format:(ArchiveFormat)format password:(NSString *)password error:(NSError **)error {
++ (BOOL)compressFiles:(NSArray<NSString *> *)filePaths toPath:(NSString *)archivePath format:(ArchiveFormat)format password:(NSString * _Nullable)password error:(NSError * _Nullable * _Nullable)error {
     if (format == ArchiveFormatZip) {
         mz_zip_archive zip_archive;
         memset(&zip_archive, 0, sizeof(zip_archive));
@@ -90,3 +92,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

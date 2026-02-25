@@ -1,6 +1,8 @@
 #import "TextEditorViewController.h"
 #import "ThemeEngine.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface TextEditorViewController ()
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) UITextView *textView;
@@ -47,3 +49,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -1,5 +1,7 @@
 #import "FileManagerCore.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation FileItem
 @end
 
@@ -54,15 +56,15 @@
     }];
 }
 
-- (BOOL)removeItemAtPath:(NSString *)path error:(NSError **)error {
+- (BOOL)removeItemAtPath:(NSString *)path error:(NSError * _Nullable * _Nullable)error {
     return [[NSFileManager defaultManager] removeItemAtPath:path error:error];
 }
 
-- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error {
+- (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError * _Nullable * _Nullable)error {
     return [[NSFileManager defaultManager] copyItemAtPath:src toPath:dest error:error];
 }
 
-- (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error {
+- (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError * _Nullable * _Nullable)error {
     if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
     }
@@ -98,3 +100,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END

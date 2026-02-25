@@ -1,5 +1,7 @@
 #import "TabManager.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @implementation TabInfo
 @end
 
@@ -53,3 +55,5 @@
 }
 
 @end
+
+NS_ASSUME_NONNULL_END
