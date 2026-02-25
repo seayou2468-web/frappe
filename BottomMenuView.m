@@ -25,9 +25,12 @@
     self.stackView.alignment = UIStackViewAlignmentCenter;
     [self addSubview:self.stackView];
 
+    // Use safe area for bottom padding
+    UILayoutGuide *safe = self.safeAreaLayoutGuide;
+
     [NSLayoutConstraint activateConstraints:@[
         [self.stackView.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-20], // Space for home indicator
+        [self.stackView.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
         [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
     ]];
@@ -47,7 +50,6 @@
     btn.tintColor = [UIColor whiteColor];
     btn.titleLabel.font = [UIFont systemFontOfSize:10];
 
-    // Vertical alignment
     btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
     btn.configuration.imagePlacement = NSDirectionalRectEdgeTop;
     btn.configuration.imagePadding = 5;

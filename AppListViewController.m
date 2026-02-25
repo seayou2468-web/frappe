@@ -116,7 +116,8 @@
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
 
-        UIView *clayBg = [[ClayView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        ClayView *clayBg = [[ClayView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        clayBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:clayBg];
     }

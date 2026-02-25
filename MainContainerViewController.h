@@ -2,4 +2,5 @@
 
 @interface MainContainerViewController : UIViewController
 - (void)showTabSwitcher;
+- (void)displayActiveTab;
 @end

@@ -197,27 +197,11 @@ static JITEnableContext* sharedJITContext = nil;
 
 - (BOOL)ensureHeartbeatWithError:(NSError**)err {
     // if it's 15s after last heartbeat, we restart heartbeat.
-    if((!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15)) {
+    if (!lastHeartbeatDate || [[NSDate now] timeIntervalSinceDate:lastHeartbeatDate] > 15)) {
         return [self startHeartbeat:err];
     }
     return YES;
 }
-
-    
-    return debug_app(provider,
-                     [bundleID UTF8String],
-                     [self createCLogger:logger], jsCallback) == 0;
-}
-
-    
-    return debug_app_pid(provider,
-                     pid,
-                     [self createCLogger:logger], jsCallback) == 0;
-}
-
-
-
-
 
 - (void)dealloc {
     [self stopSyslogRelay];

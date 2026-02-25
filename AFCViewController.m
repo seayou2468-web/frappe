@@ -3,7 +3,7 @@
 #import "ThemeEngine.h"
 #import "PathBarView.h"
 
-@interface AFCViewController ()
+@interface AFCViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray *items;
 @property (nonatomic, strong) PathBarView *pathBar;
@@ -29,16 +29,31 @@
 }
 
 - (void)setupUI {
-    self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(10, 100, self.view.bounds.size.width-20, 44)];
+    self.pathBar = [[PathBarView alloc] initWithFrame:CGRectZero];
+    self.pathBar.translatesAutoresizingMaskIntoConstraints = NO;
     [self.pathBar updatePath:self.currentPath];
     [self.view addSubview:self.pathBar];
 
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 150, self.view.bounds.size.width, self.view.bounds.size.height-150) style:UITableViewStylePlain];
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.pathBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
+        [self.pathBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
+        [self.pathBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
+        [self.pathBar.heightAnchor constraintEqualToConstant:44],
+
+        [self.tableView.topAnchor constraintEqualToAnchor:self.pathBar.bottomAnchor constant:10],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
 }
 
 - (void)reloadData {

@@ -10,6 +10,13 @@
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSMutableArray *keys;
 @property (strong, nonatomic) NSUndoManager *plistUndoManager;
+
+- (void)resetPlist {
+    [self loadPlist];
+    [_plistUndoManager removeAllActions];
+    [self refreshKeys];
+}
+
 @end
 
 @implementation PlistEditorViewController
@@ -75,7 +82,8 @@
     UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemUndo target:self action:@selector(undoAction)];
     UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRedo target:self action:@selector(redoAction)];
 
-    self.navigationItem.rightBarButtonItems = @[saveBtn, addBtn];
+    UIBarButtonItem *resetBtn = [[UIBarButtonItem alloc] initWithTitle:@"Reset" style:UIBarButtonItemStylePlain target:self action:@selector(resetPlist)];
+    self.navigationItem.rightBarButtonItems = @[saveBtn, addBtn, resetBtn];
     self.navigationItem.leftBarButtonItems = @[undoBtn, redoBtn];
 
     [self refreshKeys];
@@ -208,6 +216,32 @@
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%@", value]; }];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *text = alert.textFields[0].text;
+        id newValue = text;
+
+        if ([value isKindOfClass:[NSNumber class]]) {
+            if ([value objCType][0] == 'c') { // Boolean is typically 'c' in ObjC
+                newValue = @([text boolValue]);
+            } else {
+                newValue = @([text doubleValue]);
+            }
+        } else if ([value isKindOfClass:[NSDate class]]) {
+            // Simple date parsing or keep as string if failed
+        }
+
+        [self updateObject:self.currentObject forKey:key newValue:newValue];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Change Type" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self showTypeSelectionForKey:key];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [self updateObject:self.currentObject forKey:key newValue:nil];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self updateObject:self.currentObject forKey:key newValue:alert.textFields[0].text];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Change Type" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
@@ -218,6 +252,13 @@
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+
+- (void)resetPlist {
+    [self loadPlist];
+    [_plistUndoManager removeAllActions];
+    [self refreshKeys];
 }
 
 @end
