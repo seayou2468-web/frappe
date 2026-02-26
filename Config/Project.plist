@@ -41,8 +41,6 @@
 	<array>
 		<string>-ObjC</string>
 		<string>-lc</string>
-		<string>-L$(SRCROOT)/extend</string>
-		<string>-l:libidevice_ffi.a</string>
 		<string>-framework</string>
 		<string>Foundation</string>
 		<string>-framework</string>
