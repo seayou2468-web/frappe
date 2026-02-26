@@ -7,6 +7,7 @@
 
 #ifndef APPLIST_H
 #define APPLIST_H
+#include "idevice.h"
 @import Foundation;
 @import UIKit;
 

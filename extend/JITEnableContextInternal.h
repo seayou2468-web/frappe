@@ -15,3 +15,7 @@
 - (NSError*)errorWithStr:(NSString*)str code:(int)code;
 
 @end
+
+static inline NSError* makeError(int code, NSString* msg) {
+    return [NSError errorWithDomain:@"StikJIT" code:code userInfo:@{NSLocalizedDescriptionKey: msg}];
+}

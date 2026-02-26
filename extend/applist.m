@@ -1,5 +1,5 @@
 //
-//  applist.c
+//  applist.m
 //  StikJIT
 //
 //  Created by Stephen on 3/27/25.
@@ -13,7 +13,6 @@
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
 
-NSError* makeError(int code, NSString* msg);
 static NSString *extractAppName(plist_t app)
 {
     plist_t displayNameNode = plist_dict_get_item(app, "CFBundleDisplayName");
@@ -105,7 +104,7 @@ static BOOL isHiddenSystemApp(plist_t app)
     return NO;
 }
 
-static NSDictionary<NSString*, NSString*> *buildAppDictionary(void *apps,
+static NSDictionary<NSString*, NSString*> *buildAppDictionary(plist_t *apps,
                                                              size_t count,
                                                              BOOL requireGetTaskAllow,
                                                              BOOL (^filter)(plist_t app))
@@ -113,7 +112,7 @@ static NSDictionary<NSString*, NSString*> *buildAppDictionary(void *apps,
     NSMutableDictionary<NSString*, NSString*> *result = [NSMutableDictionary dictionaryWithCapacity:count];
 
     for (size_t i = 0; i < count; i++) {
-        plist_t app = ((plist_t *)apps)[i];
+        plist_t app = apps[i];
         plist_t ent = plist_dict_get_item(app, "Entitlements");
 
         if (requireGetTaskAllow) {
@@ -154,16 +153,16 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
     InstallationProxyClientHandle *client = NULL;
     IdeviceFfiError* err = installation_proxy_connect(provider, &client);
     if (err) {
-        *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
+        if (error) *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
         idevice_error_free(err);
         return nil;
     }
 
     plist_t *apps = NULL;
     size_t count = 0;
-    err = installation_proxy_get_apps(client, NULL, NULL, 0, (void*)&apps, &count);
+    err = installation_proxy_get_apps(client, NULL, NULL, 0, &apps, &count);
     if (err) {
-        *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
+        if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
         idevice_error_free(err);
         installation_proxy_client_free(client);
         return nil;
@@ -172,7 +171,7 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
     NSMutableArray<NSDictionary*>* result = [NSMutableArray new];
 
     for (size_t i = 0; i < count; i++) {
-        plist_t app = ((plist_t *)apps)[i];
+        plist_t app = apps[i];
         
         plist_t profileValidatedNode = 0;
         if(!(profileValidatedNode = plist_dict_get_item(app, "ProfileValidated"))) {
@@ -187,15 +186,12 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
         }
         
         NSData* d = [NSData dataWithBytes:bin length:size];
-        NSError* err;
-        NSDictionary* dict = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:&err];
+        NSDictionary* dict = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:nil];
         plist_mem_free(bin);
         
-        if(err) {
-            continue;
+        if(dict) {
+            [result addObject:dict];
         }
-        
-        [result addObject:dict];
         
     }
     
@@ -216,16 +212,16 @@ static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle
     InstallationProxyClientHandle *client = NULL;
     IdeviceFfiError* err = installation_proxy_connect(provider, &client);
     if (err) {
-        *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
+        if (error) *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
         idevice_error_free(err);
         return nil;
     }
 
     plist_t *apps = NULL;
     size_t count = 0;
-    err = installation_proxy_get_apps(client, NULL, NULL, 0, (void*)&apps, &count);
+    err = installation_proxy_get_apps(client, NULL, NULL, 0, &apps, &count);
     if (err) {
-        *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
+        if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
         idevice_error_free(err);
         installation_proxy_client_free(client);
         return nil;
@@ -258,7 +254,7 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
     SpringBoardServicesClientHandle *client = NULL;
     IdeviceFfiError *err = springboard_services_connect(provider, &client);
     if (err) {
-        *error = [NSString stringWithUTF8String:err->message ?: "Failed to connect to SpringBoard Services"];
+        if (error) *error = [NSString stringWithUTF8String:err->message ?: "Failed to connect to SpringBoard Services"];
         idevice_error_free(err);
         return nil;
     }
@@ -267,7 +263,7 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
     size_t dataLen = 0;
     err = springboard_services_get_icon(client, [bundleID UTF8String], &pngData, &dataLen);
     if (err) {
-        *error = [NSString stringWithUTF8String:err->message ?: "Failed to get app icon"];
+        if (error) *error = [NSString stringWithUTF8String:err->message ?: "Failed to get app icon"];
         idevice_error_free(err);
         springboard_services_free(client);
         return nil;
@@ -285,14 +281,14 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
 - (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
 
     NSString* errorStr = nil;
     NSDictionary<NSString*, NSString*>* apps = list_installed_apps(provider, &errorStr);
     if (errorStr) {
-        *error = [self errorWithStr:errorStr code:-17];
+        if (error) *error = [self errorWithStr:errorStr code:-17];
         return nil;
     }
     return apps;
@@ -300,14 +296,14 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
 - (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
 
     NSString* errorStr = nil;
     NSDictionary<NSString*, NSString*>* apps = list_all_apps(provider, &errorStr);
     if (errorStr) {
-        *error = [self errorWithStr:errorStr code:-17];
+        if (error) *error = [self errorWithStr:errorStr code:-17];
         return nil;
     }
     return apps;
@@ -315,14 +311,14 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
 - (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
 
     NSString* errorStr = nil;
     NSDictionary<NSString*, NSString*>* apps = list_hidden_system_apps(provider, &errorStr);
     if (errorStr) {
-        *error = [self errorWithStr:errorStr code:-17];
+        if (error) *error = [self errorWithStr:errorStr code:-17];
         return nil;
     }
     return apps;
@@ -330,14 +326,14 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
 - (NSArray<NSDictionary*>*)getSideloadedAppsWithError:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
 
     NSString* errorStr = nil;
     NSArray<NSDictionary*>* apps = getSideloadedApps(provider, &errorStr);
     if (errorStr) {
-        *error = [self errorWithStr:errorStr code:-17];
+        if (error) *error = [self errorWithStr:errorStr code:-17];
         return nil;
     }
     return apps;
@@ -345,14 +341,14 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
 - (UIImage*)getAppIconWithBundleId:(NSString*)bundleId error:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
 
     NSString* errorStr = nil;
     UIImage* icon = getAppIcon(provider, bundleId, &errorStr);
     if (errorStr) {
-        *error = [self errorWithStr:errorStr code:-17];
+        if (error) *error = [self errorWithStr:errorStr code:-17];
         return nil;
     }
     return icon;

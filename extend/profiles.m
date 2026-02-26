@@ -9,16 +9,11 @@
 #import "JITEnableContextInternal.h"
 @import Foundation;
 
-NSError* makeError(int code, NSString* msg) {
-    return [NSError errorWithDomain:@"profiles" code:code userInfo:@{NSLocalizedDescriptionKey: msg}];
-}
-
-
 NSArray<NSData*>* fetchAppProfiles(IdeviceProviderHandle* provider, NSError** error) {
     MisagentClientHandle *misagentHandle = NULL;
     IdeviceFfiError *err = misagent_connect(provider, &misagentHandle);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = makeError(err->code, @(err->message));
         idevice_error_free(err);
         return nil;
     }
@@ -29,7 +24,7 @@ NSArray<NSData*>* fetchAppProfiles(IdeviceProviderHandle* provider, NSError** er
     err = misagent_copy_all(misagentHandle, &profileArr, &profileLengthArr, &profileCount);
 
     if (err) {
-        *error = makeError((err)->code, @((err)->message));
+        if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
         idevice_error_free(err);
         return nil;
@@ -54,14 +49,14 @@ bool removeProfile(IdeviceProviderHandle* provider, NSString* uuid, NSError** er
     MisagentClientHandle *misagentHandle = NULL;
     IdeviceFfiError * err = misagent_connect(provider, &misagentHandle);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = makeError(err->code, @(err->message));
         idevice_error_free(err);
         return false;
     }
     
     err = misagent_remove(misagentHandle, [uuid UTF8String]);
     if (err) {
-        *error = makeError((err)->code, @((err)->message));
+        if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
         idevice_error_free(err);
         return false;
@@ -75,14 +70,14 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
     MisagentClientHandle *misagentHandle = NULL;
     IdeviceFfiError * err = misagent_connect(provider, &misagentHandle);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = makeError(err->code, @(err->message));
         idevice_error_free(err);
         return false;
     }
     
     err = misagent_install(misagentHandle, [profile bytes], [profile length]);
     if (err) {
-        *error = makeError((err)->code, @((err)->message));
+        if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
         idevice_error_free(err);
         return false;
@@ -95,8 +90,8 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
 @implementation CMSDecoderHelper
 
 + (NSData*)decodeCMSData:(NSData *)cmsData
-//             outCerts:(NSArray<id> * _Nullable * _Nullable)outCerts
-                 error:(NSError * _Nullable * _Nullable)error
+//             outCerts:(NSArray<id> **)outCerts
+                 error:(NSError **)error
 {
     if (!cmsData || cmsData.length == 0) {
         if (error) {
@@ -142,7 +137,7 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
 
 - (NSArray<NSData*>*)fetchAllProfiles:(NSError **)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return nil;
     }
     
@@ -151,7 +146,7 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
 
 - (BOOL)removeProfileWithUUID:(NSString*)uuid error:(NSError **)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return NO;
     }
     
@@ -160,7 +155,7 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
 
 - (BOOL)addProfile:(NSData*)profile error:(NSError **)error {
     [self ensureHeartbeatWithError:error];
-    if(*error) {
+    if(error && *error) {
         return NO;
     }
     return addProfile(provider, profile, error);

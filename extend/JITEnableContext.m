@@ -15,7 +15,6 @@
 #include "profiles.h"
 
 #include "JITEnableContext.h"
-#import "StikDebug-Swift.h"
 #include <os/lock.h>
 #import <pthread.h>
 
@@ -71,15 +70,7 @@ static JITEnableContext* sharedJITContext = nil;
         NSString* fmt = [NSString stringWithCString:format encoding:NSASCIIStringEncoding];
         NSString* message = [[NSString alloc] initWithFormat:fmt arguments:args];
 
-        if ([message containsString:@"ERROR"] || [message containsString:@"Error"]) {
-            [[LogManagerBridge shared] addErrorLog:message];
-        } else if ([message containsString:@"WARNING"] || [message containsString:@"Warning"]) {
-            [[LogManagerBridge shared] addWarningLog:message];
-        } else if ([message containsString:@"DEBUG"]) {
-            [[LogManagerBridge shared] addDebugLog:message];
-        } else {
-            [[LogManagerBridge shared] addInfoLog:message];
-        }
+        NSLog(@"[JITLog] %@", message);
 
         if (logger) {
             logger(message);
@@ -94,14 +85,14 @@ static JITEnableContext* sharedJITContext = nil;
     NSURL* pairingFileURL = [docPathUrl URLByAppendingPathComponent:@"pairingFile.plist"];
 
     if (![fm fileExistsAtPath:pairingFileURL.path]) {
-        *error = [self errorWithStr:@"Pairing file not found!" code:-17];
+        if (error) *error = [self errorWithStr:@"Pairing file not found!" code:-17];
         return nil;
     }
 
     IdevicePairingFile* pairingFile = NULL;
     IdeviceFfiError* err = idevice_pairing_file_read(pairingFileURL.fileSystemRepresentation, &pairingFile);
     if (err) {
-        *error = [self errorWithStr:@"Failed to read pairing file!" code:err->code];
+        if (error) *error = [self errorWithStr:@"Failed to read pairing file!" code:err->code];
         return nil;
     }
     return pairingFile;
@@ -124,8 +115,8 @@ static JITEnableContext* sharedJITContext = nil;
             dispatch_semaphore_wait(waitSemaphore, DISPATCH_TIME_FOREVER);
             dispatch_semaphore_signal(waitSemaphore);
         }
-        *err = lastHeartbeatError;
-        return *err == nil;
+        if (err) *err = lastHeartbeatError;
+        return lastHeartbeatError == nil;
     }
     
     // Mark heartbeat as running
@@ -135,7 +126,7 @@ static JITEnableContext* sharedJITContext = nil;
     os_unfair_lock_unlock(&heartbeatLock);
     
     IdevicePairingFile* pairingFile = [self getPairingFileWithError:err];
-    if (*err) {
+    if (err && *err) {
         os_unfair_lock_lock(&heartbeatLock);
         heartbeatRunning = NO;
         heartbeatSemaphore = NULL;
@@ -147,14 +138,15 @@ static JITEnableContext* sharedJITContext = nil;
     globalHeartbeatToken++;
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __block bool completionCalled = false;
+    __block NSError* localErr = nil;
     HeartbeatCompletionHandlerC Ccompletion = ^(int result, const char *message) {
         if(completionCalled) {
             return;
         }
         if (result != 0) {
-            *err = [self errorWithStr:[NSString stringWithCString:message
+            localErr = [self errorWithStr:[NSString stringWithCString:message
                                                          encoding:NSASCIIStringEncoding] code:result];
-            self->lastHeartbeatError = *err;
+            self->lastHeartbeatError = localErr;
         } else {
             self->lastHeartbeatError = nil;
         }
@@ -176,13 +168,15 @@ static JITEnableContext* sharedJITContext = nil;
         Ccompletion(-1, "Heartbeat failed to complete in reasonable time.");
     }
 
+    if (err) *err = localErr;
+
     os_unfair_lock_lock(&heartbeatLock);
     heartbeatRunning = NO;
     heartbeatSemaphore = NULL;
     os_unfair_lock_unlock(&heartbeatLock);
     dispatch_semaphore_signal(completionSemaphore);
     
-    return *err == nil;
+    return (err == NULL || *err == nil);
 }
 
 - (BOOL)ensureHeartbeatWithError:(NSError**)err {

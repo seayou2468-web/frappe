@@ -47,8 +47,8 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 @end
 
 @interface JITEnableContext(DDI)
-- (NSUInteger)getMountedDeviceCount:(NSError**)error __attribute__((swift_error(zero_result)));
-- (NSInteger)mountPersonalDDIWithImagePath:(NSString*)imagePath trustcachePath:(NSString*)trustcachePath manifestPath:(NSString*)manifestPath error:(NSError**)error __attribute__((swift_error(nonzero_result)));
+- (NSUInteger)getMountedDeviceCount:(NSError**)error;
+- (NSInteger)mountPersonalDDIWithImagePath:(NSString*)imagePath trustcachePath:(NSString*)trustcachePath manifestPath:(NSString*)manifestPath error:(NSError**)error;
 @end
 
 @interface JITEnableContext(Profile)
@@ -72,11 +72,17 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 
 @interface JITEnableContext(Syslog)
 - (void)startSyslogRelayWithHandler:(SyslogLineHandler)lineHandler
-                             onError:(SyslogErrorHandler)errorHandler NS_SWIFT_NAME(startSyslogRelay(handler:onError:));
+                             onError:(SyslogErrorHandler)errorHandler;
 - (void)stopSyslogRelay;
 @end
 
 @interface JITEnableContext(DeviceInfo)
 - (LockdowndClientHandle*)ideviceInfoInit:(NSError**)error;
 - (char*)ideviceInfoGetXMLWithLockdownClient:(LockdowndClientHandle*)lockdownClient error:(NSError**)error;
+@end
+
+@interface JITEnableContext(AFC)
+- (BOOL)afcIsPathDirectory:(NSString *)path;
+- (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError **)error;
+- (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError **)error;
 @end

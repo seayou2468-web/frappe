@@ -59,7 +59,7 @@ static int connect_debug_session(IdeviceProviderHandle *tcp_provider, DebugSessi
     if (err) { idevice_error_free(err); debug_session_free(out); return 1; }
 
     err = rsd_handshake_new((ReadWriteOpaque *)stream, &out->handshake);
-    if (err) { idevice_error_free(err); adapter_close(stream); debug_session_free(out); return 1; }
+    if (err) { idevice_error_free(err); adapter_stream_close(stream); debug_session_free(out); return 1; }
     stream = NULL; // consumed by handshake
 
     err = remote_server_connect_rsd(out->adapter, out->handshake, &out->remote_server);
@@ -227,7 +227,7 @@ cleanup:
     if (process_control) process_control_free(process_control);
     if (remote_server)   remote_server_free(remote_server);
     if (handshake)       rsd_handshake_free(handshake);
-    if (stream)          adapter_close(stream);
+    if (stream)          adapter_stream_close(stream);
     if (adapter)         adapter_free(adapter);
     if (core_device)     core_device_proxy_free(core_device);
     return result;

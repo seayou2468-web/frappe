@@ -1,5 +1,5 @@
 //
-//  mount1.m
+//  mount.m
 //  StikDebug
 //
 //  Created by s s on 2025/12/6.
@@ -9,13 +9,11 @@
 #import "JITEnableContextInternal.h"
 @import Foundation;
 
-NSError* makeError(int code, NSString* msg);
-
 size_t getMountedDeviceCount(IdeviceProviderHandle* provider, NSError** error) {
     ImageMounterHandle *client = NULL;
     IdeviceFfiError *err = image_mounter_connect(provider, &client);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = makeError(err->code, @(err->message));
         idevice_error_free(err);
         return 0;
     }
@@ -25,7 +23,7 @@ size_t getMountedDeviceCount(IdeviceProviderHandle* provider, NSError** error) {
     err = image_mounter_copy_devices(client, &devices, &deviceLength);
     image_mounter_free(client);
     if (err) {
-        *error = makeError(err->code, @(err->message));
+        if (error) *error = makeError(err->code, @(err->message));
         idevice_error_free(err);
         return 0;
     }
@@ -43,14 +41,14 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
     NSData *buildManifest = [NSData dataWithContentsOfFile:manifestPath];
     if (!image || !trustcache || !buildManifest) {
         idevice_pairing_file_free(pairingFile2);
-        *error = makeError(1, @"Failed to read one or more files");
+        if (error) *error = makeError(1, @"Failed to read one or more files");
         return 1;
     }
 
     LockdowndClientHandle *lockdownClient = NULL;
     IdeviceFfiError *err = lockdownd_connect(provider, &lockdownClient);
     if (err) {
-        *error = makeError(6, @(err->message));
+        if (error) *error = makeError(6, @(err->message));
         idevice_pairing_file_free(pairingFile2);
         idevice_error_free(err);
         return 6;
@@ -59,7 +57,7 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
     err = lockdownd_start_session(lockdownClient, pairingFile2);
     idevice_pairing_file_free(pairingFile2);
     if (err) {
-        *error = makeError(7, @(err->message));
+        if (error) *error = makeError(7, @(err->message));
         idevice_error_free(err);
         lockdownd_client_free(lockdownClient);
         return 7;
@@ -69,7 +67,7 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
     err = lockdownd_get_value(lockdownClient, "UniqueChipID", NULL, &uniqueChipIDPlist);
     lockdownd_client_free(lockdownClient);
     if (err) {
-        *error = makeError(8, @(err->message));
+        if (error) *error = makeError(8, @(err->message));
         idevice_error_free(err);
         return 8;
     }
@@ -81,7 +79,7 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
     ImageMounterHandle *mounterClient = NULL;
     err = image_mounter_connect(provider, &mounterClient);
     if (err) {
-        *error = makeError(9, @(err->message));
+        if (error) *error = makeError(9, @(err->message));
         idevice_error_free(err);
         return 9;
     }
@@ -101,7 +99,7 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
     image_mounter_free(mounterClient);
 
     if (err) {
-        *error = makeError(10, @(err->message));
+        if (error) *error = makeError(10, @(err->message));
         idevice_error_free(err);
         return 10;
     }
@@ -113,15 +111,15 @@ int mountPersonalDDI(IdeviceProviderHandle* provider, IdevicePairingFile* pairin
 
 - (NSUInteger)getMountedDeviceCount:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if (*error) { return 0; }
+    if (error && *error) { return 0; }
     return getMountedDeviceCount(provider, error);
 }
 
 - (NSInteger)mountPersonalDDIWithImagePath:(NSString*)imagePath trustcachePath:(NSString*)trustcachePath manifestPath:(NSString*)manifestPath error:(NSError**)error {
     [self ensureHeartbeatWithError:error];
-    if (*error) { return 0; }
+    if (error && *error) { return 0; }
     IdevicePairingFile *pairing = [self getPairingFileWithError:error];
-    if (*error) { return 0; }
+    if (error && *error) { return 0; }
     return mountPersonalDDI(provider, pairing, imagePath, trustcachePath, manifestPath, error);
 }
 
