@@ -40,6 +40,7 @@
 		<string>$(BSROOT)/Include</string>
 		<string>-fobjc-arc</string>
 		<string>-I.</string>
+		<string>-I$(SRCROOT)/../include</string>
 	</array>
 	<key>LDEDisplayName</key>
 	<string>Frappe</string>
@@ -57,6 +58,8 @@
 		<string>$(SDKROOT)</string>
 		<string>-F$(SDKROOT)/System/Library/SubFrameworks</string>
 		<string>-F$(SDKROOT)/System/Library/PrivateFrameworks</string>
+		<string>-L$(SRCROOT)/../include</string>
+		<string>-l:libidevice_ffi.a</string>
 		<string>-L$(BSROOT)/lib</string>
 		<string>-ObjC</string>
 		<string>-lc</string>
