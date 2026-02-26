@@ -7,6 +7,8 @@
 @property (strong, nonatomic) NSArray<NSDictionary *> *entries;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
 
+@end
+
 @implementation DeviceInfoViewController
 
 - (void)viewDidLoad {

@@ -8,6 +8,8 @@
 @property (strong, nonatomic) NSArray<FileItem *> *items;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
 
+@end
+
 @implementation AfcBrowserViewController
 
 - (instancetype)initWithPath:(NSString *)path {

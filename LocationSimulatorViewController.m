@@ -6,6 +6,8 @@
 @property (strong, nonatomic) UITextField *latField;
 @property (strong, nonatomic) UITextField *longField;
 
+@end
+
 @implementation LocationSimulatorViewController
 
 - (void)viewDidLoad {

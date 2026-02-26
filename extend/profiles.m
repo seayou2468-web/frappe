@@ -132,6 +132,9 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
 }
 
 
+@end
+
+
 @implementation JITEnableContext(Profile)
 
 - (NSArray<NSData*>*)fetchAllProfiles:(NSError **)error {

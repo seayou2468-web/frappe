@@ -117,6 +117,9 @@
 }
 
 
+@end
+
+
 @implementation JITEnableContext(AFC_Extra)
 
 - (NSArray<FileItem *> *)afcContentsOfDirectoryAtPath:(NSString *)path error:(NSError **)error {

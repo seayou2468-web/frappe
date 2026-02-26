@@ -57,6 +57,8 @@
 }
 
 
+@end
+
 @implementation ClayView {
     CAShapeLayer *_innerShadowTop;
     CAShapeLayer *_innerShadowBottom;

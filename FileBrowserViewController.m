@@ -27,6 +27,8 @@
 @property (strong, nonatomic) PathBarView *pathBar;
 @property (strong, nonatomic) UISearchController *searchController;
 
+@end
+
 @implementation FileBrowserViewController
 
 - (instancetype)initWithPath:(NSString *)path {

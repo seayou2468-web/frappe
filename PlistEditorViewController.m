@@ -11,6 +11,8 @@
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) NSString *currentKey;
 
+@end
+
 @implementation PlistEditorViewController
 
 - (instancetype)initWithPath:(NSString *)path {

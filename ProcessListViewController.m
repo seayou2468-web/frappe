@@ -7,6 +7,8 @@
 @property (strong, nonatomic) NSArray<NSDictionary *> *processes;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
 
+@end
+
 @implementation ProcessListViewController
 
 - (void)viewDidLoad {

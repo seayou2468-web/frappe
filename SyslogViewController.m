@@ -6,6 +6,8 @@
 @property (strong, nonatomic) UITextView *textView;
 @property (strong, nonatomic) NSMutableString *logBuffer;
 
+@end
+
 @implementation SyslogViewController
 
 - (void)viewDidLoad {

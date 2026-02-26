@@ -8,6 +8,8 @@
 @property (strong, nonatomic) NSArray<NSString *> *bundleIDs;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
 
+@end
+
 @implementation AppListViewController
 
 - (void)viewDidLoad {

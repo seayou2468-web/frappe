@@ -2,6 +2,8 @@
 
 @implementation FileItem
 
+@end
+
 @implementation FileManagerCore
 
 + (instancetype)sharedManager {

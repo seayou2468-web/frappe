@@ -5,6 +5,8 @@
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray *sections;
 
+@end
+
 @implementation SettingsViewController
 
 - (void)viewDidLoad {

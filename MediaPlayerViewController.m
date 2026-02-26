@@ -6,6 +6,8 @@
 @property (strong, nonatomic) AVPlayerViewController *playerVC;
 @property (strong, nonatomic) NSString *path;
 
+@end
+
 @implementation MediaPlayerViewController
 
 - (instancetype)initWithPath:(NSString *)path {

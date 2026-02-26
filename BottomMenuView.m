@@ -4,6 +4,8 @@
 @interface BottomMenuView ()
 @property (strong, nonatomic) UIStackView *stackView;
 
+@end
+
 @implementation BottomMenuView
 
 - (instancetype)initWithFrame:(CGRect)frame {

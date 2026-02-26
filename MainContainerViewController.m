@@ -11,6 +11,8 @@
 @property (nonatomic, strong) UIViewController *currentContentController;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
 
+@end
+
 @implementation MainContainerViewController
 
 - (void)viewDidLoad {

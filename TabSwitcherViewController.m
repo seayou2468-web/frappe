@@ -9,6 +9,8 @@
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, copy) void (^onClose)(void);
 
+@end
+
 @implementation TabCell
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -40,6 +42,8 @@
     return self;
 }
 - (void)closeTapped { if (self.onClose) self.onClose(); }
+
+@end
 
 @implementation TabSwitcherViewController {
     UICollectionView *_collectionView;

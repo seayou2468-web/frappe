@@ -2,6 +2,8 @@
 
 @implementation TabInfo
 
+@end
+
 @implementation TabManager
 
 + (instancetype)sharedManager {

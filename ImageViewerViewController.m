@@ -6,6 +6,8 @@
 @property (strong, nonatomic) UIScrollView *scrollView;
 @property (strong, nonatomic) UIImageView *imageView;
 
+@end
+
 @implementation ImageViewerViewController
 
 - (instancetype)initWithPath:(NSString *)path {
