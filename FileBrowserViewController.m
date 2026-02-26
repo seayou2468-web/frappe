@@ -101,8 +101,6 @@
         NSError *error = nil;
         self.allItems = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath error:&error];
         if (error) {
-            NSLog(@"Error loading path %@: %@", self.currentPath, error);
-            // Handle inaccessible directory as empty as requested
             self.allItems = @[];
         }
     }
@@ -167,7 +165,6 @@
     if (item.isDirectory || [ZipManager formatForPath:item.fullPath] == ArchiveFormatZip) {
         [self navigateToPath:item.fullPath];
     } else if (item.isSymbolicLink) {
-        // Resolve absolute path and navigate
         NSString *target = item.linkTarget;
         if (![target isAbsolutePath]) {
             target = [[item.fullPath stringByDeletingLastPathComponent] stringByAppendingPathComponent:target];
@@ -181,7 +178,6 @@
 - (void)openFile:(FileItem *)item {
     NSString *ext = [item.name pathExtension].lowercaseString;
     UIViewController *vc = nil;
-
     if ([@[@"png", @"jpg", @"jpeg", @"gif", @"heic"] containsObject:ext]) {
         vc = [[ImageViewerViewController alloc] initWithPath:item.fullPath];
     } else if ([@[@"mp4", @"mov", @"m4v", @"mp3", @"wav", @"aac"] containsObject:ext]) {
@@ -191,10 +187,8 @@
     } else if ([ext isEqualToString:@"plist"]) {
         vc = [[PlistEditorViewController alloc] initWithPath:item.fullPath];
     } else {
-        // Default to text editor
         vc = [[TextEditorViewController alloc] initWithPath:item.fullPath];
     }
-
     if (vc) [self.navigationController pushViewController:vc animated:YES];
 }
 
@@ -211,7 +205,8 @@
 }
 
 #pragma mark - Menu Actions
-- (void)handleMenuAction:(BottomMenuAction)action {
+- (void)handleMenuAction:(NSNumber *)actionNum {
+    BottomMenuAction action = [actionNum integerValue];
     switch (action) {
         case BottomMenuActionTabs: {
             MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
@@ -249,6 +244,9 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Location Simulator" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self.navigationController pushViewController:[[LocationSimulatorViewController alloc] init] animated:YES];
     }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Device Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[DeviceInfoViewController alloc] init] animated:YES];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"AFC Browser" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self.navigationController pushViewController:[[AfcBrowserViewController alloc] initWithPath:@"/"] animated:YES];
     }]];
@@ -257,15 +255,12 @@
         dp.delegate = self;
         [self presentViewController:dp animated:YES completion:nil];
     }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"Device Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self.navigationController pushViewController:[[DeviceInfoViewController alloc] init] animated:YES];
-    }]];
-[alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showSettings {
-    // Implement settings
+    [self.navigationController pushViewController:[[SettingsViewController alloc] init] animated:YES];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -305,8 +300,6 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-@end
-
 #pragma mark - Long Press Menu
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
@@ -318,53 +311,34 @@
     CGPoint p = [lp locationInView:self.tableView];
     NSIndexPath *indexPath = [self.tableView indexPathForRowAtPoint:p];
     if (!indexPath) return;
-
     FileItem *item = self.filteredItems[indexPath.row];
     [self showContextMenuForItem:item];
 }
 
 - (void)showContextMenuForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:item.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Rename" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showRenameForItem:item];
     }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"Move" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        // Implement Move
-    }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"Copy" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        // Implement Copy
-    }]];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *zipPath = [item.fullPath stringByAppendingPathExtension:@"zip"];
         [ZipManager compressFiles:@[item.fullPath] toPath:zipPath format:ArchiveFormatZip password:nil error:nil];
         [self reloadData];
     }]];
-
     if ([ZipManager formatForPath:item.name] == ArchiveFormatZip) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Extract Here" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             [ZipManager extractArchiveAtPath:item.fullPath toDestination:[item.fullPath stringByDeletingLastPathComponent] password:nil error:nil];
             [self reloadData];
         }]];
     }
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Share" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:item.fullPath]] applicationActivities:nil];
         [self presentViewController:avc animated:YES completion:nil];
     }]];
-
-    [alert addAction:[UIAlertAction actionWithTitle:@"Tag" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        // Implement Tag
-    }]];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         [[FileManagerCore sharedManager] removeItemAtPath:item.fullPath error:nil];
         [self reloadData];
     }]];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -381,4 +355,5 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+
 @end

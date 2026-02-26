@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "BottomMenuView.h"
 
 @interface FileBrowserViewController : UIViewController
 
