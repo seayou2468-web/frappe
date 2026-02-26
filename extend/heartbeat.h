@@ -9,7 +9,7 @@
 #ifndef HEARTBEAT_H
 #define HEARTBEAT_H
 #include "idevice.h"
-#import "extend/CommonTypes.h"
+#import "CommonTypes.h"
 #import <Foundation/Foundation.h>
 
 

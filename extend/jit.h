@@ -9,7 +9,7 @@
 #ifndef JIT_H
 #define JIT_H
 #include "idevice.h"
-#import "extend/CommonTypes.h"
+#import "CommonTypes.h"
 
 
 

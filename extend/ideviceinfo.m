@@ -7,10 +7,10 @@
 
 #include <stdlib.h>
 #include <arpa/inet.h>
-#include "extend/ideviceinfo.h"
+#include "ideviceinfo.h"
 #include "idevice.h"
-#import "extend/JITEnableContext.h"
-#import "extend/JITEnableContextInternal.h"
+#import "JITEnableContext.h"
+#import "JITEnableContextInternal.h"
 #import <Foundation/Foundation.h>
 
 NSError* makeError(int code, NSString* msg);

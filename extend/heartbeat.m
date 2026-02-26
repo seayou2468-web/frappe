@@ -9,7 +9,7 @@
 #include <sys/_types/_u_int64_t.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <limits.h>
-#include "extend/heartbeat.h"
+#include "heartbeat.h"
 #include <pthread.h>
 #import <Foundation/Foundation.h>
 

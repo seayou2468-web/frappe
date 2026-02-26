@@ -5,13 +5,13 @@
 //  Created by s s on 2025/3/28.
 //
 #import <Foundation/Foundation.h>
-#import "extend/CommonTypes.h"
+#import "CommonTypes.h"
 #import <UIKit/UIKit.h>
 #include "idevice.h"
 @class FileItem;
-#include "extend/jit.h"
-#include "extend/heartbeat.h"
-#include "extend/mount.h"
+#include "jit.h"
+#include "heartbeat.h"
+#include "mount.h"
 
 typedef void (^HeartbeatCompletionHandler)(int result, NSString *message);
 

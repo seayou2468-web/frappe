@@ -5,8 +5,8 @@
 //  Created by Duy Tran on 2026/01/14.
 //
 
-#import "extend/JITEnableContext.h"
-#import "extend/JITEnableContextInternal.h"
+#import "JITEnableContext.h"
+#import "JITEnableContextInternal.h"
 #import "FileManagerCore.h"
 #import <Foundation/Foundation.h>
 

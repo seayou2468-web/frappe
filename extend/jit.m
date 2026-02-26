@@ -16,9 +16,9 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <limits.h>
 
-#include "extend/jit.h"
-#import "extend/JITEnableContext.h"
-#import "extend/JITEnableContextInternal.h"
+#include "jit.h"
+#import "JITEnableContext.h"
+#import "JITEnableContextInternal.h"
 
 // MARK: - Shared debug session
 

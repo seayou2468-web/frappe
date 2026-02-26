@@ -4,9 +4,9 @@
 //
 //  Created by s s on 2025/11/29.
 //
-#include "extend/profiles.h"
-#import "extend/JITEnableContext.h"
-#import "extend/JITEnableContextInternal.h"
+#include "profiles.h"
+#import "JITEnableContext.h"
+#import "JITEnableContextInternal.h"
 #import <Foundation/Foundation.h>
 
 NSArray<NSData*>* fetchAppProfiles(IdeviceProviderHandle* provider, NSError** error) {

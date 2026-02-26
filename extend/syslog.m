@@ -5,8 +5,8 @@
 //  Created by s s on 2025/12/12.
 //
 
-#import "extend/JITEnableContext.h"
-#import "extend/JITEnableContextInternal.h"
+#import "JITEnableContext.h"
+#import "JITEnableContextInternal.h"
 
 @implementation JITEnableContext(Syslog)
 
