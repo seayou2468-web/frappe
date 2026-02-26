@@ -27,7 +27,7 @@
     self.spinner.hidesWhenStopped = YES;
     [self.view addSubview:self.spinner];
 
-    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemImage:UIBarButtonSystemImageRefresh target:self action:@selector(loadInfo)];
+    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadInfo)];
     UIBarButtonItem *ddiBtn = [[UIBarButtonItem alloc] initWithTitle:@"Mount DDI" style:UIBarButtonItemStylePlain target:self action:@selector(mountDDI)];
     self.navigationItem.rightBarButtonItems = @[refreshBtn, ddiBtn];
 
