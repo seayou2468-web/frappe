@@ -7,6 +7,7 @@
 
 #import "JITEnableContext.h"
 #import "JITEnableContextInternal.h"
+#import "FileManagerCore.h"
 @import Foundation;
 
 @implementation JITEnableContext(AFC)
@@ -113,6 +114,27 @@
     afc_client_free(client);
 
     return (error == NULL || *error == nil);
+}
+
+@end
+
+@implementation JITEnableContext(AFC_Extra)
+
+- (NSArray<FileItem *> *)afcContentsOfDirectoryAtPath:(NSString *)path error:(NSError **)error {
+    NSArray<NSString *> *names = [self afcListDir:path error:error];
+    if (!names) return nil;
+
+    NSMutableArray<FileItem *> *items = [NSMutableArray array];
+    for (NSString *name in names) {
+        if ([name isEqualToString:@"."] || [name isEqualToString:@".."]) continue;
+
+        FileItem *item = [[FileItem alloc] init];
+        item.name = name;
+        item.fullPath = [path stringByAppendingPathComponent:name];
+        item.isDirectory = [self afcIsPathDirectory:item.fullPath];
+        [items addObject:item];
+    }
+    return items;
 }
 
 @end

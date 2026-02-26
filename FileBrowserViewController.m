@@ -1,3 +1,8 @@
+#import "AppListViewController.h"
+#import "ProcessListViewController.h"
+#import "SyslogViewController.h"
+#import "LocationSimulatorViewController.h"
+#import "AfcBrowserViewController.h"
 #import "FileBrowserViewController.h"
 #import "FileManagerCore.h"
 #import "ThemeEngine.h"
@@ -19,7 +24,7 @@
 @property (strong, nonatomic) PathBarView *pathBar;
 @property (strong, nonatomic) BottomMenuView *bottomMenu;
 @property (strong, nonatomic) UISearchBar *searchBar;
-@property (strong, nonatomic) UISegmentedControl *searchScope;
+
 @end
 
 @implementation FileBrowserViewController
@@ -40,22 +45,30 @@
 }
 
 - (void)setupUI {
+
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(0, 0, 200, 36)];
     [self.pathBar updatePath:self.currentPath];
     __weak typeof(self) weakSelf = self;
     self.pathBar.onPathChanged = ^(NSString *newPath) { [weakSelf navigateToPath:newPath]; };
     self.navigationItem.titleView = self.pathBar;
 
-    self.searchBar = [[UISearchBar alloc] init];
-    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.searchBar.barStyle = UIBarStyleBlack;
-    self.searchBar.delegate = self;
-    [self.view addSubview:self.searchBar];
+    UIBarButtonItem *newBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemImage:UIBarButtonSystemImageAdd target:self action:@selector(showNewItemMenu)];
+    UIBarButtonItem *searchToggleBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemImage:UIBarButtonSystemImageSearch target:self action:@selector(toggleSearchBar)];
+    UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemImage:UIBarButtonSystemImageAction target:self action:@selector(showOthersMenu)];
+    self.navigationItem.rightBarButtonItems = @[moreBtn, searchToggleBtn, newBtn];
 
-    self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"Current", @"Global"]];
-    self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
-    self.searchScope.selectedSegmentIndex = 0;
-    [self.view addSubview:self.searchScope];
+    UISearchController *sc = [[UISearchController alloc] initWithSearchResultsController:nil];
+    sc.searchBar.delegate = self;
+    sc.obscuresBackgroundDuringPresentation = NO;
+    sc.searchBar.placeholder = @"Search files...";
+    sc.searchBar.scopeButtonTitles = @[@"Current", @"Global"];
+    self.navigationItem.searchController = sc;
+    self.navigationItem.hidesSearchBarWhenScrolling = YES;
+
+
+
+
+
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -72,14 +85,11 @@
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
 
-        [self.searchScope.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
-        [self.searchScope.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
 
-        [self.tableView.topAnchor constraintEqualToAnchor:self.searchScope.bottomAnchor constant:5],
+
+
+        [self.tableView.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
@@ -110,15 +120,18 @@
 
 #pragma mark - Search
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
-    if (searchText.length == 0) { [self reloadData]; return; }
-    NSString *searchPath = (self.searchScope.selectedSegmentIndex == 1) ? @"/" : self.currentPath;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSArray *results = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.items = results;
-            [self.tableView reloadData];
-        });
-    });
+    if (searchText.length == 0) {
+        [self reloadData];
+        return;
+    }
+    BOOL global = (searchBar.selectedScopeButtonIndex == 1);
+    NSString *searchPath = global ? @"/" : self.currentPath;
+    self.items = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:global];
+    [self.tableView reloadData];
+}
+
+- (void)searchBar:(UISearchBar *)searchBar selectedScopeButtonIndexDidChange:(NSInteger)selectedScope {
+    [self searchBar:searchBar textDidChange:searchBar.text];
 }
 
 #pragma mark - TableView
@@ -306,11 +319,29 @@
 }
 - (void)showOthersMenu {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Others" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Installed Apps" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[AppListViewController alloc] init] animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Process List" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[ProcessListViewController alloc] init] animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Syslog" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[SyslogViewController alloc] init] animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Location Simulator" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[LocationSimulatorViewController alloc] init] animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Connect to AFC" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self.navigationController pushViewController:[[AfcBrowserViewController alloc] initWithPath:@"/"] animated:YES];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Import from Files" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]];
         dp.delegate = self;
         [self presentViewController:dp animated:YES completion:nil];
     }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -321,5 +352,39 @@
         [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:dest error:nil];
     }
     [self reloadData];
+}
+
+- (void)showNewItemMenu {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"New File" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self promptForNewItem:NO];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"New Directory" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self promptForNewItem:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)promptForNewItem:(BOOL)isDir {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isDir ? @"New Directory" : @"New File" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:nil];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = alert.textFields[0].text;
+        NSString *path = [self.currentPath stringByAppendingPathComponent:name];
+        if (isDir) {
+            [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+        } else {
+            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        }
+        [self reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)toggleSearchBar {
+    [self.navigationItem.searchController setActive:YES];
+    [self.navigationItem.searchController.searchBar becomeFirstResponder];
 }
 @end

@@ -7,6 +7,7 @@
 @import Foundation;
 @import UIKit;
 #include "idevice.h"
+@class FileItem;
 #include "jit.h"
 #include "heartbeat.h"
 #include "mount.h"
@@ -85,4 +86,8 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 - (BOOL)afcIsPathDirectory:(NSString *)path;
 - (NSArray<NSString *> *)afcListDir:(NSString *)path error:(NSError **)error;
 - (BOOL)afcPushFile:(NSString *)sourcePath toPath:(NSString *)destPath error:(NSError **)error;
+@end
+
+@interface JITEnableContext(AFC_Extra)
+- (NSArray<FileItem *> *)afcContentsOfDirectoryAtPath:(NSString *)path error:(NSError **)error;
 @end
