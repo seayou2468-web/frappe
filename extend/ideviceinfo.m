@@ -7,11 +7,11 @@
 
 #include <stdlib.h>
 #include <arpa/inet.h>
-#include "ideviceinfo.h"
+#include "extend/ideviceinfo.h"
 #include "idevice.h"
-#import "JITEnableContext.h"
-#import "JITEnableContextInternal.h"
-@import Foundation;
+#import "extend/JITEnableContext.h"
+#import "extend/JITEnableContextInternal.h"
+#import <Foundation/Foundation.h>
 
 NSError* makeError(int code, NSString* msg);
 LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, IdevicePairingFile* g_sess_pf, NSError** error) {

@@ -4,10 +4,10 @@
 //
 //  Created by s s on 2025/12/6.
 //
-#include "mount.h"
-#import "JITEnableContext.h"
-#import "JITEnableContextInternal.h"
-@import Foundation;
+#include "extend/mount.h"
+#import "extend/JITEnableContext.h"
+#import "extend/JITEnableContextInternal.h"
+#import <Foundation/Foundation.h>
 
 size_t getMountedDeviceCount(IdeviceProviderHandle* provider, NSError** error) {
     ImageMounterHandle *client = NULL;

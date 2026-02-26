@@ -9,9 +9,9 @@
 #include <sys/_types/_u_int64_t.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <limits.h>
-#include "heartbeat.h"
+#include "extend/heartbeat.h"
 #include <pthread.h>
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 int globalHeartbeatToken = 0;
 NSDate* lastHeartbeatDate = nil;

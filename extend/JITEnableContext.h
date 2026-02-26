@@ -4,16 +4,17 @@
 //
 //  Created by s s on 2025/3/28.
 //
-@import Foundation;
-@import UIKit;
+#import <Foundation/Foundation.h>
+#import "extend/CommonTypes.h"
+#import <UIKit/UIKit.h>
 #include "idevice.h"
 @class FileItem;
-#include "jit.h"
-#include "heartbeat.h"
-#include "mount.h"
+#include "extend/jit.h"
+#include "extend/heartbeat.h"
+#include "extend/mount.h"
 
 typedef void (^HeartbeatCompletionHandler)(int result, NSString *message);
-typedef void (^LogFuncC)(const char* message, ...);
+
 typedef void (^LogFunc)(NSString *message);
 typedef void (^SyslogLineHandler)(NSString *line);
 typedef void (^SyslogErrorHandler)(NSError *error);

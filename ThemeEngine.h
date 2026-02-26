@@ -5,6 +5,7 @@
 + (UIColor *)clayColor;
 + (void)applyClayStyleToView:(UIView *)view cornerRadius:(CGFloat)radius;
 + (void)applyGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)radius;
++ (void)applyLiquidGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)radius;
 @end
 
 @interface ClayView : UIView

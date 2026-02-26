@@ -5,10 +5,11 @@
 //  Created by s s on 2025/12/12.
 //
 #include "idevice.h"
-#import "JITEnableContext.h"
-@import Foundation;
+#import "extend/JITEnableContext.h"
+#import <Foundation/Foundation.h>
 
 
+int plist_to_xml(plist_t plist, char **xml_out, uint32_t *length);
 @interface JITEnableContext(Internal)
 
 - (LogFuncC)createCLogger:(LogFunc)logger;

@@ -1,5 +1,5 @@
 #import "SyslogViewController.h"
-#import "JITEnableContext.h"
+#import "extend/JITEnableContext.h"
 #import "ThemeEngine.h"
 
 @interface SyslogViewController ()

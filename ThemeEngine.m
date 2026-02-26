@@ -3,7 +3,7 @@
 @implementation ThemeEngine
 
 + (UIColor *)mainBackgroundColor {
-    return [UIColor colorWithRed:0.12 green:0.12 blue:0.14 alpha:1.0]; // Dark theme
+    return [UIColor colorWithRed:0.05 green:0.05 blue:0.07 alpha:1.0]; // Deeper dark
 }
 
 + (UIColor *)clayColor {
@@ -13,14 +13,10 @@
 + (void)applyClayStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
     view.backgroundColor = [self clayColor];
     view.layer.cornerRadius = radius;
-
-    // Outer shadow
     view.layer.shadowColor = [UIColor blackColor].CGColor;
     view.layer.shadowOffset = CGSizeMake(4, 4);
     view.layer.shadowOpacity = 0.5;
     view.layer.shadowRadius = 8;
-
-    // Inner shadow is harder with just layers, often requires extra layers or drawing
 }
 
 + (void)applyGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
@@ -35,6 +31,29 @@
     view.layer.cornerRadius = radius;
     view.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15].CGColor;
     view.layer.borderWidth = 0.5;
+}
+
++ (void)applyLiquidGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
+    view.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+    UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    blurEffectView.frame = view.bounds;
+    blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blurEffectView.layer.cornerRadius = radius;
+    blurEffectView.clipsToBounds = YES;
+    [view insertSubview:blurEffectView atIndex:0];
+
+    view.layer.cornerRadius = radius;
+    view.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2].CGColor;
+    view.layer.borderWidth = 0.3; // Thinner for Liquidglass
+
+    // Soft shadow
+    view.layer.shadowColor = [UIColor blackColor].CGColor;
+    view.layer.shadowOffset = CGSizeMake(0, 8);
+    view.layer.shadowOpacity = 0.3;
+    view.layer.shadowRadius = 15;
+    view.layer.masksToBounds = NO;
 }
 
 @end
@@ -56,14 +75,10 @@
 - (void)setupUI {
     self.backgroundColor = [ThemeEngine clayColor];
     self.layer.cornerRadius = _cornerRadius;
-
-    // Outer Shadow
     self.layer.shadowColor = [UIColor blackColor].CGColor;
     self.layer.shadowOffset = CGSizeMake(6, 6);
     self.layer.shadowOpacity = 0.4;
     self.layer.shadowRadius = 10;
-
-    // Inner Shadow Layers
     _innerShadowTop = [CAShapeLayer layer];
     _innerShadowBottom = [CAShapeLayer layer];
     [self.layer addSublayer:_innerShadowTop];
@@ -78,12 +93,9 @@
 - (void)updateInnerShadows {
     CGRect rect = self.bounds;
     UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:_cornerRadius];
-
-    // Top Inner Shadow (Highlight)
     UIBezierPath *topPath = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(rect, -5, -5) cornerRadius:_cornerRadius];
     [topPath appendPath:path];
     topPath.usesEvenOddFillRule = YES;
-
     _innerShadowTop.path = topPath.CGPath;
     _innerShadowTop.fillRule = kCAFillRuleEvenOdd;
     _innerShadowTop.fillColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1].CGColor;
@@ -93,12 +105,9 @@
     _innerShadowTop.shadowRadius = 4;
     _innerShadowTop.masksToBounds = YES;
     _innerShadowTop.frame = rect;
-
-    // Bottom Inner Shadow (Dark)
     UIBezierPath *bottomPath = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(rect, -5, -5) cornerRadius:_cornerRadius];
     [bottomPath appendPath:path];
     bottomPath.usesEvenOddFillRule = YES;
-
     _innerShadowBottom.path = bottomPath.CGPath;
     _innerShadowBottom.fillRule = kCAFillRuleEvenOdd;
     _innerShadowBottom.fillColor = [[UIColor blackColor] colorWithAlphaComponent:0.1].CGColor;

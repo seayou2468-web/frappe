@@ -2,14 +2,14 @@
 #import "ThemeEngine.h"
 
 @interface PlistEditorViewController () <UITableViewDelegate, UITableViewDataSource>
-@property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSString *path;
-@property (nonatomic, strong) id rootObject;
-@property (nonatomic, strong) id currentObject;
-@property (nonatomic, strong) NSMutableArray *keys;
-@property (nonatomic, assign) NSPropertyListFormat format;
-@property (nonatomic, strong) NSUndoManager *plistUndoManager;
-@property (nonatomic, strong) NSString *currentKey;
+@property (strong, nonatomic) UITableView *tableView;
+@property (strong, nonatomic) id rootObject;
+@property (strong, nonatomic) id currentObject;
+@property (strong, nonatomic) NSMutableArray *keys;
+@property (strong, nonatomic) NSUndoManager *plistUndoManager;
+@property (assign, nonatomic) NSPropertyListFormat format;
+@property (strong, nonatomic) NSString *path;
+@property (strong, nonatomic) NSString *currentKey;
 @end
 
 @implementation PlistEditorViewController
@@ -31,40 +31,30 @@
         _currentKey = key;
         _rootObject = root;
         _plistUndoManager = undo;
-        _path = nil;
     }
     return self;
 }
 
 - (void)loadPlist {
-    if (!_path) return;
     NSData *data = [NSData dataWithContentsOfFile:_path];
-    if (!data) return;
-
-    NSError *error;
-    NSPropertyListFormat format;
-    id plist = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListMutableContainersAndLeaves format:&format error:&error];
-    if (plist) {
-        _rootObject = plist;
-        _currentObject = plist;
-        _format = format;
+    if (data) {
+        _rootObject = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListMutableContainersAndLeaves format:&_format error:nil];
     }
+    if (!_rootObject) _rootObject = [NSMutableDictionary dictionary];
+    _currentObject = _rootObject;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.title = _currentKey ?: @"Plist Editor";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-    self.title = _currentKey ?: [_path lastPathComponent];
 
-    [self setupUI];
-}
-
-- (void)setupUI {
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
 
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePlist)];
@@ -72,13 +62,7 @@
     UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemUndo target:self action:@selector(undoAction)];
     UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRedo target:self action:@selector(redoAction)];
 
-    UIBarButtonItem *resetBtn = [[UIBarButtonItem alloc] initWithTitle:@"Reset" style:UIBarButtonItemStylePlain target:self action:@selector(resetPlist)];
-
-    if (_path) {
-        self.navigationItem.rightBarButtonItems = @[saveBtn, addBtn, resetBtn];
-    } else {
-        self.navigationItem.rightBarButtonItems = @[addBtn];
-    }
+    self.navigationItem.rightBarButtonItems = _path ? @[saveBtn, addBtn] : @[addBtn];
     self.navigationItem.leftBarButtonItems = @[undoBtn, redoBtn];
 
     [self refreshKeys];
@@ -89,9 +73,7 @@
         _keys = [[[_currentObject allKeys] sortedArrayUsingSelector:@selector(localizedStandardCompare:)] mutableCopy];
     } else if ([_currentObject isKindOfClass:[NSArray class]]) {
         _keys = [NSMutableArray array];
-        for (NSInteger i = 0; i < [_currentObject count]; i++) {
-            [_keys addObject:@(i)];
-        }
+        for (NSInteger i = 0; i < [_currentObject count]; i++) [_keys addObject:@(i)];
     }
     [self.tableView reloadData];
 }
@@ -101,8 +83,7 @@
 
 - (void)savePlist {
     if (!_path) return;
-    NSError *error;
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:_rootObject format:_format options:0 error:&error];
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:_rootObject format:_format options:0 error:nil];
     if (data) {
         [data writeToFile:_path atomically:YES];
         [self.navigationController popViewControllerAnimated:YES];
@@ -131,10 +112,7 @@
 
 - (void)addItem {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
-    if ([_currentObject isKindOfClass:[NSDictionary class]]) {
-        [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Key"; }];
-    }
-
+    if ([_currentObject isKindOfClass:[NSDictionary class]]) [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Key"; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Add" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *key = ([self.currentObject isKindOfClass:[NSDictionary class]]) ? alert.textFields[0].text : nil;
         [self showTypeSelectionForKey:key];
@@ -164,31 +142,35 @@
     else if ([type isEqualToString:@"Data"]) val = [NSMutableData data];
     else if ([type isEqualToString:@"Array"]) val = [NSMutableArray array];
     else if ([type isEqualToString:@"Dictionary"]) val = [NSMutableDictionary dictionary];
-
     if ([_currentObject isKindOfClass:[NSDictionary class]]) {
         if (key) [self updateObject:_currentObject forKey:key newValue:val];
-    } else {
-        [self updateObject:_currentObject forKey:@([_currentObject count]) newValue:val];
-    }
+    } else [self updateObject:_currentObject forKey:@([_currentObject count]) newValue:val];
 }
 
-#pragma mark - TableView
-
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return _keys.count; }
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *cellId = @"PlistCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellId];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellId];
-        cell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+        cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        UIView *bg = [[UIView alloc] init];
+        [ThemeEngine applyLiquidGlassStyleToView:bg cornerRadius:12];
+        bg.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.contentView insertSubview:bg atIndex:0];
+        [NSLayoutConstraint activateConstraints:@[
+            [bg.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:4],
+            [bg.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-4],
+            [bg.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:12],
+            [bg.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-12],
+        ]];
     }
     id key = _keys[indexPath.row];
     id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
     cell.textLabel.text = [NSString stringWithFormat:@"%@", key];
-
     NSString *typeStr = NSStringFromClass([value class]);
     if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
         cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ (%lu items)", typeStr, (unsigned long)[value count]];
@@ -201,45 +183,20 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
     id key = _keys[indexPath.row];
     id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
     if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
         PlistEditorViewController *vc = [[PlistEditorViewController alloc] initWithValue:value key:[NSString stringWithFormat:@"%@", key] root:_rootObject undo:_plistUndoManager];
         [self.navigationController pushViewController:vc animated:YES];
-    } else {
-        [self editValueForKey:key];
-    }
+    } else [self editValueForKey:key];
 }
 
 - (void)editValueForKey:(id)key {
     id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%@", value]; }];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *text = alert.textFields[0].text;
-        id newValue = text;
-
-        if ([value isKindOfClass:[NSNumber class]]) {
-            const char *objCType = [value objCType];
-            if (strcmp(objCType, "c") == 0 || strcmp(objCType, "b") == 0) { // Boolean
-                newValue = @([text boolValue]);
-            } else {
-                newValue = @([text doubleValue]);
-            }
-        } else if ([value isKindOfClass:[NSDate class]]) {
-             NSDateFormatter *df = [[NSDateFormatter alloc] init];
-             df.dateFormat = @"yyyy-MM-dd HH:mm:ss";
-             newValue = [df dateFromString:text] ?: value;
-        } else if ([value isKindOfClass:[NSData class]]) {
-            // Very simple hex string to data conversion or keep original if failed
-        }
-
-        [self updateObject:self.currentObject forKey:key newValue:newValue];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Change Type" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self showTypeSelectionForKey:key];
+        [self updateObject:self.currentObject forKey:key newValue:alert.textFields[0].text];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         [self updateObject:self.currentObject forKey:key newValue:nil];
@@ -247,12 +204,4 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
-
-- (void)resetPlist {
-    if (!_path) return;
-    [self loadPlist];
-    [_plistUndoManager removeAllActions];
-    [self refreshKeys];
-}
-
 @end

@@ -9,9 +9,9 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
-#import "applist.h"
-#import "JITEnableContext.h"
-#import "JITEnableContextInternal.h"
+#import "extend/applist.h"
+#import "extend/JITEnableContext.h"
+#import "extend/JITEnableContextInternal.h"
 
 static NSString *extractAppName(plist_t app)
 {

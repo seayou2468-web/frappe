@@ -1,5 +1,5 @@
 #import "ProcessListViewController.h"
-#import "JITEnableContext.h"
+#import "extend/JITEnableContext.h"
 #import "ThemeEngine.h"
 
 @interface ProcessListViewController ()
@@ -84,7 +84,7 @@
     NSString *name = [proc[@"path"] lastPathComponent];
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:name message:[NSString stringWithFormat:@"PID: %d", pid] preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Kill" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"Kill" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *  action) {
         [self killProcess:pid];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];

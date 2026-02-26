@@ -16,7 +16,7 @@
 }
 
 - (void)setupUI {
-    [ThemeEngine applyGlassStyleToView:self cornerRadius:0];
+    [ThemeEngine applyLiquidGlassStyleToView:self cornerRadius:30];
 
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -25,14 +25,11 @@
     self.stackView.alignment = UIStackViewAlignmentCenter;
     [self addSubview:self.stackView];
 
-    // Use safe area for bottom padding
-    UILayoutGuide *safe = self.safeAreaLayoutGuide;
-
     [NSLayoutConstraint activateConstraints:@[
         [self.stackView.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [self.stackView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:10],
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-10],
     ]];
 
     [self addButtonWithTitle:@"Tabs" systemImage:@"square.on.square" action:BottomMenuActionTabs];
@@ -48,11 +45,12 @@
     [btn setImage:img forState:UIControlStateNormal];
     [btn setTitle:title forState:UIControlStateNormal];
     btn.tintColor = [UIColor whiteColor];
-    btn.titleLabel.font = [UIFont systemFontOfSize:10];
+    btn.titleLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
 
     btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
     btn.configuration.imagePlacement = NSDirectionalRectEdgeTop;
-    btn.configuration.imagePadding = 5;
+    btn.configuration.imagePadding = 4;
+    btn.configuration.baseForegroundColor = [UIColor whiteColor];
 
     btn.tag = action;
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -63,6 +61,10 @@
     if (self.onAction) {
         self.onAction(sender.tag);
     }
+}
+
+- (CGSize)intrinsicContentSize {
+    return CGSizeMake(UIViewNoIntrinsicMetric, 70);
 }
 
 @end

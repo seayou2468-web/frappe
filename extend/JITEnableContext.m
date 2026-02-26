@@ -9,12 +9,12 @@
 #include <signal.h>
 #include <stdlib.h>
 
-#include "heartbeat.h"
-#include "jit.h"
-#include "applist.h"
-#include "profiles.h"
+#include "extend/heartbeat.h"
+#include "extend/jit.h"
+#include "extend/applist.h"
+#include "extend/profiles.h"
 
-#include "JITEnableContext.h"
+#include "extend/JITEnableContext.h"
 #include <os/lock.h>
 #import <pthread.h>
 

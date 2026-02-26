@@ -1,5 +1,5 @@
 #import "AfcBrowserViewController.h"
-#import "JITEnableContext.h"
+#import "extend/JITEnableContext.h"
 #import "FileManagerCore.h"
 #import "ThemeEngine.h"
 

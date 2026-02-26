@@ -5,10 +5,10 @@
 //  Created by Duy Tran on 2026/01/14.
 //
 
-#import "JITEnableContext.h"
-#import "JITEnableContextInternal.h"
+#import "extend/JITEnableContext.h"
+#import "extend/JITEnableContextInternal.h"
 #import "FileManagerCore.h"
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 @implementation JITEnableContext(AFC)
 
