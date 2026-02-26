@@ -26,7 +26,6 @@
 @property (strong, nonatomic) NSArray<FileItem *> *filteredItems;
 @property (strong, nonatomic) PathBarView *pathBar;
 @property (strong, nonatomic) UISearchController *searchController;
-@end
 
 @implementation FileBrowserViewController
 

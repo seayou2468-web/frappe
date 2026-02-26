@@ -7,7 +7,6 @@
 @property (strong, nonatomic) NSMutableData *mutableData;
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) UISearchBar *searchBar;
-@end
 
 @implementation HexEditorViewController
 

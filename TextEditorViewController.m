@@ -4,7 +4,6 @@
 @interface TextEditorViewController ()
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) UITextView *textView;
-@end
 
 @implementation TextEditorViewController
 

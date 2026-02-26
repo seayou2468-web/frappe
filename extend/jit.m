@@ -44,29 +44,29 @@ static int connect_debug_session(IdeviceProviderHandle *tcp_provider, DebugSessi
 
     CoreDeviceProxyHandle *core_device = NULL;
     err = core_device_proxy_connect(tcp_provider, &core_device);
-    if (err) { idevice_error_free(err); return 1; }
+    if (err) {  return 1; }
 
     uint16_t rsd_port = 0;
     err = core_device_proxy_get_server_rsd_port(core_device, &rsd_port);
-    if (err) { idevice_error_free(err); core_device_proxy_free(core_device); return 1; }
+    if (err) {  core_device_proxy_free(core_device); return 1; }
 
     err = core_device_proxy_create_tcp_adapter(core_device, &out->adapter);
-    if (err) { idevice_error_free(err); core_device_proxy_free(core_device); return 1; }
+    if (err) {  core_device_proxy_free(core_device); return 1; }
     core_device = NULL; // ownership transferred to adapter
 
     AdapterStreamHandle *stream = NULL;
     err = adapter_connect(out->adapter, rsd_port, (ReadWriteOpaque **)&stream);
-    if (err) { idevice_error_free(err); debug_session_free(out); return 1; }
+    if (err) {  debug_session_free(out); return 1; }
 
     err = rsd_handshake_new((ReadWriteOpaque *)stream, &out->handshake);
-    if (err) { idevice_error_free(err); adapter_stream_close(stream); debug_session_free(out); return 1; }
+    if (err) {  adapter_stream_close(stream); debug_session_free(out); return 1; }
     stream = NULL; // consumed by handshake
 
     err = remote_server_connect_rsd(out->adapter, out->handshake, &out->remote_server);
-    if (err) { idevice_error_free(err); debug_session_free(out); return 1; }
+    if (err) {  debug_session_free(out); return 1; }
 
     err = debug_proxy_connect_rsd(out->adapter, out->handshake, &out->debug_proxy);
-    if (err) { idevice_error_free(err); debug_session_free(out); return 1; }
+    if (err) {  debug_session_free(out); return 1; }
 
     return 0;
 }
@@ -110,7 +110,7 @@ void runDebugServerCommand(int pid,
         debugserver_command_free(attach_cmd);
         if (err) {
             logger("Failed to attach to process: %d", err->code);
-            idevice_error_free(err);
+
         } else if (attach_response != NULL) {
             logger("Attach response: %s", attach_response);
             idevice_string_free(attach_response);
@@ -127,7 +127,7 @@ void runDebugServerCommand(int pid,
         debugserver_command_free(detach_cmd);
         if (err) {
             logger("Failed to detach from process: %d", err->code);
-            idevice_error_free(err);
+
         } else if (detach_response != NULL) {
             logger("Detach response: %s", detach_response);
             idevice_string_free(detach_response);
@@ -144,7 +144,7 @@ int debug_app(IdeviceProviderHandle* tcp_provider, const char *bundle_id, LogFun
     ProcessControlHandle *process_control = NULL;
     IdeviceFfiError *err = process_control_new(session.remote_server, &process_control);
     if (err) {
-        idevice_error_free(err);
+
         debug_session_free(&session);
         return 1;
     }
@@ -152,7 +152,7 @@ int debug_app(IdeviceProviderHandle* tcp_provider, const char *bundle_id, LogFun
     uint64_t pid = 0;
     err = process_control_launch_app(process_control, bundle_id, NULL, 0, NULL, 0, true, false, &pid);
     if (err) {
-        idevice_error_free(err);
+
         process_control_free(process_control);
         debug_session_free(&session);
         return 1;
@@ -190,32 +190,32 @@ int launch_app_via_proxy(IdeviceProviderHandle* tcp_provider, const char *bundle
     int result = 1;
 
     err = core_device_proxy_connect(tcp_provider, &core_device);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
 
     uint16_t rsd_port = 0;
     err = core_device_proxy_get_server_rsd_port(core_device, &rsd_port);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
 
     err = core_device_proxy_create_tcp_adapter(core_device, &adapter);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
     core_device = NULL; // ownership transferred to adapter
 
     err = adapter_connect(adapter, rsd_port, (ReadWriteOpaque **)&stream);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
 
     err = rsd_handshake_new((ReadWriteOpaque *)stream, &handshake);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
     stream = NULL; // consumed by handshake/adapter stack
 
     err = remote_server_connect_rsd(adapter, handshake, &remote_server);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
 
     err = process_control_new(remote_server, &process_control);
-    if (err) { idevice_error_free(err); goto cleanup; }
+    if (err) {  goto cleanup; }
 
     err = process_control_launch_app(process_control, bundle_id, NULL, 0, NULL, 0, false, true, &pid);
     if (err) {
-        idevice_error_free(err);
+
         if (logger) logger("Failed to launch app: %s", bundle_id);
         goto cleanup;
     }

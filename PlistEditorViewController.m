@@ -10,7 +10,6 @@
 @property (assign, nonatomic) NSPropertyListFormat format;
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) NSString *currentKey;
-@end
 
 @implementation PlistEditorViewController
 

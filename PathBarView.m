@@ -3,7 +3,6 @@
 
 @interface PathBarView ()
 @property (strong, nonatomic) UITextField *textField;
-@end
 
 @implementation PathBarView
 

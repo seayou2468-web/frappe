@@ -38,7 +38,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Failed to connect CoreDeviceProxy"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         return 1;
     }
 
@@ -47,7 +47,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Unable to resolve RSD port"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         core_device_proxy_free(coreProxy);
         return 1;
     }
@@ -56,7 +56,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Failed to create adapter"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         core_device_proxy_free(coreProxy);
         return 1;
     }
@@ -67,7 +67,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Adapter connect failed"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         app_service_session_free(out);
         return 1;
     }
@@ -76,7 +76,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "RSD handshake failed"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         adapter_stream_close(stream);
         app_service_session_free(out);
         return 1;
@@ -87,7 +87,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
     if (ffiError) {
         *outError = [ctx errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Unable to open AppService"]
                                  code:ffiError->code];
-        idevice_error_free(ffiError);
+
         app_service_session_free(out);
         return 1;
     }
@@ -116,7 +116,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
             *error = [self errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Failed to list processes"]
                                    code:ffiError->code];
         }
-        idevice_error_free(ffiError);
+
     } else {
         result = [NSMutableArray arrayWithCapacity:count];
         for (uintptr_t idx = 0; idx < count; idx++) {
@@ -171,7 +171,7 @@ static int connect_app_service(IdeviceProviderHandle *provider,
             *error = [self errorWithStr:[NSString stringWithUTF8String:ffiError->message ?: "Failed to kill process"]
                                    code:ffiError->code];
         }
-        idevice_error_free(ffiError);
+
     } else {
         success = YES;
     }

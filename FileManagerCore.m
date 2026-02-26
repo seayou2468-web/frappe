@@ -1,7 +1,6 @@
 #import "FileManagerCore.h"
 
 @implementation FileItem
-@end
 
 @implementation FileManagerCore
 

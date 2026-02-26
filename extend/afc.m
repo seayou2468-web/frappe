@@ -116,7 +116,6 @@
     return (error == NULL || *error == nil);
 }
 
-@end
 
 @implementation JITEnableContext(AFC_Extra)
 

@@ -192,7 +192,7 @@ static JITEnableContext* sharedJITContext = nil;
 - (void)dealloc {
     [self stopSyslogRelay];
     if (provider) {
-        idevice_provider_free(provider);
+
     }
 }
 

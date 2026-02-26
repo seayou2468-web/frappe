@@ -7,7 +7,6 @@
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<FileItem *> *items;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
-@end
 
 @implementation AfcBrowserViewController
 

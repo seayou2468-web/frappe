@@ -5,7 +5,6 @@
 @property (strong, nonatomic) NSString *path;
 @property (strong, nonatomic) UIScrollView *scrollView;
 @property (strong, nonatomic) UIImageView *imageView;
-@end
 
 @implementation ImageViewerViewController
 

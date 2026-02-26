@@ -1,7 +1,6 @@
 #import "TabManager.h"
 
 @implementation TabInfo
-@end
 
 @implementation TabManager
 

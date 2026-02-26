@@ -56,7 +56,6 @@
     view.layer.masksToBounds = NO;
 }
 
-@end
 
 @implementation ClayView {
     CAShapeLayer *_innerShadowTop;

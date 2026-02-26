@@ -14,7 +14,7 @@ NSArray<NSData*>* fetchAppProfiles(IdeviceProviderHandle* provider, NSError** er
     IdeviceFfiError *err = misagent_connect(provider, &misagentHandle);
     if (err) {
         if (error) *error = makeError(err->code, @(err->message));
-        idevice_error_free(err);
+
         return nil;
     }
 
@@ -26,7 +26,7 @@ NSArray<NSData*>* fetchAppProfiles(IdeviceProviderHandle* provider, NSError** er
     if (err) {
         if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
-        idevice_error_free(err);
+
         return nil;
     }
     
@@ -50,7 +50,7 @@ bool removeProfile(IdeviceProviderHandle* provider, NSString* uuid, NSError** er
     IdeviceFfiError * err = misagent_connect(provider, &misagentHandle);
     if (err) {
         if (error) *error = makeError(err->code, @(err->message));
-        idevice_error_free(err);
+
         return false;
     }
     
@@ -58,7 +58,7 @@ bool removeProfile(IdeviceProviderHandle* provider, NSString* uuid, NSError** er
     if (err) {
         if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
-        idevice_error_free(err);
+
         return false;
     }
     
@@ -71,7 +71,7 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
     IdeviceFfiError * err = misagent_connect(provider, &misagentHandle);
     if (err) {
         if (error) *error = makeError(err->code, @(err->message));
-        idevice_error_free(err);
+
         return false;
     }
     
@@ -79,7 +79,7 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
     if (err) {
         if (error) *error = makeError((err)->code, @((err)->message));
         misagent_client_free(misagentHandle);
-        idevice_error_free(err);
+
         return false;
     }
     
@@ -131,7 +131,6 @@ bool addProfile(IdeviceProviderHandle* provider, NSData* profile, NSError** erro
     return nil;
 }
 
-@end
 
 @implementation JITEnableContext(Profile)
 

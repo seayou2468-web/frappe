@@ -21,10 +21,10 @@ static NSString *extractAppName(plist_t app)
         plist_get_string_val(displayNameNode, &displayNameC);
         if (displayNameC && displayNameC[0] != '\0') {
             NSString *displayName = [NSString stringWithUTF8String:displayNameC];
-            plist_mem_free(displayNameC);
+
             return displayName;
         }
-        plist_mem_free(displayNameC);
+
     }
 
     plist_t nameNode = plist_dict_get_item(app, "CFBundleName");
@@ -33,10 +33,10 @@ static NSString *extractAppName(plist_t app)
         plist_get_string_val(nameNode, &nameC);
         if (nameC && nameC[0] != '\0') {
             NSString *name = [NSString stringWithUTF8String:nameC];
-            plist_mem_free(nameC);
+
             return name;
         }
-        plist_mem_free(nameC);
+
     }
 
     return @"Unknown";
@@ -135,12 +135,12 @@ static NSDictionary<NSString*, NSString*> *buildAppDictionary(plist_t *apps,
         char *bidC = NULL;
         plist_get_string_val(bidNode, &bidC);
         if (!bidC || bidC[0] == '\0') {
-            plist_mem_free(bidC);
+
             continue;
         }
 
         NSString *bundleID = [NSString stringWithUTF8String:bidC];
-        plist_mem_free(bidC);
+
 
         result[bundleID] = extractAppName(app);
     }
@@ -154,7 +154,7 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
     IdeviceFfiError* err = installation_proxy_connect(provider, &client);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
-        idevice_error_free(err);
+
         return nil;
     }
 
@@ -163,7 +163,7 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
     err = installation_proxy_get_apps(client, NULL, 0, 0, &apps, &count);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
-        idevice_error_free(err);
+
         installation_proxy_client_free(client);
         return nil;
     }
@@ -187,7 +187,7 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
         
         NSData* d = [NSData dataWithBytes:bin length:size];
         NSDictionary* dict = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:nil];
-        plist_mem_free(bin);
+
         
         if(dict) {
             [result addObject:dict];
@@ -197,9 +197,9 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
     
     installation_proxy_client_free(client);
     for(int i = 0; i < count; ++i) {
-        plist_free(apps[i]);
+
     }
-    idevice_data_free((uint8_t *)apps, sizeof(plist_t)*count);
+
     
     return result;
 }
@@ -213,7 +213,7 @@ static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle
     IdeviceFfiError* err = installation_proxy_connect(provider, &client);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
-        idevice_error_free(err);
+
         return nil;
     }
 
@@ -222,7 +222,7 @@ static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle
     err = installation_proxy_get_apps(client, NULL, 0, 0, &apps, &count);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
-        idevice_error_free(err);
+
         installation_proxy_client_free(client);
         return nil;
     }
@@ -230,9 +230,9 @@ static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle
     NSDictionary<NSString*, NSString*> *result = buildAppDictionary(apps, count, requireGetTaskAllow, filter);
     installation_proxy_client_free(client);
     for(int i = 0; i < count; ++i) {
-        plist_free(apps[i]);
+
     }
-    idevice_data_free((uint8_t *)apps, sizeof(plist_t)*count);
+
     return result;
 }
 
@@ -255,7 +255,7 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
     IdeviceFfiError *err = springboard_services_connect(provider, &client);
     if (err) {
         if (error) *error = [NSString stringWithUTF8String:err->message ?: "Failed to connect to SpringBoard Services"];
-        idevice_error_free(err);
+
         return nil;
     }
 
@@ -264,7 +264,7 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
     err = springboard_services_get_icon(client, [bundleID UTF8String], &pngData, &dataLen);
     if (err) {
         if (error) *error = [NSString stringWithUTF8String:err->message ?: "Failed to get app icon"];
-        idevice_error_free(err);
+
         springboard_services_free(client);
         return nil;
     }

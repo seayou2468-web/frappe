@@ -6,7 +6,6 @@
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<NSDictionary *> *entries;
 @property (strong, nonatomic) UIActivityIndicatorView *spinner;
-@end
 
 @implementation DeviceInfoViewController
 

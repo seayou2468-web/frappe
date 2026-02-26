@@ -37,7 +37,7 @@
         if (err != NULL) {
             NSString *message = err->message ? [NSString stringWithCString:err->message encoding:NSASCIIStringEncoding] : @"Failed to connect to syslog relay";
             NSError *nsError = [strongSelf errorWithStr:message code:err->code];
-            idevice_error_free(err);
+
             [strongSelf handleSyslogFailure:nsError];
             return;
         }
@@ -50,7 +50,7 @@
             if (nextErr != NULL) {
                 NSString *errMsg = nextErr->message ? [NSString stringWithCString:nextErr->message encoding:NSASCIIStringEncoding] : @"Syslog relay read failed";
                 NSError *nsError = [strongSelf errorWithStr:errMsg code:nextErr->code];
-                idevice_error_free(nextErr);
+
                 if (message) { idevice_string_free(message); }
                 [strongSelf handleSyslogFailure:nsError];
                 client = NULL;

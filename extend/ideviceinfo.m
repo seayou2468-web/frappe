@@ -19,17 +19,17 @@ LockdowndClientHandle* ideviceinfo_c_init(IdeviceProviderHandle* g_provider, Ide
     IdeviceFfiError *err = lockdownd_connect(g_provider, &g_client);
     if (err) {
         *error = makeError(err->code, @(err->message));
-        idevice_pairing_file_free(g_sess_pf);
-        idevice_error_free(err);
+
+
         return NULL;
     }
 
     err = lockdownd_start_session(g_client, g_sess_pf);
-    idevice_pairing_file_free(g_sess_pf);
+
     if (err) {
         *error = makeError(err->code, @(err->message));
-        idevice_error_free(err);
-        lockdownd_client_free(g_client);
+
+
         return NULL;
     }
 
@@ -45,17 +45,17 @@ char *ideviceinfo_c_get_xml(LockdowndClientHandle* g_client, NSError** error) {
     struct IdeviceFfiError *err = lockdownd_get_value(g_client, NULL, NULL, &plist_obj);
     if (err) {
         *error = makeError(err->code, @(err->message));
-        idevice_error_free(err);
+
         return NULL;
     }
 
     char *xml = NULL;
     uint32_t xml_len = 0;
     if (plist_to_xml(plist_obj, &xml, &xml_len) != 0 || !xml) {
-        plist_free(plist_obj);
+
         return NULL;
     }
-    plist_free(plist_obj);
+
     return xml;
 }
 

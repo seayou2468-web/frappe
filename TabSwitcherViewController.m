@@ -8,7 +8,6 @@
 @property (nonatomic, strong) UIImageView *previewImage;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, copy) void (^onClose)(void);
-@end
 
 @implementation TabCell
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -41,7 +40,6 @@
     return self;
 }
 - (void)closeTapped { if (self.onClose) self.onClose(); }
-@end
 
 @implementation TabSwitcherViewController {
     UICollectionView *_collectionView;

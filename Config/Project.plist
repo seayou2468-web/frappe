@@ -31,6 +31,7 @@
 	<key>LDECompilerFlags</key>
 	<array>
 		<string>-fobjc-arc</string>
+		<string>-I$(SRCROOT)/extend</string>
 	</array>
 	<key>LDEDisplayName</key>
 	<string>frappe</string>
@@ -40,6 +41,8 @@
 	<array>
 		<string>-ObjC</string>
 		<string>-lc</string>
+		<string>-L$(SRCROOT)/extend</string>
+		<string>-l:libidevice_ffi.a</string>
 		<string>-framework</string>
 		<string>Foundation</string>
 		<string>-framework</string>

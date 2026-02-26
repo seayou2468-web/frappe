@@ -32,8 +32,8 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
                                    "ExampleProvider", &newProvider);
     if (err != NULL) {
         completion(err->code, err->message);
-        idevice_pairing_file_free(pairing_file);
-        idevice_error_free(err);
+
+
         return;
     }
 
@@ -41,8 +41,8 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
     err = heartbeat_connect(newProvider, &client);
     if (err != NULL) {
         completion(err->code, err->message);
-        idevice_provider_free(newProvider);
-        idevice_error_free(err);
+
+
         return;
     }
 
@@ -59,7 +59,7 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
                 completion(err->code, err->message);
             }
             heartbeat_client_free(client);
-            idevice_error_free(err);
+
             return;
         }
 
@@ -77,7 +77,7 @@ void startHeartbeat(IdevicePairingFile* pairing_file, IdeviceProviderHandle** pr
                 completion(err->code, err->message);
             }
             heartbeat_client_free(client);
-            idevice_error_free(err);
+
             return;
         }
 
