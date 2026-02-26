@@ -97,7 +97,7 @@ void runDebugServerCommand(int pid,
         usleep(500);
     } else {
         char attach_command[64];
-        snprintf(attach_command, sizeof(attach_command), "vAttach;%" PRIx64, pid);
+        snprintf(attach_command, sizeof(attach_command), "vAttach;%" PRIx64, (uint64_t)pid);
 
         DebugserverCommandHandle *attach_cmd = debugserver_command_new(attach_command, NULL, 0);
         if (attach_cmd == NULL) {

@@ -28,7 +28,7 @@
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
 
-    self.spinner = [[UIActivityIndicatorView alloc] initWithActivityStyle:UIActivityIndicatorViewStyleLarge];
+    self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     self.spinner.center = self.view.center;
     self.spinner.hidesWhenStopped = YES;
     [self.view addSubview:self.spinner];
