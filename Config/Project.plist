@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>LDEBundleIdentifier</key>
-	<string>t.t</string>
+	<string>com.frappe.rn</string>
 	<key>LDEBundleInfo</key>
 	<dict>
 		<key>UIApplicationSceneManifest</key>
@@ -30,37 +30,14 @@
 	<string>1.0</string>
 	<key>LDECompilerFlags</key>
 	<array>
-		<string>-target</string>
-		<string>arm64-apple-ios$(LDEMinimumVersion)</string>
-		<string>-isysroot</string>
-		<string>$(SDKROOT)</string>
-		<string>-F$(SDKROOT)/System/Library/SubFrameworks</string>
-		<string>-F$(SDKROOT)/System/Library/PrivateFrameworks</string>
-		<string>-resource-dir</string>
-		<string>$(BSROOT)/Include</string>
 		<string>-fobjc-arc</string>
-		<string>-I.</string>
-		<string>-I$(SRCROOT)/../include</string>
 	</array>
 	<key>LDEDisplayName</key>
-	<string>Frappe</string>
+	<string>frappe</string>
 	<key>LDEExecutable</key>
-	<string>Frappe</string>
+	<string>frappe</string>
 	<key>LDELinkerFlags</key>
 	<array>
-		<string>-platform_version</string>
-		<string>ios</string>
-		<string>$(LDEMinimumVersion)</string>
-		<string>$(LDEVersion)</string>
-		<string>-arch</string>
-		<string>arm64</string>
-		<string>-syslibroot</string>
-		<string>$(SDKROOT)</string>
-		<string>-F$(SDKROOT)/System/Library/SubFrameworks</string>
-		<string>-F$(SDKROOT)/System/Library/PrivateFrameworks</string>
-		<string>-L$(SRCROOT)/../include</string>
-		<string>-l:libidevice_ffi.a</string>
-		<string>-L$(BSROOT)/lib</string>
 		<string>-ObjC</string>
 		<string>-lc</string>
 		<string>-framework</string>
@@ -86,14 +63,10 @@
 		<string>-lclang_rt.ios</string>
 	</array>
 	<key>LDEMinimumVersion</key>
-	<string>26.1</string>
-	<key>LDEOutputPath</key>
-	<string>$(CACHEROOT)/Payload/$(LDEDisplayName).app/$(LDEExecutable)</string>
+	<string>26.2</string>
 	<key>LDEProjectType</key>
 	<integer>1</integer>
 	<key>LDEVersion</key>
-	<string>26.1</string>
-	<key>NXProjectFormat</key>
-	<string>NXFalcon</string>
+	<string>26.2</string>
 </dict>
 </plist>

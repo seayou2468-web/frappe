@@ -160,7 +160,7 @@ static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider
 
     plist_t *apps = NULL;
     size_t count = 0;
-    err = installation_proxy_get_apps(client, NULL, NULL, 0, &apps, &count);
+    err = installation_proxy_get_apps(client, NULL, 0, 0, &apps, &count);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
         idevice_error_free(err);
@@ -219,7 +219,7 @@ static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle
 
     plist_t *apps = NULL;
     size_t count = 0;
-    err = installation_proxy_get_apps(client, NULL, NULL, 0, &apps, &count);
+    err = installation_proxy_get_apps(client, NULL, 0, 0, &apps, &count);
     if (err) {
         if (error) *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
         idevice_error_free(err);
