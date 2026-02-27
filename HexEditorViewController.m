@@ -45,6 +45,7 @@
     self.searchBar.backgroundImage = [[UIImage alloc] init]; // Remove shadow/background
     self.searchBar.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self.view addSubview:self.searchBar];
+    [self.view bringSubviewToFront:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;

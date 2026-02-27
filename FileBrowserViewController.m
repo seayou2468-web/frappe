@@ -57,11 +57,13 @@
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.delegate = self;
     [self.view addSubview:self.searchBar];
+    [self.view bringSubviewToFront:self.searchBar];
 
     self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"Current", @"Global"]];
     self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchScope.selectedSegmentIndex = 0;
     [self.view addSubview:self.searchScope];
+    [self.view bringSubviewToFront:self.searchScope];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -140,6 +142,9 @@
         });
     }];
 }
+
+
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar { [searchBar resignFirstResponder]; }
 
 #pragma mark - TableView
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
