@@ -24,6 +24,7 @@
 @property (strong, nonatomic) NSTimer *searchTimer;
 @property (strong, nonatomic) UISegmentedControl *searchScope;
 @property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
+@property (assign, nonatomic) BOOL isSearchRevealed;
 
 @end
 
@@ -342,21 +343,31 @@
     [self reloadData];
 }
 
+
 #pragma mark - ScrollView Delegate
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     CGFloat y = scrollView.contentOffset.y;
-    CGFloat threshold = 50.0;
-    if (y < 0) {
-        CGFloat progress = MIN(1.0, ABS(y) / threshold);
-        self.searchBarTopConstraint.constant = -100 + (progress * 100);
-        self.searchBar.alpha = progress;
-        self.searchScope.alpha = progress;
-    } else {
-        self.searchBarTopConstraint.constant = -100;
-        self.searchBar.alpha = 0;
-        self.searchScope.alpha = 0;
+    CGFloat threshold = -80.0;
+
+    if (y < threshold) {
+        if (!self.isSearchRevealed) {
+            self.isSearchRevealed = YES;
+            [UIView animateWithDuration:0.3 animations:^{
+                self.searchBarTopConstraint.constant = 0;
+                self.searchBar.alpha = 1.0;
+                self.searchScope.alpha = 1.0;
+                self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0);
+            }];
+        }
+    } else if (y > 50 && self.isSearchRevealed) {
+        self.isSearchRevealed = NO;
+        [UIView animateWithDuration:0.3 animations:^{
+            self.searchBarTopConstraint.constant = -100;
+            self.searchBar.alpha = 0;
+            self.searchScope.alpha = 0;
+            self.tableView.contentInset = UIEdgeInsetsZero;
+        }];
     }
 }
 
 @end
-

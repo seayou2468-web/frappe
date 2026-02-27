@@ -43,7 +43,7 @@
     self.searchBar.placeholder = @"Search Hex or String";
     self.searchBar.delegate = self;
     self.searchBar.backgroundImage = [[UIImage alloc] init]; // Remove shadow/background
-    self.searchBar.backgroundColor = [UIColor clearColor];
+    self.searchBar.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self.view addSubview:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -97,8 +97,8 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
         cell.backgroundColor = [UIColor clearColor];
-        cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:11];
-        cell.textLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
+        cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:10];
+        cell.textLabel.textColor = [UIColor whiteColor];
         cell.textLabel.numberOfLines = 0;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
@@ -131,7 +131,7 @@
                 [hexPart appendString:@"   "];
             }
         }
-        cell.textLabel.text = [NSString stringWithFormat:@"%08lX: %@| %@", (unsigned long)offset, hexPart, asciiPart];
+                cell.textLabel.text = [NSString stringWithFormat:@"%08lX  %@| %@", (unsigned long)offset, hexPart, asciiPart];
     }
 
     return cell;
