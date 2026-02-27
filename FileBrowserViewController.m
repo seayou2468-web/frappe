@@ -23,6 +23,8 @@
 @property (strong, nonatomic) UISearchBar *searchBar;
 @property (strong, nonatomic) NSTimer *searchTimer;
 @property (strong, nonatomic) UISegmentedControl *searchScope;
+@property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
+
 @end
 
 @implementation FileBrowserViewController
@@ -73,16 +75,23 @@
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
 
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+        UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+
+    self.searchBarTopConstraint = [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:-100];
+    self.searchBarTopConstraint.active = YES;
+    self.searchBar.alpha = 0;
+    self.searchScope.alpha = 0;
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.searchBar.heightAnchor constraintEqualToConstant:50],
 
         [self.searchScope.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
         [self.searchScope.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.searchScope.heightAnchor constraintEqualToConstant:32],
 
-        [self.tableView.topAnchor constraintEqualToAnchor:self.searchScope.bottomAnchor constant:5],
+        [self.tableView.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
@@ -332,5 +341,22 @@
     }
     [self reloadData];
 }
+
+#pragma mark - ScrollView Delegate
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    CGFloat y = scrollView.contentOffset.y;
+    CGFloat threshold = 50.0;
+    if (y < 0) {
+        CGFloat progress = MIN(1.0, ABS(y) / threshold);
+        self.searchBarTopConstraint.constant = -100 + (progress * 100);
+        self.searchBar.alpha = progress;
+        self.searchScope.alpha = progress;
+    } else {
+        self.searchBarTopConstraint.constant = -100;
+        self.searchBar.alpha = 0;
+        self.searchScope.alpha = 0;
+    }
+}
+
 @end
 

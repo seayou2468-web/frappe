@@ -27,23 +27,46 @@
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     self.title = [self.path lastPathComponent];
+
+    // Ensure navigation bar is correctly configured
+    self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
+    self.navigationController.navigationBar.translucent = YES;
+
     [self setupUI];
 }
 
 - (void)setupUI {
-    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
+    // UI Layout with Auto Layout to prevent overlapping
+    self.searchBar = [[UISearchBar alloc] init];
+    self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.placeholder = @"Search Hex or String";
     self.searchBar.delegate = self;
+    self.searchBar.backgroundImage = [[UIImage alloc] init]; // Remove shadow/background
+    self.searchBar.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.searchBar];
 
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 44, self.view.bounds.size.width, self.view.bounds.size.height - 44) style:UITableViewStylePlain];
-    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.searchBar.heightAnchor constraintEqualToConstant:50],
+
+        [self.tableView.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
 
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(saveChanges)];
     UIBarButtonItem *toggleBtn = [[UIBarButtonItem alloc] initWithTitle:@"A/H" style:UIBarButtonItemStylePlain target:self action:@selector(toggleMode)];
@@ -75,8 +98,9 @@
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:11];
-        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.textLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
         cell.textLabel.numberOfLines = 0;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
 
     NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
@@ -94,9 +118,6 @@
         }
         cell.textLabel.text = asciiPart;
     } else {
-        NSMutableString *line = [NSMutableString string];
-        [line appendFormat:@"%08lX: ", (unsigned long)offset];
-
         NSMutableString *hexPart = [NSMutableString string];
         NSMutableString *asciiPart = [NSMutableString string];
 
@@ -110,10 +131,6 @@
                 [hexPart appendString:@"   "];
             }
         }
-        cell.textLabel.text = [NSString stringWithFormat:@"%@ | %@", hexPart, asciiPart];
-
-        // Use a fixed width for hex part to ensure alignment
-        // (Simplified for this context, in a real app would use attributed string or separate labels)
         cell.textLabel.text = [NSString stringWithFormat:@"%08lX: %@| %@", (unsigned long)offset, hexPart, asciiPart];
     }
 
