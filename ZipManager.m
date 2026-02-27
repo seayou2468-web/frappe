@@ -1,23 +1,16 @@
 #import "ZipManager.h"
 #import <Foundation/Foundation.h>
 #include "miniz.h"
-#import <AppleArchive/AppleArchive.h>
-
-NS_ASSUME_NONNULL_BEGIN
 
 @implementation ZipManager
 
 + (ArchiveFormat)formatForPath:(NSString *)path {
     NSString *ext = [path pathExtension].lowercaseString;
     if ([ext isEqualToString:@"zip"]) return ArchiveFormatZip;
-    if ([ext isEqualToString:@"tar"]) return ArchiveFormatTar;
-    if ([ext isEqualToString:@"gz"] || [ext isEqualToString:@"tgz"]) return ArchiveFormatGzip;
-    if ([ext isEqualToString:@"7z"]) return ArchiveFormat7z;
-    if ([ext isEqualToString:@"rar"]) return ArchiveFormatRar;
     return ArchiveFormatUnknown;
 }
 
-+ (BOOL)extractArchiveAtPath:(NSString *)archivePath toDestination:(NSString *)destPath password:(NSString * _Nullable)password error:(NSError * _Nullable * _Nullable)error {
++ (BOOL)extractArchiveAtPath:(NSString *)archivePath toDestination:(NSString *)destPath password:(NSString *)password error:(NSError **)error {
     ArchiveFormat format = [self formatForPath:archivePath];
 
     if (format == ArchiveFormatZip) {
@@ -41,37 +34,18 @@ NS_ASSUME_NONNULL_BEGIN
                 [[NSFileManager defaultManager] createDirectoryAtPath:fullDest withIntermediateDirectories:YES attributes:nil error:nil];
             } else {
                 [[NSFileManager defaultManager] createDirectoryAtPath:[fullDest stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
-                if (!mz_zip_reader_extract_to_file(&zip_archive, i, [fullDest fileSystemRepresentation], 0)) {
-                    // Log error if needed
-                }
+                mz_zip_reader_extract_to_file(&zip_archive, i, [fullDest fileSystemRepresentation], 0);
             }
         }
 
         mz_zip_reader_end(&zip_archive);
-        return YES;
-    } else if (format == ArchiveFormatTar || format == ArchiveFormatGzip) {
-        AAByteStream input = AAFileByteStreamOpen([archivePath fileSystemRepresentation], O_RDONLY, 0);
-        if (!input) return NO;
-
-        AAByteStream decompressor = (format == ArchiveFormatGzip) ? AADecompressionRandomAccessByteStreamOpen(input, 1) : input;
-        if (!decompressor) { AAByteStreamClose(input); return NO; }
-
-        AAArchiveStream extract = AAExtractArchiveStreamOpen(decompressor);
-        if (extract) {
-            // High level process call if available, otherwise would need a loop
-            // AAArchiveStreamProcess(extract, ...)
-            AAArchiveStreamClose(extract);
-        }
-
-        if (decompressor != input) AAByteStreamClose(decompressor);
-        AAByteStreamClose(input);
         return YES;
     }
 
     return NO;
 }
 
-+ (BOOL)compressFiles:(NSArray<NSString *> *)filePaths toPath:(NSString *)archivePath format:(ArchiveFormat)format password:(NSString * _Nullable)password error:(NSError * _Nullable * _Nullable)error {
++ (BOOL)compressFiles:(NSArray *)filePaths toPath:(NSString *)archivePath format:(ArchiveFormat)format password:(NSString *)password error:(NSError **)error {
     if (format == ArchiveFormatZip) {
         mz_zip_archive zip_archive;
         memset(&zip_archive, 0, sizeof(zip_archive));
@@ -92,5 +66,3 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 @end
-
-NS_ASSUME_NONNULL_END

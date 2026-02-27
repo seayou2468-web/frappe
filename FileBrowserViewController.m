@@ -13,7 +13,7 @@
 #import "HexEditorViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
 @property (strong, nonatomic) UITableView *tableView;
@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (strong, nonatomic) PathBarView *pathBar;
 @property (strong, nonatomic) BottomMenuView *bottomMenu;
 @property (strong, nonatomic) UISearchBar *searchBar;
+@property (strong, nonatomic) NSTimer *searchTimer;
 @property (strong, nonatomic) UISegmentedControl *searchScope;
 @end
 
@@ -112,31 +113,38 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Search
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+    [self.searchTimer invalidate];
     if (searchText.length == 0) { [self reloadData]; return; }
-    NSString *searchPath = (self.searchScope.selectedSegmentIndex == 1) ? @"/" : self.currentPath;
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSArray *results = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.items = results;
-            [self.tableView reloadData];
+
+    __weak typeof(self) weakSelf = self;
+    self.searchTimer = [NSTimer scheduledTimerWithTimeInterval:0.3 repeats:NO block:^(NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        NSString *searchPath = (strongSelf.searchScope.selectedSegmentIndex == 1) ? @"/" : strongSelf.currentPath;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            NSArray *results = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                strongSelf.items = results;
+                [strongSelf.tableView reloadData];
+            });
         });
-    });
+    }];
 }
 
 #pragma mark - TableView
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cellId = @"ClayFileCell";
+    static NSString *cellId = @"LiquidGlassFileCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellId];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellId];
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-        ClayView *clayBg = [[ClayView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
-        clayBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        LiquidGlassView *liquidBg = [[LiquidGlassView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        liquidBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
-        [cell.backgroundView addSubview:clayBg];
+        [cell.backgroundView addSubview:liquidBg];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
     FileItem *item = self.items[indexPath.row];
@@ -188,11 +196,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)promptForArchivePasswordForPath:(NSString *)path isExtracting:(BOOL)isExtracting {
-    ArchiveFormat format = [ZipManager formatForPath:path];
-    if (format == ArchiveFormatTar || format == ArchiveFormatGzip) {
-        [self processArchiveAtPath:path password:nil isExtracting:isExtracting];
-        return;
-    }
+
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Password" message:@"Enter password" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.secureTextEntry = YES; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
@@ -273,7 +277,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)showCompressionOptionsForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Compress As..." message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip), @"TAR": @(ArchiveFormatTar), @"TAR.GZ": @(ArchiveFormatGzip)};
+    NSDictionary *formats = @{@"ZIP": @(ArchiveFormatZip)};
     for (NSString *name in formats) {
         [alert addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             ArchiveFormat f = [formats[name] integerValue];
@@ -330,4 +334,3 @@ NS_ASSUME_NONNULL_BEGIN
 }
 @end
 
-NS_ASSUME_NONNULL_END

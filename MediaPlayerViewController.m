@@ -2,7 +2,7 @@
 #import "ThemeEngine.h"
 #import <AVKit/AVKit.h>
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface MediaPlayerViewController ()
 @property (strong, nonatomic) AVPlayerViewController *playerVC;
@@ -39,4 +39,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

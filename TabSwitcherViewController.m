@@ -2,10 +2,10 @@
 #import "TabManager.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface TabCell : UICollectionViewCell
-@property (nonatomic, strong) ClayView *container;
+@property (nonatomic, strong) LiquidGlassView *container;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIImageView *previewImage;
 @property (nonatomic, strong) UIButton *closeButton;
@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        _container = [[ClayView alloc] initWithFrame:self.bounds cornerRadius:20];
+        _container = [[LiquidGlassView alloc] initWithFrame:self.bounds cornerRadius:20];
         _container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self.contentView addSubview:_container];
 
@@ -97,4 +97,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

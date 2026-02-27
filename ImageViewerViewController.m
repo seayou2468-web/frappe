@@ -1,7 +1,7 @@
 #import "ThemeEngine.h"
 #import "ImageViewerViewController.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface ImageViewerViewController () <UIScrollViewDelegate>
 @property (strong, nonatomic) NSString *path;
@@ -40,4 +40,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

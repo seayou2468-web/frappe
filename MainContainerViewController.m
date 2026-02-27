@@ -4,10 +4,10 @@
 #import "FileBrowserViewController.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface MainContainerViewController ()
-@property (nonatomic, strong, _Nullable) UIViewController *currentContentController;
+@property (nonatomic, strong) UIViewController *currentContentController;
 @end
 
 @implementation MainContainerViewController
@@ -80,4 +80,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

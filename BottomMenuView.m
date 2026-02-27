@@ -1,7 +1,7 @@
 #import "BottomMenuView.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface BottomMenuView ()
 @property (strong, nonatomic) UIStackView *stackView;
@@ -69,4 +69,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

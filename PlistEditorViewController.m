@@ -1,7 +1,7 @@
 #import "PlistEditorViewController.h"
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface PlistEditorViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
@@ -259,4 +259,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END
