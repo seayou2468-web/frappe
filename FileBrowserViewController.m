@@ -223,12 +223,19 @@
     cell.textLabel.text = item.name;
     if (item.isDirectory) {
         cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"];
-        cell.imageView.tintColor = item.isLocked ? [UIColor systemRedColor] : [UIColor systemYellowColor];
+        cell.imageView.tintColor = item.isLocked ? [ThemeEngine liquidColor] : [ThemeEngine liquidColor];
     } else {
         cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"];
-        cell.imageView.tintColor = [UIColor systemBlueColor];
+        cell.imageView.tintColor = [ThemeEngine liquidColor];
     }
     cell.detailTextLabel.text = item.isSymbolicLink ? [NSString stringWithFormat:@" Alias ➜ %@", item.linkTarget] : nil;
+        NSString *tag = [self tagForPath:item.fullPath];
+    if (tag) {
+        if ([tag isEqualToString:@"red"]) cell.imageView.tintColor = [UIColor systemRedColor];
+        else if ([tag isEqualToString:@"orange"]) cell.imageView.tintColor = [UIColor systemOrangeColor];
+        else if ([tag isEqualToString:@"green"]) cell.imageView.tintColor = [UIColor systemGreenColor];
+        else if ([tag isEqualToString:@"blue"]) cell.imageView.tintColor = [UIColor systemBlueColor];
+    }
     return cell;
 }
 
@@ -237,19 +244,34 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     FileItem *item = self.items[indexPath.row];
-    if (item.isDirectory) [self navigateToPath:item.isSymbolicLink ? item.linkTarget : item.fullPath];
-    else [self openFile:item];
+
+    NSString *effectivePath = item.isSymbolicLink ? item.linkTarget : item.fullPath;
+    if (!effectivePath) return;
+
+    BOOL isDir;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:effectivePath isDirectory:&isDir] && isDir) {
+        [self navigateToPath:effectivePath];
+    } else {
+        // It's a file (either direct or via symlink)
+        [self openFile:item];
+    }
 }
 
 - (void)openFile:(FileItem *)item {
-    NSString *ext = [item.fullPath pathExtension].lowercaseString;
+    NSString *targetPath = item.isSymbolicLink ? item.linkTarget : item.fullPath;
+    if (!targetPath) return;
+
+    NSString *ext = [targetPath pathExtension].lowercaseString;
     UIViewController *vc = nil;
-    if ([ext isEqualToString:@"plist"]) vc = [[PlistEditorViewController alloc] initWithPath:item.fullPath];
-    else if ([@[@"txt", @"xml", @"json", @"h", @"m", @"c", @"cpp"] containsObject:ext]) vc = [[TextEditorViewController alloc] initWithPath:item.fullPath];
-    else if ([@[@"png", @"jpg", @"jpeg", @"gif"] containsObject:ext]) vc = [[ImageViewerViewController alloc] initWithPath:item.fullPath];
-    else if ([@[@"mp4", @"mov", @"mp3", @"wav"] containsObject:ext]) vc = [[MediaPlayerViewController alloc] initWithPath:item.fullPath];
-    else if ([ext isEqualToString:@"pdf"]) vc = [[PDFViewerViewController alloc] initWithPath:item.fullPath];
-    else if ([ZipManager formatForPath:item.fullPath] != ArchiveFormatUnknown) { [self showArchiveOptionsForItem:item]; return; }
+    if ([ext isEqualToString:@"plist"]) vc = [[PlistEditorViewController alloc] initWithPath:targetPath];
+    else if ([@[@"txt", @"xml", @"json", @"h", @"m", @"c", @"cpp"] containsObject:ext]) vc = [[TextEditorViewController alloc] initWithPath:targetPath];
+    else if ([@[@"png", @"jpg", @"jpeg", @"gif"] containsObject:ext]) vc = [[ImageViewerViewController alloc] initWithPath:targetPath];
+    else if ([@[@"mp4", @"mov", @"mp3", @"wav"] containsObject:ext]) vc = [[MediaPlayerViewController alloc] initWithPath:targetPath];
+    else if ([ext isEqualToString:@"pdf"]) vc = [[PDFViewerViewController alloc] initWithPath:targetPath];
+    else if ([ZipManager formatForPath:targetPath] != ArchiveFormatUnknown) { [self showArchiveOptionsForItem:item]; return; }
+    else vc = [[HexEditorViewController alloc] initWithPath:targetPath];
+    if (vc) [self.navigationController pushViewController:vc animated:YES];
+}
     else vc = [[HexEditorViewController alloc] initWithPath:item.fullPath];
     if (vc) [self.navigationController pushViewController:vc animated:YES];
 }
@@ -296,6 +318,9 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"お気に入りに追加" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{
         [[BookmarksManager sharedManager] addBookmark:item.fullPath];
     }]];
+        [menu addAction:[CustomMenuAction actionWithTitle:@"タグ付け" systemImage:@"tag" style:CustomMenuActionStyleDefault handler:^{
+        [self showTaggingForItem:item];
+    }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"詳細情報" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{
         [self showInfoForItem:item];
     }]];
@@ -316,6 +341,36 @@
         [self reloadData];
     }]];
     [menu showInView:self.view];
+}
+
+
+- (void)showTaggingForItem:(FileItem *)item {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"タグを選択"];
+    NSArray *tags = @[@"重要", @"作業中", @"完了", @"要確認"];
+    NSArray *colors = @[@"red", @"orange", @"green", @"blue"];
+
+    for (NSInteger i = 0; i < tags.count; i++) {
+        [menu addAction:[CustomMenuAction actionWithTitle:tags[i] systemImage:@"circle.fill" style:CustomMenuActionStyleDefault handler:^{
+            [self setTag:colors[i] forPath:item.fullPath];
+            [self reloadData];
+        }]];
+    }
+    [menu addAction:[CustomMenuAction actionWithTitle:@"タグを削除" systemImage:@"xmark.circle" style:CustomMenuActionStyleDestructive handler:^{
+        [self setTag:nil forPath:item.fullPath];
+        [self reloadData];
+    }]];
+    [menu showInView:self.view];
+}
+
+- (void)setTag:(NSString *)tag forPath:(NSString *)path {
+    NSMutableDictionary *tags = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"FileTags"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (tag) tags[path] = tag;
+    else [tags removeObjectForKey:path];
+    [[NSUserDefaults standardUserDefaults] setObject:tags forKey:@"FileTags"];
+}
+
+- (NSString *)tagForPath:(NSString *)path {
+    return [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"FileTags"][path];
 }
 
 - (void)showInfoForItem:(FileItem *)item {

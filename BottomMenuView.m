@@ -46,7 +46,7 @@
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium];
     UIImage *img = [UIImage systemImageNamed:imgName withConfiguration:config];
     [btn setImage:img forState:UIControlStateNormal];
-    btn.tintColor = [UIColor whiteColor];
+    btn.tintColor = [ThemeEngine liquidColor];
 
     btn.tag = action;
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
