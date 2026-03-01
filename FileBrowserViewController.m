@@ -182,8 +182,36 @@
 
 - (void)navigateToPath:(NSString *)path {
     if (!path || [path isEqualToString:self.currentPath]) return;
-    FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path];
-    [self.navigationController pushViewController:vc animated:YES];
+
+    // Check if we are going up (parent)
+    NSString *parentOfCurrent = [self.currentPath stringByDeletingLastPathComponent];
+    if (parentOfCurrent.length == 0) parentOfCurrent = @"/";
+
+    if ([path isEqualToString:parentOfCurrent]) {
+        [self.navigationController popViewControllerAnimated:YES];
+        return;
+    }
+
+    // Check if the target is a direct child (normal push)
+    if ([path.stringByDeletingLastPathComponent isEqualToString:self.currentPath]) {
+        FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path];
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+
+    // Otherwise, jump and rebuild stack to ensure hierarchical 'back' behavior
+    NSMutableArray *vcs = [NSMutableArray array];
+    NSString *tempPath = @"/";
+    [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+
+    NSArray *components = [path pathComponents];
+    for (NSString *comp in components) {
+        if ([comp isEqualToString:@"/"]) continue;
+        tempPath = [tempPath stringByAppendingPathComponent:comp];
+        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+    }
+
+    [self.navigationController setViewControllers:vcs animated:YES];
 }
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {

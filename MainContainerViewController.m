@@ -33,17 +33,24 @@
         [self.currentContentController removeFromParentViewController];
     }
 
-    UIViewController *vc;
-    switch (active.type) {
-        case TabTypeFileBrowser:
-            vc = [[FileBrowserViewController alloc] initWithPath:active.currentPath];
-            break;
-        default:
-            vc = [[FileBrowserViewController alloc] initWithPath:@"/"];
-            break;
+    UINavigationController *nav = [[UINavigationController alloc] init];
+    NSMutableArray *vcs = [NSMutableArray array];
+
+    if (active.type == TabTypeFileBrowser) {
+        NSString *tempPath = @"/";
+        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+
+        NSArray *components = [active.currentPath pathComponents];
+        for (NSString *comp in components) {
+            if ([comp isEqualToString:@"/"]) continue;
+            tempPath = [tempPath stringByAppendingPathComponent:comp];
+            [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+        }
+    } else {
+        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
     }
 
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+    [nav setViewControllers:vcs animated:NO];
     nav.interactivePopGestureRecognizer.delegate = self;
     nav.navigationBar.barStyle = UIBarStyleBlack;
 
