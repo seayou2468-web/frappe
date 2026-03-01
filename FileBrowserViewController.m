@@ -76,6 +76,12 @@
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.allowsMultipleSelectionDuringEditing = YES;
+
+    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    [refresh addTarget:self action:@selector(reloadData) forControlEvents:UIControlEventValueChanged];
+    refresh.tintColor = [UIColor whiteColor];
+    self.tableView.refreshControl = refresh;
+
     [self.view addSubview:self.tableView];
 
     // Bottom Menu
@@ -140,6 +146,9 @@
     self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath];
     [self.tableView reloadData];
     [self.pathBar updatePath:self.currentPath];
+    if (self.tableView.refreshControl.isRefreshing) {
+        [self.tableView.refreshControl endRefreshing];
+    }
 }
 
 - (void)goUp {
