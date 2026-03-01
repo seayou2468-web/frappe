@@ -15,6 +15,7 @@
 #import "MediaPlayerViewController.h"
 #import "PDFViewerViewController.h"
 #import "HexEditorViewController.h"
+#import "FileInfoViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
