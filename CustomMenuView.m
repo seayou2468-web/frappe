@@ -30,8 +30,16 @@
 
 - (void)setupUI {
     // Determine screen bounds from window context
-    CGRect screenBounds = self.window.windowScene.screen.bounds;
-    if (CGRectIsEmpty(screenBounds)) screenBounds = [UIScreen mainScreen].bounds; // Fallback if necessary but it will be deprecated
+    CGRect screenBounds = CGRectZero;
+    UIWindow *window = self.window ?: self.superview.window;
+    if (window.windowScene) {
+        screenBounds = window.windowScene.screen.bounds;
+    }
+
+    if (CGRectIsEmpty(screenBounds)) {
+        // Fallback to superview bounds or some default if window scene is unavailable
+        screenBounds = self.superview ? self.superview.bounds : CGRectMake(0, 0, 393, 852); // Default iPhone 14-ish size as last resort
+    }
 
     self.frame = screenBounds;
 

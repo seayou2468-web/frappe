@@ -272,9 +272,6 @@
     else vc = [[HexEditorViewController alloc] initWithPath:targetPath];
     if (vc) [self.navigationController pushViewController:vc animated:YES];
 }
-    else vc = [[HexEditorViewController alloc] initWithPath:item.fullPath];
-    if (vc) [self.navigationController pushViewController:vc animated:YES];
-}
 
 #pragma mark - Archiving
 
