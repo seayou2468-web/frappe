@@ -22,14 +22,19 @@
 @implementation CustomMenuView
 
 + (instancetype)menuWithTitle:(NSString *)title {
-    CustomMenuView *m = [[CustomMenuView alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    CustomMenuView *m = [[CustomMenuView alloc] initWithFrame:CGRectZero];
     m.menuTitle = title;
     m.actions = [NSMutableArray array];
-    [m setupUI];
     return m;
 }
 
 - (void)setupUI {
+    // Determine screen bounds from window context
+    CGRect screenBounds = self.window.windowScene.screen.bounds;
+    if (CGRectIsEmpty(screenBounds)) screenBounds = [UIScreen mainScreen].bounds; // Fallback if necessary but it will be deprecated
+
+    self.frame = screenBounds;
+
     self.backgroundDimmer = [[UIView alloc] initWithFrame:self.bounds];
     self.backgroundDimmer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
     self.backgroundDimmer.alpha = 0;
@@ -81,43 +86,6 @@
 
 - (void)addAction:(CustomMenuAction *)action {
     [self.actions addObject:action];
-
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
-    btn.layer.cornerRadius = 14;
-    btn.tintColor = (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor];
-
-    // Use multi-line button title for long Japanese text
-    btn.titleLabel.numberOfLines = 0;
-    btn.titleLabel.textAlignment = NSTextAlignmentCenter;
-
-    NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:action.title attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightMedium],
-        NSForegroundColorAttributeName: (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor]
-    }];
-    [btn setAttributedTitle:str forState:UIControlStateNormal];
-
-    if (action.systemImageName) {
-        UIImage *img = [UIImage systemImageNamed:action.systemImageName];
-        [btn setImage:img forState:UIControlStateNormal];
-
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        config.imagePadding = 12;
-        config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
-        config.imagePlacement = NSDirectionalRectEdgeLeading;
-        btn.configuration = config;
-    } else {
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
-        btn.configuration = config;
-    }
-
-    [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
-    btn.tag = self.actions.count - 1;
-
-    [self.stackView addArrangedSubview:btn];
-    // Allow variable height for long text, but set a minimum
-    [btn.heightAnchor constraintGreaterThanOrEqualToConstant:54].active = YES;
 }
 
 - (void)btnTapped:(UIButton *)sender {
@@ -129,6 +97,46 @@
 
 - (void)showInView:(UIView *)view {
     [view addSubview:self];
+    [self setupUI];
+
+    // Add buttons to stack view here
+    for (NSInteger i = 0; i < self.actions.count; i++) {
+        CustomMenuAction *action = self.actions[i];
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        btn.layer.cornerRadius = 14;
+
+        btn.titleLabel.numberOfLines = 0;
+        btn.titleLabel.textAlignment = NSTextAlignmentCenter;
+
+        NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:action.title attributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightMedium],
+            NSForegroundColorAttributeName: (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor]
+        }];
+        [btn setAttributedTitle:str forState:UIControlStateNormal];
+
+        if (action.systemImageName) {
+            UIImage *img = [UIImage systemImageNamed:action.systemImageName];
+            [btn setImage:img forState:UIControlStateNormal];
+            UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+            config.imagePadding = 12;
+            config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+            config.imagePlacement = NSDirectionalRectEdgeLeading;
+            btn.configuration = config;
+        } else {
+            UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+            config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+            btn.configuration = config;
+        }
+
+        btn.tintColor = (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor];
+        [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
+        btn.tag = i;
+
+        [self.stackView addArrangedSubview:btn];
+        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:54].active = YES;
+    }
+
     [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:0 animations:^{
         self.backgroundDimmer.alpha = 1.0;
         self.contentView.alpha = 1.0;

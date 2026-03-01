@@ -28,9 +28,8 @@
 @property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
 @property (assign, nonatomic) BOOL isSearchRevealed;
 
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
+
+
 
 @end
 
@@ -421,8 +420,11 @@
 }
 
 
+
+
+
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
-
 @end
