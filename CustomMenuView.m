@@ -31,7 +31,7 @@
 
 - (void)setupUI {
     self.backgroundDimmer = [[UIView alloc] initWithFrame:self.bounds];
-    self.backgroundDimmer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
+    self.backgroundDimmer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
     self.backgroundDimmer.alpha = 0;
     [self addSubview:self.backgroundDimmer];
 
@@ -46,60 +46,78 @@
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = self.menuTitle;
-    titleLabel.font = [UIFont boldSystemFontOfSize:16];
-    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
+    titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
     titleLabel.textAlignment = NSTextAlignmentCenter;
+    titleLabel.numberOfLines = 0;
     [self.contentView addSubview:titleLabel];
 
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.stackView.axis = UILayoutConstraintAxisVertical;
-    self.stackView.spacing = 2;
-    self.stackView.distribution = UIStackViewDistributionFillEqually;
+    self.stackView.spacing = 10;
+    self.stackView.distribution = UIStackViewDistributionFillProportionally;
     [self.contentView addSubview:self.stackView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.contentView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:20],
-        [self.contentView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-20],
-        [self.contentView.bottomAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.bottomAnchor constant:-20],
+        [self.contentView.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [self.contentView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        [self.contentView.widthAnchor constraintEqualToAnchor:self.widthAnchor multiplier:0.85],
+        [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.8],
 
-        [titleLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:15],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:15],
-        [titleLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-15],
+        [titleLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:25],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
 
-        [self.stackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:15],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:10],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-10],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
+        [self.stackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:20],
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:15],
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-15],
+        [self.stackView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-20],
     ]];
 
-    self.contentView.transform = CGAffineTransformMakeTranslation(0, 400);
+    self.contentView.alpha = 0;
+    self.contentView.transform = CGAffineTransformMakeScale(0.8, 0.8);
 }
 
 - (void)addAction:(CustomMenuAction *)action {
     [self.actions addObject:action];
 
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-    btn.layer.cornerRadius = 12;
+    btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+    btn.layer.cornerRadius = 14;
     btn.tintColor = (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor];
 
-    NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:action.title attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:17]}];
+    // Use multi-line button title for long Japanese text
+    btn.titleLabel.numberOfLines = 0;
+    btn.titleLabel.textAlignment = NSTextAlignmentCenter;
+
+    NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:action.title attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightMedium],
+        NSForegroundColorAttributeName: (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor]
+    }];
     [btn setAttributedTitle:str forState:UIControlStateNormal];
 
     if (action.systemImageName) {
         UIImage *img = [UIImage systemImageNamed:action.systemImageName];
         [btn setImage:img forState:UIControlStateNormal];
-        btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
-        btn.configuration.imagePadding = 10;
-        btn.configuration.contentInsets = NSDirectionalEdgeInsetsMake(12, 12, 12, 12);
+
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.imagePadding = 12;
+        config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+        config.imagePlacement = NSDirectionalRectEdgeLeading;
+        btn.configuration = config;
+    } else {
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+        btn.configuration = config;
     }
 
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
     btn.tag = self.actions.count - 1;
 
     [self.stackView addArrangedSubview:btn];
-    [btn.heightAnchor constraintEqualToConstant:50].active = YES;
+    // Allow variable height for long text, but set a minimum
+    [btn.heightAnchor constraintGreaterThanOrEqualToConstant:54].active = YES;
 }
 
 - (void)btnTapped:(UIButton *)sender {
@@ -111,8 +129,9 @@
 
 - (void)showInView:(UIView *)view {
     [view addSubview:self];
-    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.5 options:0 animations:^{
+    [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:0 animations:^{
         self.backgroundDimmer.alpha = 1.0;
+        self.contentView.alpha = 1.0;
         self.contentView.transform = CGAffineTransformIdentity;
     } completion:nil];
 }
@@ -122,9 +141,10 @@
 }
 
 - (void)dismissWithCompletion:(void (^)(void))completion {
-    [UIView animateWithDuration:0.3 animations:^{
+    [UIView animateWithDuration:0.25 animations:^{
         self.backgroundDimmer.alpha = 0;
-        self.contentView.transform = CGAffineTransformMakeTranslation(0, 500);
+        self.contentView.alpha = 0;
+        self.contentView.transform = CGAffineTransformMakeScale(0.9, 0.9);
     } completion:^(BOOL finished) {
         [self removeFromSuperview];
         if (completion) completion();
