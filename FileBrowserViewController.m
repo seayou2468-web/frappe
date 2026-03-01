@@ -55,6 +55,12 @@
     self.pathBar.onPathChanged = ^(NSString *newPath) { [weakSelf navigateToPath:newPath]; };
     self.navigationItem.titleView = self.pathBar;
 
+    // Left Bar Button (Go Up)
+    if (![self.currentPath isEqualToString:@"/"]) {
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(goUp)];
+    }
+
+
     // Right Bar Button (Search Toggle)
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSearch target:self action:@selector(toggleSearch)];
 
@@ -90,9 +96,13 @@
     self.searchScope.userInteractionEnabled = YES;
     [self.view addSubview:self.searchScope];
 
-    // Constraints
+        // Constraints
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-    self.searchBarTopConstraint = [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:-100];
+    BOOL alwaysSearch = [[NSUserDefaults standardUserDefaults] boolForKey:@"AlwaysShowSearch"];
+    self.searchBarTopConstraint = [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:alwaysSearch ? 0 : -100];
+    self.searchBar.alpha = alwaysSearch ? 1.0 : 0;
+    self.searchScope.alpha = alwaysSearch ? 1.0 : 0;
+    if (alwaysSearch) self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0);
     self.searchBarTopConstraint.active = YES;
 
     [NSLayoutConstraint activateConstraints:@[
@@ -126,6 +136,13 @@
     self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath];
     [self.tableView reloadData];
     [self.pathBar updatePath:self.currentPath];
+}
+
+
+- (void)goUp {
+    NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
+    if (parent.length == 0) parent = @"/";
+    [self navigateToPath:parent];
 }
 
 - (void)toggleSearch {

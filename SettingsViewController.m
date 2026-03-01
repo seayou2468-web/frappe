@@ -1,6 +1,7 @@
 #import "SettingsViewController.h"
 #import "ThemeEngine.h"
 #import "BookmarksManager.h"
+#import "CustomMenuView.h"
 
 @interface SettingsViewController ()
 @property (nonatomic, strong) UITableView *tableView;
@@ -23,14 +24,15 @@
 #pragma mark - TableView
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
+    return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 1; // Default Path
-    if (section == 1) return 2; // Show Hidden, Folders First
+    if (section == 1) return 3; // Show Hidden, Folders First, Reveal Search
     if (section == 2) return 1; // Sort Method
-    if (section == 3) return [BookmarksManager sharedManager].bookmarks.count; // Favorites
+    if (section == 3) return 2; // Glass Intensity, Accent Color
+    if (section == 4) return [BookmarksManager sharedManager].bookmarks.count; // Favorites
     return 0;
 }
 
@@ -38,7 +40,8 @@
     if (section == 0) return @"全般";
     if (section == 1) return @"表示設定";
     if (section == 2) return @"並び替え";
-    if (section == 3) return @"お気に入り";
+    if (section == 3) return @"外観カスタマイズ";
+    if (section == 4) return @"お気に入り";
     return nil;
 }
 
@@ -65,11 +68,17 @@
             sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowHiddenFiles"];
             [sw addTarget:self action:@selector(hiddenSwitchToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
-        } else {
+        } else if (indexPath.row == 1) {
             cell.textLabel.text = @"フォルダを先頭に表示";
             UISwitch *sw = [[UISwitch alloc] init];
-            sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"FoldersFirst"] ?: YES;
+            sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"FoldersFirst"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"FoldersFirst"] : YES;
             [sw addTarget:self action:@selector(foldersFirstToggled:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+        } else {
+            cell.textLabel.text = @"検索バーを常に表示";
+            UISwitch *sw = [[UISwitch alloc] init];
+            sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"AlwaysShowSearch"];
+            [sw addTarget:self action:@selector(alwaysShowSearchToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
         }
     } else if (indexPath.section == 2) {
@@ -79,6 +88,16 @@
         cell.detailTextLabel.text = modes[sort % 3];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 3) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"グラス効果の透明度";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%.1f", [[NSUserDefaults standardUserDefaults] floatForKey:@"GlassAlpha"] ?: 0.5];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        } else {
+            cell.textLabel.text = @"アクセントカラー";
+            cell.detailTextLabel.text = @"選択中";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+    } else if (indexPath.section == 4) {
         NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
         cell.textLabel.text = [path lastPathComponent];
         cell.detailTextLabel.text = path;
@@ -93,15 +112,18 @@
         [self editDefaultPath];
     } else if (indexPath.section == 2) {
         [self selectSortMethod];
+    } else if (indexPath.section == 3) {
+        if (indexPath.row == 0) [self selectGlassAlpha];
+        else [self selectAccentColor];
     }
 }
 
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 3;
+    return indexPath.section == 4;
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 3) {
+    if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 4) {
         NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
         [[BookmarksManager sharedManager] removeBookmark:path];
         [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
@@ -122,16 +144,39 @@
 }
 
 - (void)selectSortMethod {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"並び替え" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"並び替え"];
     NSArray *modes = @[@"名前", @"日付", @"サイズ"];
     for (NSInteger i = 0; i < modes.count; i++) {
-        [alert addAction:[UIAlertAction actionWithTitle:modes[i] style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [menu addAction:[CustomMenuAction actionWithTitle:modes[i] systemImage:nil style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"SortMethod"];
             [self.tableView reloadData];
         }]];
     }
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [menu showInView:self.view];
+}
+
+- (void)selectGlassAlpha {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"透明度を選択"];
+    NSArray *alphas = @[@"0.2", @"0.4", @"0.6", @"0.8"];
+    for (NSString *a in alphas) {
+        [menu addAction:[CustomMenuAction actionWithTitle:a systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+            [[NSUserDefaults standardUserDefaults] setFloat:[a floatValue] forKey:@"GlassAlpha"];
+            [self.tableView reloadData];
+        }]];
+    }
+    [menu showInView:self.view];
+}
+
+- (void)selectAccentColor {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"カラーを選択"];
+    NSDictionary *colors = @{@"ブルー": @"blue", @"レッド": @"red", @"グリーン": @"green", @"パープル": @"purple"};
+    for (NSString *name in colors) {
+        [menu addAction:[CustomMenuAction actionWithTitle:name systemImage:@"circle.fill" style:CustomMenuActionStyleDefault handler:^{
+            [[NSUserDefaults standardUserDefaults] setObject:colors[name] forKey:@"AccentColor"];
+            [self.tableView reloadData];
+        }]];
+    }
+    [menu showInView:self.view];
 }
 
 - (void)hiddenSwitchToggled:(UISwitch *)sender {
@@ -140,6 +185,10 @@
 
 - (void)foldersFirstToggled:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"];
+}
+
+- (void)alwaysShowSearchToggled:(UISwitch *)sender {
+    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"];
 }
 
 @end

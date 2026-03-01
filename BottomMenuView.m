@@ -1,8 +1,6 @@
 #import "BottomMenuView.h"
 #import "ThemeEngine.h"
 
-
-
 @interface BottomMenuView ()
 @property (strong, nonatomic) UIStackView *stackView;
 @end
@@ -27,7 +25,6 @@
     self.stackView.alignment = UIStackViewAlignmentCenter;
     [self addSubview:self.stackView];
 
-    // Use safe area for bottom padding
     UILayoutGuide *safe = self.safeAreaLayoutGuide;
 
     [NSLayoutConstraint activateConstraints:@[
@@ -37,24 +34,19 @@
         [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
     ]];
 
-    [self addButtonWithTitle:@"タブ" systemImage:@"square.on.square" action:BottomMenuActionTabs];
-    [self addButtonWithTitle:@"お気に入り" systemImage:@"star" action:BottomMenuActionFavorites];
-    [self addButtonWithTitle:@"設定" systemImage:@"gear" action:BottomMenuActionSettings];
-    [self addButtonWithTitle:@"その他" systemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
+    [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
+    [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
+    [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
+    [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
 }
 
-- (void)addButtonWithTitle:(NSString *)title systemImage:(NSString *)imgName action:(BottomMenuAction)action {
+- (void)addButtonWithSystemImage:(NSString *)imgName action:(BottomMenuAction)action {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
 
-    UIImage *img = [UIImage systemImageNamed:imgName];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium];
+    UIImage *img = [UIImage systemImageNamed:imgName withConfiguration:config];
     [btn setImage:img forState:UIControlStateNormal];
-    [btn setTitle:title forState:UIControlStateNormal];
     btn.tintColor = [UIColor whiteColor];
-    btn.titleLabel.font = [UIFont systemFontOfSize:10];
-
-    btn.configuration = [UIButtonConfiguration plainButtonConfiguration];
-    btn.configuration.imagePlacement = NSDirectionalRectEdgeTop;
-    btn.configuration.imagePadding = 5;
 
     btn.tag = action;
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -68,4 +60,3 @@
 }
 
 @end
-
