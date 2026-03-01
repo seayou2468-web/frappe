@@ -152,6 +152,7 @@
 }
 
 - (void)goUp {
+    if ([self.currentPath isEqualToString:@"/"]) return;
     NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
     if (parent.length == 0) parent = @"/";
     [self navigateToPath:parent];
@@ -180,7 +181,7 @@
 }
 
 - (void)navigateToPath:(NSString *)path {
-    if (!path) return;
+    if (!path || [path isEqualToString:self.currentPath]) return;
     FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path];
     [self.navigationController pushViewController:vc animated:YES];
 }
