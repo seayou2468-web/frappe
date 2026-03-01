@@ -758,7 +758,7 @@ extern "C"
     /*  flags: The max match finder probes (default is 128) logically OR'd against the above flags. Higher probes are slower but improve compression. */
     /* On return: */
     /*  Function returns a pointer to the compressed data, or NULL on failure. */
-    /*  *pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data. */
+    /**pOut_len will be set to the compressed data's size, which could be larger than src_buf_len on uncompressible data. */
     /*  The caller must free() the returned block when it's no longer needed. */
     MINIZ_EXPORT void *tdefl_compress_mem_to_heap(const void *pSrc_buf, size_t src_buf_len, size_t *pOut_len, int flags);
 
@@ -774,7 +774,7 @@ extern "C"
     /*  If flip is true, the image will be flipped on the Y axis (useful for OpenGL apps). */
     /* On return: */
     /*  Function returns a pointer to the compressed data, or NULL on failure. */
-    /*  *pLen_out will be set to the size of the PNG image file. */
+    /**pLen_out will be set to the size of the PNG image file. */
     /*  The caller must mz_free() the returned heap block (which will typically be larger than *pLen_out) when it's no longer needed. */
     MINIZ_EXPORT void *tdefl_write_image_to_png_file_in_memory_ex(const void *pImage, int w, int h, int num_chans, size_t *pLen_out, mz_uint level, mz_bool flip);
     MINIZ_EXPORT void *tdefl_write_image_to_png_file_in_memory(const void *pImage, int w, int h, int num_chans, size_t *pLen_out);
@@ -933,7 +933,7 @@ extern "C"
     /*  pSrc_buf, src_buf_len: Pointer and size of the Deflate or zlib source data to decompress. */
     /* On return: */
     /*  Function returns a pointer to the decompressed data, or NULL on failure. */
-    /*  *pOut_len will be set to the decompressed data's size, which could be larger than src_buf_len on uncompressible data. */
+    /**pOut_len will be set to the decompressed data's size, which could be larger than src_buf_len on uncompressible data. */
     /*  The caller must call mz_free() on the returned block when it's no longer needed. */
     MINIZ_EXPORT void *tinfl_decompress_mem_to_heap(const void *pSrc_buf, size_t src_buf_len, size_t *pOut_len, int flags);
 

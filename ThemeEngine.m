@@ -1,6 +1,6 @@
 #import "ThemeEngine.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @implementation ThemeEngine
 
@@ -8,12 +8,12 @@ NS_ASSUME_NONNULL_BEGIN
     return [UIColor colorWithRed:0.12 green:0.12 blue:0.14 alpha:1.0]; // Dark theme
 }
 
-+ (UIColor *)clayColor {
++ (UIColor *)liquidColor {
     return [UIColor colorWithRed:0.18 green:0.18 blue:0.20 alpha:1.0];
 }
 
-+ (void)applyClayStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
-    view.backgroundColor = [self clayColor];
++ (void)applyLiquidStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
+    view.backgroundColor = [self liquidColor];
     view.layer.cornerRadius = radius;
 
     // Outer shadow
@@ -41,7 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-@implementation ClayView {
+@implementation LiquidGlassView {
     CAShapeLayer *_innerShadowTop;
     CAShapeLayer *_innerShadowBottom;
 }
@@ -56,7 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)setupUI {
-    self.backgroundColor = [ThemeEngine clayColor];
+    self.backgroundColor = [ThemeEngine liquidColor];
     self.layer.cornerRadius = _cornerRadius;
 
     // Outer Shadow
@@ -114,4 +114,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

@@ -1,6 +1,6 @@
 #import "PathBarView.h"
 
-NS_ASSUME_NONNULL_BEGIN
+
 
 @interface PathBarView ()
 @property (strong, nonatomic) UITextField *textField;
@@ -69,4 +69,3 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END

@@ -1,6 +1,8 @@
 #import "BookmarksManager.h"
 
-NS_ASSUME_NONNULL_BEGIN
+@interface BookmarksManager ()
+@property (nonatomic, strong) NSMutableArray<NSString *> *bookmarksInternal;
+@end
 
 @implementation BookmarksManager
 
@@ -16,28 +18,33 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _bookmarks = [[[NSUserDefaults standardUserDefaults] stringArrayForKey:@"Bookmarks"] mutableCopy] ?: [NSMutableArray array];
+        NSArray *saved = [[NSUserDefaults standardUserDefaults] stringArrayForKey:@"Bookmarks"];
+        _bookmarksInternal = saved ? [saved mutableCopy] : [NSMutableArray array];
     }
     return self;
 }
 
+- (NSMutableArray<NSString *> *)bookmarks {
+    return _bookmarksInternal;
+}
+
 - (void)addBookmark:(NSString *)path {
-    if (![_bookmarks containsObject:path]) {
-        [_bookmarks addObject:path];
+    if (!path) return;
+    if (![_bookmarksInternal containsObject:path]) {
+        [_bookmarksInternal addObject:path];
         [self save];
     }
 }
 
 - (void)removeBookmark:(NSString *)path {
-    [_bookmarks removeObject:path];
+    if (!path) return;
+    [_bookmarksInternal removeObject:path];
     [self save];
 }
 
 - (void)save {
-    [[NSUserDefaults standardUserDefaults] setObject:_bookmarks forKey:@"Bookmarks"];
+    [[NSUserDefaults standardUserDefaults] setObject:_bookmarksInternal forKey:@"Bookmarks"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 @end
-
-NS_ASSUME_NONNULL_END
