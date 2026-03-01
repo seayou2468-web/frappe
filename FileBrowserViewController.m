@@ -27,6 +27,11 @@
 @property (strong, nonatomic) UISegmentedControl *searchScope;
 @property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
 @property (assign, nonatomic) BOOL isSearchRevealed;
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 @end
 
 @implementation FileBrowserViewController
@@ -43,6 +48,7 @@
     self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
     self.navigationController.navigationBar.translucent = YES;
     [self setupUI];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadData) name:@"SettingsChanged" object:nil];
     [self reloadData];
 }
 
@@ -412,6 +418,11 @@
             self.tableView.contentInset = UIEdgeInsetsZero;
         }];
     }
+}
+
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

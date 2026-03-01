@@ -6,8 +6,17 @@
 
 
 
-@interface MainContainerViewController ()
+@interface MainContainerViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIViewController *currentContentController;
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if ([self.currentContentController isKindOfClass:[UINavigationController class]]) {
+        UINavigationController *nav = (UINavigationController *)self.currentContentController;
+        return nav.viewControllers.count > 1;
+    }
+    return NO;
+}
+
 @end
 
 @implementation MainContainerViewController
@@ -44,6 +53,7 @@
     }
 
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+    nav.interactivePopGestureRecognizer.delegate = self;
     nav.navigationBar.barStyle = UIBarStyleBlack;
 
     [self addChildViewController:nav];
@@ -77,6 +87,15 @@
         }];
     };
     [self presentViewController:switcher animated:YES completion:nil];
+}
+
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if ([self.currentContentController isKindOfClass:[UINavigationController class]]) {
+        UINavigationController *nav = (UINavigationController *)self.currentContentController;
+        return nav.viewControllers.count > 1;
+    }
+    return NO;
 }
 
 @end

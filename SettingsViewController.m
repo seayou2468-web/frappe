@@ -137,6 +137,7 @@
     }];
     [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[NSUserDefaults standardUserDefaults] setObject:alert.textFields[0].text forKey:@"DefaultStartPath"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
         [self.tableView reloadData];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
@@ -149,6 +150,7 @@
     for (NSInteger i = 0; i < modes.count; i++) {
         [menu addAction:[CustomMenuAction actionWithTitle:modes[i] systemImage:nil style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"SortMethod"];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
             [self.tableView reloadData];
         }]];
     }
@@ -161,6 +163,7 @@
     for (NSString *a in alphas) {
         [menu addAction:[CustomMenuAction actionWithTitle:a systemImage:nil style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setFloat:[a floatValue] forKey:@"GlassAlpha"];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
             [self.tableView reloadData];
         }]];
     }
@@ -173,6 +176,7 @@
     for (NSString *name in colors) {
         [menu addAction:[CustomMenuAction actionWithTitle:name systemImage:@"circle.fill" style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setObject:colors[name] forKey:@"AccentColor"];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
             [self.tableView reloadData];
         }]];
     }
@@ -181,14 +185,17 @@
 
 - (void)hiddenSwitchToggled:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ShowHiddenFiles"];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
 }
 
 - (void)foldersFirstToggled:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
 }
 
 - (void)alwaysShowSearchToggled:(UISwitch *)sender {
     [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
 }
 
 @end

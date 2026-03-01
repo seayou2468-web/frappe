@@ -9,7 +9,11 @@
 }
 
 + (UIColor *)liquidColor {
-    return [UIColor colorWithRed:0.18 green:0.18 blue:0.20 alpha:1.0];
+    NSString *colorName = [[NSUserDefaults standardUserDefaults] stringForKey:@"AccentColor"];
+    if ([colorName isEqualToString:@"red"]) return [UIColor systemRedColor];
+    if ([colorName isEqualToString:@"green"]) return [UIColor systemGreenColor];
+    if ([colorName isEqualToString:@"purple"]) return [UIColor systemPurpleColor];
+    return [UIColor systemBlueColor]; // Default
 }
 
 + (void)applyLiquidStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
@@ -30,12 +34,16 @@
     UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
     blurEffectView.frame = view.bounds;
     blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    CGFloat alpha = [[NSUserDefaults standardUserDefaults] floatForKey:@"GlassAlpha"];
+    if (alpha == 0) alpha = 0.5;
+    blurEffectView.alpha = alpha;
+    view.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:alpha * 0.3].CGColor;
     blurEffectView.layer.cornerRadius = radius;
     blurEffectView.clipsToBounds = YES;
     [view insertSubview:blurEffectView atIndex:0];
 
     view.layer.cornerRadius = radius;
-    view.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15].CGColor;
+    // view.layer.borderColor reset removed
     view.layer.borderWidth = 0.5;
 }
 
