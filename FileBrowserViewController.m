@@ -235,7 +235,7 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     FileItem *item = self.items[indexPath.row];
 
-    NSString *effectivePath = item.fullPath;
+    NSString *effectivePath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!effectivePath) return;
 
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:effectivePath error:nil];
@@ -249,7 +249,7 @@
 }
 
 - (void)openFile:(FileItem *)item {
-    NSString *targetPath = item.isSymbolicLink ? item.linkTarget : item.fullPath;
+    NSString *targetPath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!targetPath) return;
 
     NSString *ext = [targetPath pathExtension].lowercaseString;
