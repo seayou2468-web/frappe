@@ -327,10 +327,7 @@
 
 - (void)showInfoForItem:(FileItem *)item {
     NSMutableString *info = [NSMutableString string];
-    [info appendFormat:@"Path: %@
-Size: %@ bytes
-Modified: %@
-Type: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileModificationDate]];
+    [info appendFormat:@"Path: %@\nSize: %@ bytes\nModified: %@\nType: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileType]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ファイル情報" message:info preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -440,7 +437,17 @@ Type: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileMod
 
     if (self.tableView.isEditing) {
         self.tableView.allowsMultipleSelectionDuringEditing = YES;
-        [self showSelectionActions];
+        // Update 'More' button to 'Actions' button
+        UIBarButtonItem *actionBtn = [[UIBarButtonItem alloc] initWithTitle:@"操作" style:UIBarButtonItemStyleDone target:self action:@selector(showSelectionActions)];
+        NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy];
+        items[0] = actionBtn;
+        self.navigationItem.rightBarButtonItems = items;
+    } else {
+        // Restore 'More' button
+        UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
+        NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy];
+        items[0] = moreBtn;
+        self.navigationItem.rightBarButtonItems = items;
     }
 }
 
