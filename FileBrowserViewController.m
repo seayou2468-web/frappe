@@ -214,7 +214,7 @@
         liquidBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:liquidBg];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     }
     FileItem *item = self.items[indexPath.row];
     cell.textLabel.text = item.name;
@@ -232,6 +232,7 @@
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath { return 70; }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.tableView.isEditing) return; // Allow multiple selection
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     FileItem *item = self.items[indexPath.row];
 
