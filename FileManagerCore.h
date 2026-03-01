@@ -13,10 +13,13 @@
 @end
 
 @interface FileManagerCore : NSObject
+@property (nonatomic, strong) NSArray<NSString *> *clipboardPaths;
+@property (nonatomic, assign) BOOL isMoveOperation;
 + (instancetype)sharedManager;
 - (NSArray<FileItem *> *)contentsOfDirectoryAtPath:(NSString *)path;
 - (BOOL)removeItemAtPath:(NSString *)path error:(NSError **)error;
 - (BOOL)copyItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error;
+- (BOOL)moveItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error;
 - (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error;
 - (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive;
 @end

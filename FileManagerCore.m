@@ -80,6 +80,10 @@
     return [[NSFileManager defaultManager] copyItemAtPath:src toPath:dest error:error];
 }
 
+- (BOOL)moveItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error {
+    return [[NSFileManager defaultManager] moveItemAtPath:src toPath:dest error:error];
+}
+
 - (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error {
     if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];

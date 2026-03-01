@@ -317,6 +317,14 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"圧縮" systemImage:@"archivebox" style:CustomMenuActionStyleDefault handler:^{
         [self showCompressionOptionsForItem:item];
     }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"コピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{
+        [FileManagerCore sharedManager].clipboardPaths = @[item.fullPath];
+        [FileManagerCore sharedManager].isMoveOperation = NO;
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"移動" systemImage:@"arrow.right.doc.on.clipboard" style:CustomMenuActionStyleDefault handler:^{
+        [FileManagerCore sharedManager].clipboardPaths = @[item.fullPath];
+        [FileManagerCore sharedManager].isMoveOperation = YES;
+    }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{
         UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:item.fullPath]] applicationActivities:nil];
         [self presentViewController:avc animated:YES completion:nil];
@@ -462,6 +470,12 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"圧縮 (ZIP)" systemImage:@"archivebox" style:CustomMenuActionStyleDefault handler:^{
         [self performBulkAction:1];
     }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"コピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{
+        [self performBulkAction:3];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"移動" systemImage:@"arrow.right.doc.on.clipboard" style:CustomMenuActionStyleDefault handler:^{
+        [self performBulkAction:4];
+    }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{
         [self performBulkAction:2];
     }]];
@@ -490,6 +504,12 @@
         for (NSString *path in selectedPaths) [urls addObject:[NSURL fileURLWithPath:path]];
         UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:urls applicationActivities:nil];
         [self presentViewController:avc animated:YES completion:nil];
+    } else if (actionType == 3) { // Copy
+        [FileManagerCore sharedManager].clipboardPaths = selectedPaths;
+        [FileManagerCore sharedManager].isMoveOperation = NO;
+    } else if (actionType == 4) { // Move
+        [FileManagerCore sharedManager].clipboardPaths = selectedPaths;
+        [FileManagerCore sharedManager].isMoveOperation = YES;
     }
 
     [self toggleSelectionMode];
@@ -498,6 +518,12 @@
 
 - (void)showMoreMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"操作"];
+    if ([FileManagerCore sharedManager].clipboardPaths.count > 0) {
+        NSString *title = [FileManagerCore sharedManager].isMoveOperation ? @"ここに移動" : @"ここに貼り付け";
+        [menu addAction:[CustomMenuAction actionWithTitle:title systemImage:@"doc.on.clipboard.fill" style:CustomMenuActionStyleDefault handler:^{
+            [self performPaste];
+        }]];
+    }
     [menu addAction:[CustomMenuAction actionWithTitle:@"新規フォルダ" systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{
         [self promptForNewItem:YES];
     }]];
@@ -505,6 +531,20 @@
         [self promptForNewItem:NO];
     }]];
     [menu showInView:self.view];
+}
+
+- (void)performPaste {
+    FileManagerCore *fmc = [FileManagerCore sharedManager];
+    for (NSString *src in fmc.clipboardPaths) {
+        NSString *dest = [self.currentPath stringByAppendingPathComponent:[src lastPathComponent]];
+        if (fmc.isMoveOperation) {
+            [fmc moveItemAtPath:src toPath:dest error:nil];
+        } else {
+            [fmc copyItemAtPath:src toPath:dest error:nil];
+        }
+    }
+    if (fmc.isMoveOperation) fmc.clipboardPaths = nil;
+    [self reloadData];
 }
 
 - (void)promptForNewItem:(BOOL)isDir {
