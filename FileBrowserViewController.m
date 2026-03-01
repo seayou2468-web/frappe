@@ -27,10 +27,6 @@
 @property (strong, nonatomic) UISegmentedControl *searchScope;
 @property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
 @property (assign, nonatomic) BOOL isSearchRevealed;
-
-
-
-
 @end
 
 @implementation FileBrowserViewController
@@ -65,9 +61,11 @@
         self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(goUp)];
     }
 
-
-    // Right Bar Button (Search Toggle)
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSearch target:self action:@selector(toggleSearch)];
+    // Right Bar Buttons
+    UIBarButtonItem *searchBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(toggleSearch)];
+    UIBarButtonItem *selectBtn = [[UIBarButtonItem alloc] initWithTitle:@"選択" style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectionMode)];
+    UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
+    self.navigationItem.rightBarButtonItems = @[moreBtn, selectBtn, searchBtn];
 
     // Table View
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -101,7 +99,6 @@
     self.searchScope.userInteractionEnabled = YES;
     [self.view addSubview:self.searchScope];
 
-        // Constraints
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     BOOL alwaysSearch = [[NSUserDefaults standardUserDefaults] boolForKey:@"AlwaysShowSearch"];
     self.searchBarTopConstraint = [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:alwaysSearch ? 0 : -100];
@@ -142,7 +139,6 @@
     [self.tableView reloadData];
     [self.pathBar updatePath:self.currentPath];
 }
-
 
 - (void)goUp {
     NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
@@ -223,19 +219,12 @@
     cell.textLabel.text = item.name;
     if (item.isDirectory) {
         cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"];
-        cell.imageView.tintColor = item.isLocked ? [ThemeEngine liquidColor] : [ThemeEngine liquidColor];
+        cell.imageView.tintColor = [UIColor whiteColor];
     } else {
         cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"];
-        cell.imageView.tintColor = [ThemeEngine liquidColor];
+        cell.imageView.tintColor = [UIColor whiteColor];
     }
     cell.detailTextLabel.text = item.isSymbolicLink ? [NSString stringWithFormat:@" Alias ➜ %@", item.linkTarget] : nil;
-        NSString *tag = [self tagForPath:item.fullPath];
-    if (tag) {
-        if ([tag isEqualToString:@"red"]) cell.imageView.tintColor = [UIColor systemRedColor];
-        else if ([tag isEqualToString:@"orange"]) cell.imageView.tintColor = [UIColor systemOrangeColor];
-        else if ([tag isEqualToString:@"green"]) cell.imageView.tintColor = [UIColor systemGreenColor];
-        else if ([tag isEqualToString:@"blue"]) cell.imageView.tintColor = [UIColor systemBlueColor];
-    }
     return cell;
 }
 
@@ -252,7 +241,6 @@
     if ([[NSFileManager defaultManager] fileExistsAtPath:effectivePath isDirectory:&isDir] && isDir) {
         [self navigateToPath:effectivePath];
     } else {
-        // It's a file (either direct or via symlink)
         [self openFile:item];
     }
 }
@@ -270,9 +258,6 @@
     else if ([ext isEqualToString:@"pdf"]) vc = [[PDFViewerViewController alloc] initWithPath:targetPath];
     else if ([ZipManager formatForPath:targetPath] != ArchiveFormatUnknown) { [self showArchiveOptionsForItem:item]; return; }
     else vc = [[HexEditorViewController alloc] initWithPath:targetPath];
-    if (vc) [self.navigationController pushViewController:vc animated:YES];
-}
-    else vc = [[HexEditorViewController alloc] initWithPath:item.fullPath];
     if (vc) [self.navigationController pushViewController:vc animated:YES];
 }
 
@@ -318,9 +303,6 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"お気に入りに追加" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{
         [[BookmarksManager sharedManager] addBookmark:item.fullPath];
     }]];
-        [menu addAction:[CustomMenuAction actionWithTitle:@"タグ付け" systemImage:@"tag" style:CustomMenuActionStyleDefault handler:^{
-        [self showTaggingForItem:item];
-    }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"詳細情報" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{
         [self showInfoForItem:item];
     }]];
@@ -343,39 +325,12 @@
     [menu showInView:self.view];
 }
 
-
-- (void)showTaggingForItem:(FileItem *)item {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"タグを選択"];
-    NSArray *tags = @[@"重要", @"作業中", @"完了", @"要確認"];
-    NSArray *colors = @[@"red", @"orange", @"green", @"blue"];
-
-    for (NSInteger i = 0; i < tags.count; i++) {
-        [menu addAction:[CustomMenuAction actionWithTitle:tags[i] systemImage:@"circle.fill" style:CustomMenuActionStyleDefault handler:^{
-            [self setTag:colors[i] forPath:item.fullPath];
-            [self reloadData];
-        }]];
-    }
-    [menu addAction:[CustomMenuAction actionWithTitle:@"タグを削除" systemImage:@"xmark.circle" style:CustomMenuActionStyleDestructive handler:^{
-        [self setTag:nil forPath:item.fullPath];
-        [self reloadData];
-    }]];
-    [menu showInView:self.view];
-}
-
-- (void)setTag:(NSString *)tag forPath:(NSString *)path {
-    NSMutableDictionary *tags = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"FileTags"] mutableCopy] ?: [NSMutableDictionary dictionary];
-    if (tag) tags[path] = tag;
-    else [tags removeObjectForKey:path];
-    [[NSUserDefaults standardUserDefaults] setObject:tags forKey:@"FileTags"];
-}
-
-- (NSString *)tagForPath:(NSString *)path {
-    return [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"FileTags"][path];
-}
-
 - (void)showInfoForItem:(FileItem *)item {
     NSMutableString *info = [NSMutableString string];
-    [info appendFormat:@"Path: %@\nSize: %@ bytes\nModified: %@\nType: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileType]];
+    [info appendFormat:@"Path: %@
+Size: %@ bytes
+Modified: %@
+Type: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileModificationDate]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ファイル情報" message:info preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -449,8 +404,6 @@
     [self reloadData];
 }
 
-#pragma mark - ScrollView Delegate
-
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     CGFloat y = scrollView.contentOffset.y;
     if (y < -80) {
@@ -474,12 +427,92 @@
     }
 }
 
-
-
-
-
-
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
+#pragma mark - Selection Mode
+
+- (void)toggleSelectionMode {
+    [self.tableView setEditing:!self.tableView.isEditing animated:YES];
+    UIBarButtonItem *selectBtn = self.navigationItem.rightBarButtonItems[1];
+    selectBtn.title = self.tableView.isEditing ? @"キャンセル" : @"選択";
+
+    if (self.tableView.isEditing) {
+        self.tableView.allowsMultipleSelectionDuringEditing = YES;
+        [self showSelectionActions];
+    }
+}
+
+- (void)showSelectionActions {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"選択したアイテムを操作"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        [self performBulkAction:0];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"圧縮 (ZIP)" systemImage:@"archivebox" style:CustomMenuActionStyleDefault handler:^{
+        [self performBulkAction:1];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{
+        [self performBulkAction:2];
+    }]];
+    [menu showInView:self.view];
+}
+
+- (void)performBulkAction:(NSInteger)actionType {
+    NSArray *indexPaths = [self.tableView indexPathsForSelectedRows];
+    if (indexPaths.count == 0) return;
+
+    NSMutableArray *selectedPaths = [NSMutableArray array];
+    for (NSIndexPath *ip in indexPaths) {
+        [selectedPaths addObject:self.items[ip.row].fullPath];
+    }
+
+    if (actionType == 0) { // Delete
+        for (NSString *path in selectedPaths) {
+            [[FileManagerCore sharedManager] removeItemAtPath:path error:nil];
+        }
+    } else if (actionType == 1) { // ZIP
+        NSString *zipName = [NSString stringWithFormat:@"archive_%ld.zip", (long)[[NSDate date] timeIntervalSince1970]];
+        NSString *dest = [self.currentPath stringByAppendingPathComponent:zipName];
+        [ZipManager compressFiles:selectedPaths toPath:dest format:ArchiveFormatZip password:nil error:nil];
+    } else if (actionType == 2) { // Share
+        NSMutableArray *urls = [NSMutableArray array];
+        for (NSString *path in selectedPaths) [urls addObject:[NSURL fileURLWithPath:path]];
+        UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:urls applicationActivities:nil];
+        [self presentViewController:avc animated:YES completion:nil];
+    }
+
+    [self toggleSelectionMode];
+    [self reloadData];
+}
+
+- (void)showMoreMenu {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"操作"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規フォルダ" systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{
+        [self promptForNewItem:YES];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規ファイル" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{
+        [self promptForNewItem:NO];
+    }]];
+    [menu showInView:self.view];
+}
+
+- (void)promptForNewItem:(BOOL)isDir {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isDir ? @"新規フォルダ" : @"新規ファイル" message:@"名前を入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:nil];
+    [alert addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = alert.textFields[0].text;
+        if (name.length == 0) return;
+        NSString *path = [self.currentPath stringByAppendingPathComponent:name];
+        if (isDir) {
+            [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+        } else {
+            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        }
+        [self reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 @end
