@@ -339,11 +339,8 @@
 }
 
 - (void)showInfoForItem:(FileItem *)item {
-    NSMutableString *info = [NSMutableString string];
-    [info appendFormat:@"Path: %@\nSize: %@ bytes\nModified: %@\nType: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileType]];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ファイル情報" message:info preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    FileInfoViewController *vc = [[FileInfoViewController alloc] initWithItem:item];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)showEditLinkForItem:(FileItem *)item {
