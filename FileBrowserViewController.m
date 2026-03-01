@@ -209,7 +209,8 @@
         cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-        LiquidGlassView *liquidBg = [[LiquidGlassView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60) cornerRadius:15];
+        UIView *liquidBg = [[UIView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60)];
+        [ThemeEngine applyGlassStyleToView:liquidBg cornerRadius:15];
         liquidBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:liquidBg];
@@ -234,11 +235,13 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     FileItem *item = self.items[indexPath.row];
 
-    NSString *effectivePath = item.isSymbolicLink ? item.linkTarget : item.fullPath;
+    NSString *effectivePath = item.fullPath;
     if (!effectivePath) return;
 
-    BOOL isDir;
-    if ([[NSFileManager defaultManager] fileExistsAtPath:effectivePath isDirectory:&isDir] && isDir) {
+    NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:effectivePath error:nil];
+    BOOL isDir = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
+
+    if (isDir) {
         [self navigateToPath:effectivePath];
     } else {
         [self openFile:item];
