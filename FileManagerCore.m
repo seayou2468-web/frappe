@@ -21,8 +21,14 @@
 
     if (error) return @[];
 
-    NSMutableArray *items = [NSMutableArray arrayWithCapacity:contents.count];
+    BOOL showHidden = [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowHiddenFiles"];
+    BOOL foldersFirst = [[NSUserDefaults standardUserDefaults] objectForKey:@"FoldersFirst"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"FoldersFirst"] : YES;
+    NSInteger sortMethod = [[NSUserDefaults standardUserDefaults] integerForKey:@"SortMethod"];
+
+    NSMutableArray *items = [NSMutableArray array];
     for (NSString *name in contents) {
+        if (!showHidden && [name hasPrefix:@"."]) continue;
+
         NSString *fullPath = [path stringByAppendingPathComponent:name];
         FileItem *item = [[FileItem alloc] init];
         item.name = name;
@@ -45,8 +51,24 @@
     }
 
     return [items sortedArrayUsingComparator:^NSComparisonResult(FileItem *obj1, FileItem *obj2) {
-        if (obj1.isDirectory != obj2.isDirectory) return obj1.isDirectory ? NSOrderedAscending : NSOrderedDescending;
-        return [obj1.name compare:obj2.name options:NSCaseInsensitiveSearch];
+        if (foldersFirst && obj1.isDirectory != obj2.isDirectory) {
+            return obj1.isDirectory ? NSOrderedAscending : NSOrderedDescending;
+        }
+
+        switch (sortMethod) {
+            case 1: { // Date
+                NSDate *d1 = obj1.attributes[NSFileModificationDate];
+                NSDate *d2 = obj2.attributes[NSFileModificationDate];
+                return [d2 compare:d1]; // Newest first
+            }
+            case 2: { // Size
+                NSNumber *s1 = obj1.attributes[NSFileSize];
+                NSNumber *s2 = obj2.attributes[NSFileSize];
+                return [s2 compare:s1]; // Largest first
+            }
+            default: // Name
+                return [obj1.name compare:obj2.name options:NSCaseInsensitiveSearch];
+        }
     }];
 }
 
@@ -73,7 +95,6 @@
     NSString *lowerQuery = [query lowercaseString];
 
     if (recursive) {
-        // Use faster URL-based enumerator with pre-fetching
         NSArray *keys = @[NSURLNameKey, NSURLIsDirectoryKey, NSURLIsSymbolicLinkKey];
         NSDirectoryEnumerator *enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:path]
                                      includingPropertiesForKeys:keys

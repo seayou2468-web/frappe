@@ -40,7 +40,7 @@
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.barStyle = UIBarStyleBlack;
-    self.searchBar.placeholder = @"Search Hex or String";
+    self.searchBar.placeholder = @"16進数または文字列を検索";
     self.searchBar.delegate = self;
     self.searchBar.userInteractionEnabled = YES;
     self.searchBar.backgroundImage = [[UIImage alloc] init]; // Remove shadow/background
@@ -146,7 +146,7 @@
 
 - (void)editByteAtRow:(NSInteger)row {
     NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Bytes" message:@"Enter hex string (e.g. 41 42 43)" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"バイト編集" message:@"16進数文字列を入力 (例: 41 42 43)" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
         NSUInteger offset = row * bytesPerRow;
         NSUInteger length = MIN(bytesPerRow, self.mutableData.length - offset);
@@ -156,7 +156,7 @@
         tf.text = hex;
     }];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Apply" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"適用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *hexText = alert.textFields[0].text;
         NSArray *parts = [hexText componentsSeparatedByString:@" "];
         unsigned char *bytes = (unsigned char *)[self.mutableData mutableBytes] + (row * bytesPerRow);
@@ -173,7 +173,7 @@
         }
         [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:0]] withRowAnimation:UITableViewRowAnimationNone];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

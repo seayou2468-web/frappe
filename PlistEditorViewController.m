@@ -1,3 +1,4 @@
+#import "CustomMenuView.h"
 #import "PlistEditorViewController.h"
 #import "ThemeEngine.h"
 
@@ -74,7 +75,7 @@
     UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemUndo target:self action:@selector(undoAction)];
     UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRedo target:self action:@selector(redoAction)];
 
-    UIBarButtonItem *resetBtn = [[UIBarButtonItem alloc] initWithTitle:@"Reset" style:UIBarButtonItemStylePlain target:self action:@selector(resetPlist)];
+    UIBarButtonItem *resetBtn = [[UIBarButtonItem alloc] initWithTitle:@"リセット" style:UIBarButtonItemStylePlain target:self action:@selector(resetPlist)];
 
     if (_path) {
         self.navigationItem.rightBarButtonItems = @[saveBtn, addBtn, resetBtn];
@@ -132,29 +133,29 @@
 }
 
 - (void)addItem {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"新規エントリ" message:nil preferredStyle:UIAlertControllerStyleAlert];
     if ([_currentObject isKindOfClass:[NSDictionary class]]) {
         [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Key"; }];
     }
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Add" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *key = ([self.currentObject isKindOfClass:[NSDictionary class]]) ? alert.textFields[0].text : nil;
         [self showTypeSelectionForKey:key];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showTypeSelectionForKey:(id)key {
-    UIAlertController *typeAlert = [UIAlertController alertControllerWithTitle:@"Select Type" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"型を選択"];
     NSArray *types = @[@"String", @"Number", @"Boolean", @"Date", @"Data", @"Array", @"Dictionary"];
-    for (NSString *t in types) {
-        [typeAlert addAction:[UIAlertAction actionWithTitle:t style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            [self createItemOfType:t forKey:key];
+    NSArray *jpTypes = @[@"文字列", @"数値", @"真偽値", @"日付", @"データ", @"配列", @"辞書"];
+    for (NSInteger i = 0; i < types.count; i++) {
+        [menu addAction:[CustomMenuAction actionWithTitle:jpTypes[i] systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+            [self createItemOfType:types[i] forKey:key];
         }]];
     }
-    [typeAlert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:typeAlert animated:YES completion:nil];
+    [menu showInView:self.view];
 }
 
 - (void)createItemOfType:(NSString *)type forKey:(id)key {
@@ -216,10 +217,10 @@
 
 - (void)editValueForKey:(id)key {
     id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Entry" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エントリを編集" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%@", value]; }];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *text = alert.textFields[0].text;
         id newValue = text;
 
@@ -240,13 +241,13 @@
 
         [self updateObject:self.currentObject forKey:key newValue:newValue];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Change Type" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"型を変更" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self showTypeSelectionForKey:key];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"削除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         [self updateObject:self.currentObject forKey:key newValue:nil];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

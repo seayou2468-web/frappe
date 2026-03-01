@@ -1,3 +1,4 @@
+#import "CustomMenuView.h"
 #import "FileBrowserViewController.h"
 #import "SettingsViewController.h"
 #import "PathBarView.h"
@@ -77,12 +78,12 @@
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.delegate = self;
-    self.searchBar.placeholder = @"Search files...";
+    self.searchBar.placeholder = @"ファイルを検索...";
     self.searchBar.alpha = 0;
     self.searchBar.userInteractionEnabled = YES;
     [self.view addSubview:self.searchBar];
 
-    self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"Current", @"Global"]];
+    self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"現在のフォルダ", @"全体検索"]];
     self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchScope.selectedSegmentIndex = 0;
     self.searchScope.alpha = 0;
@@ -234,21 +235,20 @@
 #pragma mark - Archiving
 
 - (void)showArchiveOptionsForItem:(FileItem *)item {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:item.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Extract" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:item.name];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"展開" systemImage:@"arrow.up.bin" style:CustomMenuActionStyleDefault handler:^{
         [self promptForArchivePasswordForPath:item.fullPath isExtracting:YES];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [menu showInView:self.view];
 }
 
 - (void)promptForArchivePasswordForPath:(NSString *)path isExtracting:(BOOL)isExtracting {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Password" message:@"Enter password" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード" message:@"パスワードを入力してください" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.secureTextEntry = YES; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self processArchiveAtPath:path password:alert.textFields[0].text isExtracting:isExtracting];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -270,43 +270,48 @@
 }
 
 - (void)showContextMenuForItem:(FileItem *)item {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:item.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Favorite" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:item.name];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"お気に入りに追加" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{
         [[BookmarksManager sharedManager] addBookmark:item.fullPath];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Info" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [menu addAction:[CustomMenuAction actionWithTitle:@"詳細情報" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{
         [self showInfoForItem:item];
     }]];
-    if (item.isSymbolicLink) [alert addAction:[UIAlertAction actionWithTitle:@"Edit Link" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self showEditLinkForItem:item]; }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Compress" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self showCompressionOptionsForItem:item]; }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Share" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    if (item.isSymbolicLink) {
+        [menu addAction:[CustomMenuAction actionWithTitle:@"リンクを編集" systemImage:@"link" style:CustomMenuActionStyleDefault handler:^{
+            [self showEditLinkForItem:item];
+        }]];
+    }
+    [menu addAction:[CustomMenuAction actionWithTitle:@"圧縮" systemImage:@"archivebox" style:CustomMenuActionStyleDefault handler:^{
+        [self showCompressionOptionsForItem:item];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{
         UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:item.fullPath]] applicationActivities:nil];
         [self presentViewController:avc animated:YES completion:nil];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
         [[FileManagerCore sharedManager] removeItemAtPath:item.fullPath error:nil];
         [self reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [menu showInView:self.view];
 }
 
 - (void)showInfoForItem:(FileItem *)item {
     NSMutableString *info = [NSMutableString string];
     [info appendFormat:@"Path: %@\nSize: %@ bytes\nModified: %@\nType: %@", item.fullPath, item.attributes[NSFileSize], item.attributes[NSFileModificationDate], item.attributes[NSFileType]];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"File Info" message:info preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ファイル情報" message:info preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showEditLinkForItem:(FileItem *)item {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Link" message:@"Enter new destination path" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"リンクを編集" message:@"Enter new destination path" preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = item.linkTarget; }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[FileManagerCore sharedManager] createSymbolicLinkAtPath:item.fullPath withDestinationPath:alert.textFields[0].text error:nil];
         [self reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -316,7 +321,7 @@
         [ZipManager compressFiles:@[item.fullPath] toPath:[item.fullPath stringByAppendingPathExtension:@"zip"] format:ArchiveFormatZip password:nil error:nil];
         [self reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -336,23 +341,23 @@
 }
 
 - (void)showFavoritesMenu {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Favorites" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"お気に入り"];
     for (NSString *path in [BookmarksManager sharedManager].bookmarks) {
-        [alert addAction:[UIAlertAction actionWithTitle:[path lastPathComponent] style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self navigateToPath:path]; }]];
+        [menu addAction:[CustomMenuAction actionWithTitle:[path lastPathComponent] systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{
+            [self navigateToPath:path];
+        }]];
     }
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [menu showInView:self.view];
 }
 
 - (void)showOthersMenu {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Others" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Import from Files" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{
         UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]];
         dp.delegate = self;
         [self presentViewController:dp animated:YES completion:nil];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [menu showInView:self.view];
 }
 
 - (void)showSettings {

@@ -37,10 +37,10 @@
         [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
     ]];
 
-    [self addButtonWithTitle:@"Tabs" systemImage:@"square.on.square" action:BottomMenuActionTabs];
-    [self addButtonWithTitle:@"Favs" systemImage:@"star" action:BottomMenuActionFavorites];
-    [self addButtonWithTitle:@"Set" systemImage:@"gear" action:BottomMenuActionSettings];
-    [self addButtonWithTitle:@"Other" systemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
+    [self addButtonWithTitle:@"タブ" systemImage:@"square.on.square" action:BottomMenuActionTabs];
+    [self addButtonWithTitle:@"お気に入り" systemImage:@"star" action:BottomMenuActionFavorites];
+    [self addButtonWithTitle:@"設定" systemImage:@"gear" action:BottomMenuActionSettings];
+    [self addButtonWithTitle:@"その他" systemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
 }
 
 - (void)addButtonWithTitle:(NSString *)title systemImage:(NSString *)imgName action:(BottomMenuAction)action {
