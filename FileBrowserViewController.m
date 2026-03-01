@@ -1,4 +1,5 @@
 #import "FileBrowserViewController.h"
+#import "SettingsViewController.h"
 #import "PathBarView.h"
 #import "BottomMenuView.h"
 #import "FileManagerCore.h"
@@ -354,7 +355,10 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)showSettings {}
+- (void)showSettings {
+    SettingsViewController *vc = [[SettingsViewController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
+}
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     for (NSURL *url in urls) {

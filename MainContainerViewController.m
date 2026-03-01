@@ -16,8 +16,9 @@
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
-    if ([TabManager sharedManager].tabs.count == 0) {
-        [[TabManager sharedManager] addNewTabWithType:TabTypeFileBrowser path:@"/"];
+        if ([TabManager sharedManager].tabs.count == 0) {
+        NSString *startPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: @"/";
+        [[TabManager sharedManager] addNewTabWithType:TabTypeFileBrowser path:startPath];
     }
     [self displayActiveTab];
 }
