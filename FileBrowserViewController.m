@@ -75,6 +75,7 @@
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.allowsMultipleSelectionDuringEditing = YES;
     [self.view addSubview:self.tableView];
 
     // Bottom Menu
@@ -215,6 +216,14 @@
         liquidBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:liquidBg];
+
+        UIView *selectedBg = [[UIView alloc] init];
+        UIView *selectedInner = [[UIView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60)];
+        selectedInner.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15];
+        selectedInner.layer.cornerRadius = 15;
+        selectedInner.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [selectedBg addSubview:selectedInner];
+        cell.selectedBackgroundView = selectedBg;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     }
     FileItem *item = self.items[indexPath.row];
@@ -231,6 +240,14 @@
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath { return 70; }
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return UITableViewCellEditingStyleNone;
+}
+
+- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath {
+    return YES;
+}
+
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (self.tableView.isEditing) return; // Allow multiple selection
@@ -441,19 +458,23 @@
 #pragma mark - Selection Mode
 
 - (void)toggleSelectionMode {
-    [self.tableView setEditing:!self.tableView.isEditing animated:YES];
-    UIBarButtonItem *selectBtn = self.navigationItem.rightBarButtonItems[1];
-    selectBtn.title = self.tableView.isEditing ? @"キャンセル" : @"選択";
+    BOOL isEditing = !self.tableView.isEditing;
+    [self.tableView setEditing:isEditing animated:YES];
 
-    if (self.tableView.isEditing) {
-        self.tableView.allowsMultipleSelectionDuringEditing = YES;
-        // Update 'More' button to 'Actions' button
+    UIBarButtonItem *selectBtn = self.navigationItem.rightBarButtonItems[1];
+    selectBtn.title = isEditing ? @"キャンセル" : @"選択";
+
+    // Disable/Enable other nav buttons
+    self.navigationItem.leftBarButtonItem.enabled = !isEditing;
+    UIBarButtonItem *searchBtn = self.navigationItem.rightBarButtonItems[2];
+    searchBtn.enabled = !isEditing;
+
+    if (isEditing) {
         UIBarButtonItem *actionBtn = [[UIBarButtonItem alloc] initWithTitle:@"操作" style:UIBarButtonItemStyleDone target:self action:@selector(showSelectionActions)];
         NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy];
         items[0] = actionBtn;
         self.navigationItem.rightBarButtonItems = items;
     } else {
-        // Restore 'More' button
         UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
         NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy];
         items[0] = moreBtn;
