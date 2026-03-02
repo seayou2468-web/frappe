@@ -12,6 +12,7 @@
 @end
 
 @interface DownloadManager : NSObject <NSURLSessionDownloadDelegate>
+@property (nonatomic, copy) void (^completionHandler)(void);
 + (instancetype)sharedManager;
 @property (nonatomic, strong, readonly) NSMutableArray<DownloadTask *> *tasks;
 - (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path;

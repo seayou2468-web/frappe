@@ -24,8 +24,10 @@
     if (self) {
         _tasks = [NSMutableArray array];
         _taskMap = [NSMutableDictionary dictionary];
-        NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"com.app.download"];
-        config.HTTPMaximumConnectionsPerHost = 12;
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"com.app.godspeed.download"];
+        config.HTTPMaximumConnectionsPerHost = 16;
+        config.waitsForConnectivity = YES;
+        config.allowsCellularAccess = YES;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
     return self;
@@ -45,7 +47,7 @@
     NSURLSessionDownloadTask *task = [self.session downloadTaskWithURL:url];
     dTask.task = task;
 
-    [_tasks addObject:dTask];
+    [self.tasks addObject:dTask];
     self.taskMap[@(task.taskIdentifier)] = dTask;
 
     [task resume];
@@ -60,7 +62,7 @@
 
 - (void)clearCompletedTasks {
     NSPredicate *pred = [NSPredicate predicateWithFormat:@"isDownloading == YES"];
-    [_tasks filterUsingPredicate:pred];
+    [self.tasks filterUsingPredicate:pred];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
 }
 
@@ -71,7 +73,9 @@
     if (dTask) {
         dTask.receivedBytes = totalBytesWritten;
         dTask.totalBytes = totalBytesExpectedToWrite;
-        dTask.progress = (float)totalBytesWritten / (float)totalBytesExpectedToWrite;
+        if (totalBytesExpectedToWrite > 0) {
+            dTask.progress = (float)totalBytesWritten / (float)totalBytesExpectedToWrite;
+        }
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
     }
 }
@@ -102,6 +106,15 @@
         if (error) {
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:error];
         }
+        [self.taskMap removeObjectForKey:@(task.taskIdentifier)];
+    }
+}
+
+- (void)URLSessionDidFinishEventsForBackgroundURLSession:(NSURLSession *)session {
+    if (self.completionHandler) {
+        void (^handler)(void) = self.completionHandler;
+        self.completionHandler = nil;
+        handler();
     }
 }
 
