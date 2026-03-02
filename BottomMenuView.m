@@ -49,6 +49,7 @@
         [self addButtonWithSystemImage:@"square.and.arrow.up" action:BottomMenuActionWebShare];
         [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
         [self addButtonWithSystemImage:@"house" action:BottomMenuActionWebHome];
+        [self addButtonWithSystemImage:@"arrow.down.circle" action:BottomMenuActionDownloads];
     } else {
         [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
         [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];

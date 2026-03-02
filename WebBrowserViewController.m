@@ -2,6 +2,9 @@
 #import "ThemeEngine.h"
 #import "MainContainerViewController.h"
 #import "BottomMenuView.h"
+#import "CustomMenuView.h"
+#import "DownloadManager.h"
+#import "DownloadsViewController.h"
 
 @interface WebBrowserViewController ()
 @property (nonatomic, strong) WKWebView *webView;
@@ -66,7 +69,10 @@
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     __weak typeof(self) weakSelf = self;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
-    [self.view addSubview:self.bottomMenu];
+        [self.view addSubview:self.bottomMenu];
+
+    UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
+    [self.webView addGestureRecognizer:lp];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
@@ -116,6 +122,11 @@
             break;
         }
         case BottomMenuActionWebHome: [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://www.google.com"]]]; break;
+        case BottomMenuActionDownloads: {
+            DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:YES];
+            break;
+        }
         case BottomMenuActionTabs: {
             MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
             if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher];

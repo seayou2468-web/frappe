@@ -1,0 +1,17 @@
+#import <Foundation/Foundation.h>
+
+@interface DownloadTask : NSObject
+@property (nonatomic, strong) NSURLSessionDownloadTask *task;
+@property (nonatomic, copy) NSString *filename;
+@property (nonatomic, assign) float progress;
+@property (nonatomic, assign) BOOL isDownloading;
+@property (nonatomic, copy) NSString *destinationPath;
+@property (nonatomic, strong) NSData *resumeData;
+@end
+
+@interface DownloadManager : NSObject <NSURLSessionDownloadDelegate>
++ (instancetype)sharedManager;
+@property (nonatomic, strong, readonly) NSMutableArray<DownloadTask *> *tasks;
+- (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path;
+- (void)cancelTask:(DownloadTask *)task;
+@end

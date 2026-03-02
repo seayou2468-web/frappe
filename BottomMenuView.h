@@ -10,7 +10,8 @@ typedef NS_ENUM(NSInteger, BottomMenuAction) {
     BottomMenuActionWebBack,
     BottomMenuActionWebForward,
     BottomMenuActionWebShare,
-    BottomMenuActionWebHome
+    BottomMenuActionWebHome,
+    BottomMenuActionDownloads
 };
 
 typedef NS_ENUM(NSInteger, BottomMenuMode) {
