@@ -21,9 +21,16 @@
     self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.tableView];
 
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"すべて消去" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];
+
     [[NSNotificationCenter defaultCenter] addObserver:self.tableView selector:@selector(reloadData) name:@"DownloadUpdated" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self.tableView selector:@selector(reloadData) name:@"DownloadStarted" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self.tableView selector:@selector(reloadData) name:@"DownloadFinished" object:nil];
+}
+
+- (void)clearAll {
+    [[DownloadManager sharedManager] clearCompletedTasks];
+    [self.tableView reloadData];
 }
 
 #pragma mark - TableView
@@ -57,7 +64,14 @@
 
     DownloadTask *task = [DownloadManager sharedManager].tasks[indexPath.row];
     cell.textLabel.text = task.filename;
-    cell.detailTextLabel.text = task.isDownloading ? [NSString stringWithFormat:@"ダウンロード中... %.0f%%", task.progress * 100] : @"完了";
+
+    if (task.isDownloading) {
+        NSString *received = [NSByteCountFormatter stringFromByteCount:task.receivedBytes countStyle:NSByteCountFormatterCountStyleFile];
+        NSString *total = [NSByteCountFormatter stringFromByteCount:task.totalBytes countStyle:NSByteCountFormatterCountStyleFile];
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ / %@ (%.0f%%)", received, total, task.progress * 100];
+    } else {
+        cell.detailTextLabel.text = @"完了";
+    }
 
     UIProgressView *pv = (UIProgressView *)[cell.contentView viewWithTag:100];
     pv.progress = task.progress;

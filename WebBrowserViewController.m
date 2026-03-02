@@ -144,7 +144,7 @@
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *url = navigationAction.request.URL;
     NSString *ext = [url pathExtension].lowercaseString;
-    NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg"];
+    NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg", @"rar", @"7z", @"gz", @"tar"];
 
     if ([downloadExts containsObject:ext]) {
         [self triggerDownloadWithURL:url];
@@ -165,7 +165,6 @@
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
-    [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
     [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ダウンロード" message:@"ダウンロードを開始しました" preferredStyle:UIAlertControllerStyleAlert];
