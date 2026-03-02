@@ -7,16 +7,26 @@
 
 @implementation BottomMenuView
 
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
+- (instancetype)initWithMode:(BottomMenuMode)mode {
+    self = [super initWithFrame:CGRectZero];
     if (self) {
+        _mode = mode;
         [self setupUI];
     }
     return self;
 }
 
+- (instancetype)initWithFrame:(CGRect)frame {
+    return [self initWithMode:BottomMenuModeFiles];
+}
+
 - (void)setupUI {
+    // Standardize background to Liquid Glass style
     [ThemeEngine applyGlassStyleToView:self cornerRadius:0];
+
+    // Remove existing subviews if any (for dynamic mode switching if needed)
+    for (UIView *v in self.subviews) if (v != self.stackView) [v removeFromSuperview];
+    [self.stackView removeFromSuperview];
 
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -26,7 +36,6 @@
     [self addSubview:self.stackView];
 
     UILayoutGuide *safe = self.safeAreaLayoutGuide;
-
     [NSLayoutConstraint activateConstraints:@[
         [self.stackView.topAnchor constraintEqualToAnchor:self.topAnchor],
         [self.stackView.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
@@ -34,30 +43,34 @@
         [self.stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
     ]];
 
-    [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
-    [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];
-    [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
-    [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
-    [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
+    if (self.mode == BottomMenuModeWeb) {
+        [self addButtonWithSystemImage:@"chevron.left" action:BottomMenuActionWebBack];
+        [self addButtonWithSystemImage:@"chevron.right" action:BottomMenuActionWebForward];
+        [self addButtonWithSystemImage:@"square.and.arrow.up" action:BottomMenuActionWebShare];
+        [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
+        [self addButtonWithSystemImage:@"house" action:BottomMenuActionWebHome];
+    } else {
+        [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
+        [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];
+        [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
+        [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
+        [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
+    }
 }
 
 - (void)addButtonWithSystemImage:(NSString *)imgName action:(BottomMenuAction)action {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightRegular];
     UIImage *img = [UIImage systemImageNamed:imgName withConfiguration:config];
     [btn setImage:img forState:UIControlStateNormal];
     btn.tintColor = [ThemeEngine liquidColor];
-
     btn.tag = action;
     [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.stackView addArrangedSubview:btn];
 }
 
 - (void)btnTapped:(UIButton *)sender {
-    if (self.onAction) {
-        self.onAction(sender.tag);
-    }
+    if (self.onAction) self.onAction(sender.tag);
 }
 
 @end

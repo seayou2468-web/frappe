@@ -1,13 +1,13 @@
 #import "WebBrowserViewController.h"
+#import "ThemeEngine.h"
 #import "MainContainerViewController.h"
 #import "BottomMenuView.h"
-#import "ThemeEngine.h"
 
 @interface WebBrowserViewController ()
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
-@property (nonatomic, strong) UIToolbar *toolbar;
+@property (nonatomic, strong) BottomMenuView *bottomMenu;
 @end
 
 @implementation WebBrowserViewController
@@ -62,25 +62,11 @@
     self.progressView.trackTintColor = [UIColor clearColor];
     [self.view addSubview:self.progressView];
 
-    BottomMenuView *bottomMenu = [[BottomMenuView alloc] init];
-    bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
+    self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeWeb];
+    self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     __weak typeof(self) weakSelf = self;
-    bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
-    [self.view addSubview:bottomMenu];
-
-    self.toolbar = [[UIToolbar alloc] init];
-    self.toolbar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.toolbar.barStyle = UIBarStyleBlack;
-    self.toolbar.translucent = YES;
-    [self.view addSubview:self.toolbar];
-
-    UIBarButtonItem *back = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"chevron.left"] style:UIBarButtonItemStylePlain target:self.webView action:@selector(goBack)];
-    UIBarButtonItem *forward = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"] style:UIBarButtonItemStylePlain target:self.webView action:@selector(goForward)];
-    UIBarButtonItem *reload = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.clockwise"] style:UIBarButtonItemStylePlain target:self.webView action:@selector(reload)];
-    UIBarButtonItem *spacer = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    UIBarButtonItem *share = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.up"] style:UIBarButtonItemStylePlain target:self action:@selector(shareURL)];
-
-    self.toolbar.items = @[back, spacer, forward, spacer, reload, spacer, share];
+    self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
+    [self.view addSubview:self.bottomMenu];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
@@ -92,17 +78,12 @@
         [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor],
         [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.webView.bottomAnchor constraintEqualToAnchor:self.toolbar.topAnchor],
+        [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
 
-        [self.toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [bottomMenu.heightAnchor constraintEqualToConstant:80],
-
-        [self.toolbar.bottomAnchor constraintEqualToAnchor:bottomMenu.topAnchor],
-        [self.toolbar.heightAnchor constraintEqualToConstant:44]
+        [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
     ]];
 }
 
@@ -125,19 +106,16 @@
     self.urlField.text = webView.URL.absoluteString;
 }
 
-- (void)shareURL {
-    UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil];
-    [self presentViewController:avc animated:YES completion:nil];
-}
-
-
-
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
-        case BottomMenuActionWeb: {
-             [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://www.google.com"]]];
-             break;
+        case BottomMenuActionWebBack: [self.webView goBack]; break;
+        case BottomMenuActionWebForward: [self.webView goForward]; break;
+        case BottomMenuActionWebShare: {
+            UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL ?: [NSURL URLWithString:self.initialURL]] applicationActivities:nil];
+            [self presentViewController:avc animated:YES completion:nil];
+            break;
         }
+        case BottomMenuActionWebHome: [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://www.google.com"]]]; break;
         case BottomMenuActionTabs: {
             MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
             if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher];
@@ -146,4 +124,5 @@
         default: break;
     }
 }
+
 @end

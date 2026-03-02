@@ -85,7 +85,7 @@
     [self.view addSubview:self.tableView];
 
     // Bottom Menu
-    self.bottomMenu = [[BottomMenuView alloc] init];
+    self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeFiles];
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
