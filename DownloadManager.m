@@ -29,7 +29,6 @@
         config.waitsForConnectivity = YES;
         config.allowsCellularAccess = YES;
         config.timeoutIntervalForResource = 24 * 60 * 60; // 24 hours
-        config.shouldUseExtendedBackgroundIdleMode = YES;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
     return self;

@@ -181,7 +181,7 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
 
-    [[WebBrowserViewController sharedDataStore].httpCookieStore getAllCookies:^(NSArray<NSCookie *> *cookies) {
+    [[WebBrowserViewController sharedDataStore].httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
         NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
         [request setAllHTTPHeaderFields:headers];
 
