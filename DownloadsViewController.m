@@ -90,6 +90,15 @@
     return cell;
 }
 
+- (void)resumeTapped:(UIButton *)sender {
+    NSInteger row = sender.tag;
+    if (row < [DownloadManager sharedManager].tasks.count) {
+        DownloadTask *task = [DownloadManager sharedManager].tasks[row];
+        [[DownloadManager sharedManager] resumeTask:task];
+        [self.tableView reloadData];
+    }
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }

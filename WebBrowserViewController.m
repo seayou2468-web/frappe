@@ -178,16 +178,26 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
-    [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ダウンロード" message:@"ダウンロードを開始しました" preferredStyle:UIAlertControllerStyleAlert];
-    [self presentViewController:alert animated:YES completion:nil];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [alert dismissViewControllerAnimated:YES completion:nil];
-    });
+    [[WebBrowserViewController sharedDataStore].httpCookieStore getAllCookies:^(NSArray<NSCookie *> *cookies) {
+        NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
+        [request setAllHTTPHeaderFields:headers];
 
-    DownloadsViewController *vc = [[DownloadsViewController alloc] init];
-    [self.navigationController pushViewController:vc animated:YES];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath];
+
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ダウンロード" message:@"ダウンロードを開始しました" preferredStyle:UIAlertControllerStyleAlert];
+            [self presentViewController:alert animated:YES completion:nil];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [alert dismissViewControllerAnimated:YES completion:nil];
+            });
+
+            DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:YES];
+        });
+    }];
 }
 
 - (void)handleLongPress:(UILongPressGestureRecognizer *)lp {

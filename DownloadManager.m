@@ -35,6 +35,28 @@
     return self;
 }
 
+
+- (void)downloadFileWithRequest:(NSURLRequest *)request toPath:(NSString *)path {
+    if (!request) return;
+
+    DownloadTask *dTask = [[DownloadTask alloc] init];
+    NSString *name = [request.URL lastPathComponent];
+    if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
+    dTask.filename = name;
+    dTask.destinationPath = path;
+    dTask.isDownloading = YES;
+    dTask.progress = 0;
+
+    NSURLSessionDownloadTask *task = [self.session downloadTaskWithRequest:request];
+    dTask.task = task;
+
+    [self.tasks addObject:dTask];
+    self.taskMap[@(task.taskIdentifier)] = dTask;
+
+    [task resume];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
+}
+
 - (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path {
     if (!url) return;
 
