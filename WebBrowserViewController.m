@@ -11,13 +11,6 @@
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
-
-
-
-
-
-
-
 @end
 
 @implementation WebBrowserViewController
@@ -76,7 +69,7 @@
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     __weak typeof(self) weakSelf = self;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
-        [self.view addSubview:self.bottomMenu];
+    [self.view addSubview:self.bottomMenu];
 
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     [self.webView addGestureRecognizer:lp];
@@ -109,7 +102,12 @@
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     NSString *urlStr = textField.text;
-    if (![urlStr hasPrefix:@"http"]) urlStr = [@"https://" stringByAppendingString:urlStr];
+    if (urlStr.length == 0) return YES;
+    if (![urlStr containsString:@"."] && ![urlStr hasPrefix:@"http"]) {
+        urlStr = [NSString stringWithFormat:@"https://www.google.com/search?q=%@", [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+    } else if (![urlStr hasPrefix:@"http"]) {
+        urlStr = [@"https://" stringByAppendingString:urlStr];
+    }
     [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlStr]]];
     [textField resignFirstResponder];
     return YES;
@@ -143,35 +141,49 @@
     }
 }
 
-
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     NSURL *url = navigationAction.request.URL;
     NSString *ext = [url pathExtension].lowercaseString;
     NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg"];
 
     if ([downloadExts containsObject:ext]) {
-        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
-        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
-        [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
-
+        [self triggerDownloadWithURL:url];
         decisionHandler(WKNavigationActionPolicyCancel);
-
-        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
-        [self.navigationController pushViewController:vc animated:YES];
         return;
     }
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
+    if (navigationResponse.canShowMIMEType) {
+        decisionHandler(WKNavigationResponsePolicyAllow);
+    } else {
+        [self triggerDownloadWithURL:navigationResponse.response.URL];
+        decisionHandler(WKNavigationResponsePolicyCancel);
+    }
+}
+
+- (void)triggerDownloadWithURL:(NSURL *)url {
+    NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
+    [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ダウンロード" message:@"ダウンロードを開始しました" preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:alert animated:YES completion:nil];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [alert dismissViewControllerAnimated:YES completion:nil];
+    });
+
+    DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
+}
 
 - (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
     if (lp.state != UIGestureRecognizerStateBegan) return;
 
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ダウンロード"];
     [menu addAction:[CustomMenuAction actionWithTitle:@"現在のページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
-        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
-        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
-        [[DownloadManager sharedManager] downloadFileAtURL:self.webView.URL toPath:downloadsPath];
+        [self triggerDownloadWithURL:self.webView.URL];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ダウンロード一覧を表示" systemImage:@"list.bullet" style:CustomMenuActionStyleDefault handler:^{
         DownloadsViewController *vc = [[DownloadsViewController alloc] init];
@@ -179,4 +191,5 @@
     }]];
     [menu showInView:self.view];
 }
+
 @end

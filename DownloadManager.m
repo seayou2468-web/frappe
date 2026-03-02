@@ -33,7 +33,9 @@
 
 - (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path {
     DownloadTask *dTask = [[DownloadTask alloc] init];
-    dTask.filename = [url lastPathComponent];
+    NSString *name = [url lastPathComponent];
+    if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
+    dTask.filename = name;
     dTask.destinationPath = path;
     dTask.isDownloading = YES;
     dTask.progress = 0;
@@ -67,6 +69,8 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
     if (dTask) {
+        NSString *suggested = downloadTask.response.suggestedFilename;
+        if (suggested) dTask.filename = suggested;
         [[NSFileManager defaultManager] createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
         if ([[NSFileManager defaultManager] fileExistsAtPath:dest]) {
