@@ -67,7 +67,11 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
     if (dTask) {
+        [[NSFileManager defaultManager] createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:dest]) {
+             [[NSFileManager defaultManager] removeItemAtPath:dest error:nil];
+        }
         [[NSFileManager defaultManager] moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:nil];
         dTask.isDownloading = NO;
         dTask.progress = 1.0;

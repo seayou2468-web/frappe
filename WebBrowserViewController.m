@@ -11,6 +11,42 @@
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSURL *url = navigationAction.request.URL;
+    NSString *ext = [url pathExtension].lowercaseString;
+    NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg"];
+
+    if ([downloadExts containsObject:ext]) {
+        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
+        [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
+
+        decisionHandler(WKNavigationActionPolicyCancel);
+
+        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
+    if (lp.state != UIGestureRecognizerStateBegan) return;
+
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ダウンロード"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"現在のページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
+        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
+        [[DownloadManager sharedManager] downloadFileAtURL:self.webView.URL toPath:downloadsPath];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ダウンロード一覧を表示" systemImage:@"list.bullet" style:CustomMenuActionStyleDefault handler:^{
+        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
+    [menu showInView:self.view];
+}
 @end
 
 @implementation WebBrowserViewController
@@ -136,4 +172,40 @@
     }
 }
 
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSURL *url = navigationAction.request.URL;
+    NSString *ext = [url pathExtension].lowercaseString;
+    NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg"];
+
+    if ([downloadExts containsObject:ext]) {
+        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
+        [[DownloadManager sharedManager] downloadFileAtURL:url toPath:downloadsPath];
+
+        decisionHandler(WKNavigationActionPolicyCancel);
+
+        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
+    if (lp.state != UIGestureRecognizerStateBegan) return;
+
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ダウンロード"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"現在のページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
+        NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:downloadsPath withIntermediateDirectories:YES attributes:nil error:nil];
+        [[DownloadManager sharedManager] downloadFileAtURL:self.webView.URL toPath:downloadsPath];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ダウンロード一覧を表示" systemImage:@"list.bullet" style:CustomMenuActionStyleDefault handler:^{
+        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
+    [menu showInView:self.view];
+}
 @end
