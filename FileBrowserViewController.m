@@ -467,26 +467,6 @@
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    CGFloat y = scrollView.contentOffset.y;
-    if (y < -80) {
-        if (!self.isSearchRevealed) {
-            self.isSearchRevealed = YES;
-            [UIView animateWithDuration:0.3 animations:^{
-                self.searchBarTopConstraint.constant = 0;
-                self.searchBar.alpha = 1.0;
-                self.searchScope.alpha = 1.0;
-                self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0);
-            }];
-        }
-    } else if (y > 50 && self.isSearchRevealed) {
-        self.isSearchRevealed = NO;
-        [UIView animateWithDuration:0.3 animations:^{
-            self.searchBarTopConstraint.constant = -100;
-            self.searchBar.alpha = 0;
-            self.searchScope.alpha = 0;
-            self.tableView.contentInset = UIEdgeInsetsZero;
-        }];
-    }
 }
 
 - (void)dealloc {
