@@ -16,6 +16,7 @@
 + (instancetype)sharedManager;
 @property (nonatomic, strong, readonly) NSMutableArray<DownloadTask *> *tasks;
 - (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path;
+- (void)resumeTask:(DownloadTask *)task;
 - (void)cancelTask:(DownloadTask *)task;
 - (void)clearCompletedTasks;
 @end

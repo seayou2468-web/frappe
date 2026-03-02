@@ -28,6 +28,8 @@
         config.HTTPMaximumConnectionsPerHost = 16;
         config.waitsForConnectivity = YES;
         config.allowsCellularAccess = YES;
+        config.timeoutIntervalForResource = 24 * 60 * 60; // 24 hours
+        config.shouldUseExtendedBackgroundIdleMode = YES;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
     return self;
@@ -52,6 +54,20 @@
 
     [task resume];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
+}
+
+- (void)resumeTask:(DownloadTask *)task {
+    if (task.resumeData) {
+        NSURLSessionDownloadTask *newDownloadTask = [self.session downloadTaskWithResumeData:task.resumeData];
+        task.task = newDownloadTask;
+        task.isDownloading = YES;
+        task.resumeData = nil;
+        self.taskMap[@(newDownloadTask.taskIdentifier)] = task;
+        [newDownloadTask resume];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
+    } else if (task.task.originalRequest.URL) {
+        [self downloadFileAtURL:task.task.originalRequest.URL toPath:task.destinationPath];
+    }
 }
 
 - (void)cancelTask:(DownloadTask *)task {
@@ -104,9 +120,14 @@
     if (dTask) {
         dTask.isDownloading = NO;
         if (error) {
+            NSData *resumeData = error.userInfo[NSURLSessionDownloadTaskResumeData];
+            if (resumeData) {
+                dTask.resumeData = resumeData;
+            }
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:error];
+        } else {
+            [self.taskMap removeObjectForKey:@(task.taskIdentifier)];
         }
-        [self.taskMap removeObjectForKey:@(task.taskIdentifier)];
     }
 }
 

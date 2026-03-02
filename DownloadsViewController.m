@@ -65,6 +65,16 @@
     DownloadTask *task = [DownloadManager sharedManager].tasks[indexPath.row];
     cell.textLabel.text = task.filename;
 
+    if (!task.isDownloading && task.resumeData) {
+        UIButton *resumeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [resumeBtn setTitle:@"再開" forState:UIControlStateNormal];
+        resumeBtn.tag = indexPath.row;
+        [resumeBtn addTarget:self action:@selector(resumeTapped:) forControlEvents:UIControlEventTouchUpInside];
+        cell.accessoryView = resumeBtn;
+    } else {
+        cell.accessoryView = nil;
+    }
+
     if (task.isDownloading) {
         NSString *received = [NSByteCountFormatter stringFromByteCount:task.receivedBytes countStyle:NSByteCountFormatterCountStyleFile];
         NSString *total = [NSByteCountFormatter stringFromByteCount:task.totalBytes countStyle:NSByteCountFormatterCountStyleFile];
