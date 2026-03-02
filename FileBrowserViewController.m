@@ -438,6 +438,7 @@
         case BottomMenuActionFavorites: [self showFavoritesMenu]; break;
         case BottomMenuActionOthers: [self showOthersMenu]; break;
         case BottomMenuActionSettings: [self showSettings]; break;
+        default: break;
     }
 }
 
@@ -495,7 +496,7 @@
     searchBtn.enabled = !isEditing;
 
     if (isEditing) {
-        UIBarButtonItem *actionBtn = [[UIBarButtonItem alloc] initWithTitle:@"操作" style:UIBarButtonItemStyleDone target:self action:@selector(showSelectionActions)];
+        UIBarButtonItem *actionBtn = [[UIBarButtonItem alloc] initWithTitle:@"操作" style:UIBarButtonItemStylePlain target:self action:@selector(showSelectionActions)];
         NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy];
         items[0] = actionBtn;
         self.navigationItem.rightBarButtonItems = items;
