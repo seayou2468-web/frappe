@@ -1,4 +1,5 @@
 #import "TabManager.h"
+#import "WebBrowserViewController.h"
 
 
 
@@ -42,6 +43,19 @@
 - (void)removeTabAtIndex:(NSInteger)index {
     if (index < _tabs.count) {
         [_tabs removeObjectAtIndex:index];
+
+        // Check if any browser tabs remain
+        BOOL hasBrowserTabs = NO;
+        for (TabInfo *tab in _tabs) {
+            if (tab.type == TabTypeWebBrowser) {
+                hasBrowserTabs = YES;
+                break;
+            }
+        }
+        if (!hasBrowserTabs) {
+            [WebBrowserViewController resetSharedDataStore];
+        }
+
         if (self.activeTabIndex >= _tabs.count) {
             self.activeTabIndex = _tabs.count - 1;
         }

@@ -6,6 +6,8 @@
 #import "DownloadManager.h"
 #import "DownloadsViewController.h"
 
+static WKWebsiteDataStore *_sharedDataStore = nil;
+
 @interface WebBrowserViewController ()
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UITextField *urlField;
@@ -14,6 +16,17 @@
 @end
 
 @implementation WebBrowserViewController
+
++ (WKWebsiteDataStore *)sharedDataStore {
+    if (!_sharedDataStore) {
+        _sharedDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    }
+    return _sharedDataStore;
+}
+
++ (void)resetSharedDataStore {
+    _sharedDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+}
 
 - (instancetype)initWithURL:(NSString *)url {
     self = [super init];
@@ -40,7 +53,7 @@
 
 - (void)setupUI {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-    config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    config.websiteDataStore = [WebBrowserViewController sharedDataStore];
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.navigationDelegate = self;
