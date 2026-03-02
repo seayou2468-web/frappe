@@ -4,7 +4,8 @@
 
 
 typedef NS_ENUM(NSInteger, TabType) {
-    TabTypeFileBrowser
+    TabTypeFileBrowser,
+    TabTypeWebBrowser
 };
 
 @interface TabInfo : NSObject

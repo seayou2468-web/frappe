@@ -35,6 +35,7 @@
     ]];
 
     [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
+    [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];
     [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
     [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
     [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];

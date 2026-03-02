@@ -2,12 +2,15 @@
 #import "TabManager.h"
 #import "TabSwitcherViewController.h"
 #import "FileBrowserViewController.h"
+#import "WebBrowserViewController.h"
 #import "ThemeEngine.h"
 
 
 
 @interface MainContainerViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIViewController *currentContentController;
+
+
 @end
 
 @implementation MainContainerViewController
@@ -46,6 +49,8 @@
             tempPath = [tempPath stringByAppendingPathComponent:comp];
             [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
         }
+    } else if (active.type == TabTypeWebBrowser) {
+        [vcs addObject:[[WebBrowserViewController alloc] initWithURL:active.currentPath]];
     } else {
         [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
     }
@@ -94,6 +99,22 @@
         return nav.viewControllers.count > 1;
     }
     return NO;
+}
+
+
+- (void)handleMenuAction:(BottomMenuAction)action {
+    switch (action) {
+        case BottomMenuActionWeb: {
+            [[TabManager sharedManager] addNewTabWithType:TabTypeWebBrowser path:@"https://www.google.com"];
+            [self displayActiveTab];
+            break;
+        }
+        case BottomMenuActionTabs: {
+            [self showTabSwitcher];
+            break;
+        }
+        default: break;
+    }
 }
 
 @end

@@ -423,6 +423,13 @@
 
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
+        case BottomMenuActionWeb: {
+            MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
+            if ([container isKindOfClass:[MainContainerViewController class]]) {
+                [container handleMenuAction:action];
+            }
+            break;
+        }
         case BottomMenuActionTabs: {
             MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
             if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher];
