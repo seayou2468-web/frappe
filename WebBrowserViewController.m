@@ -1,4 +1,5 @@
 #import "WebBrowserViewController.h"
+#import "TabManager.h"
 #import "ThemeEngine.h"
 #import "MainContainerViewController.h"
 #import "BottomMenuView.h"
@@ -182,7 +183,8 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 }
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
-    NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+    NSString *downloadsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    downloadsPath = [downloadsPath stringByAppendingPathComponent:@"Downloads"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
 

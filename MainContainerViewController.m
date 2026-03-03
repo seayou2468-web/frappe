@@ -4,6 +4,7 @@
 #import "FileBrowserViewController.h"
 #import "WebBrowserViewController.h"
 #import "ThemeEngine.h"
+#import "BottomMenuView.h"
 
 
 
