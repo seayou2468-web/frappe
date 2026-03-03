@@ -42,7 +42,6 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self setupUI];
-
     NSURL *url = [NSURL URLWithString:self.initialURL];
     [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
@@ -54,18 +53,15 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)setupUI {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-
-    // Choose data store based on URL persistence
     if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) {
         config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
     } else {
         config.websiteDataStore = [WebBrowserViewController sharedDataStore];
     }
-
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.navigationDelegate = self;
-    self.webView.uiDelegate = self;
+    self.webView.UIDelegate = self;
     self.webView.allowsBackForwardNavigationGestures = YES;
     self.webView.backgroundColor = [UIColor clearColor];
     self.webView.opaque = NO;
@@ -176,84 +172,42 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
     if (lp.state != UIGestureRecognizerStateBegan) return;
-
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ツール"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"クッキーを表示" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{
-        [self showCookies];
-    }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"Webインスペクタ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{
-        [self showWebInspector];
-    }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
-        [self triggerDownloadWithURL:self.webView.URL];
-    }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"永続サイトに追加" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{
-        [[PersistenceManager sharedManager] addDomain:self.webView.URL.host];
-    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"クッキーを表示" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{ [self showCookies]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"Webインスペクタ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showWebInspector]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{ [self triggerDownloadWithURL:self.webView.URL]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"永続サイトに追加" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [[PersistenceManager sharedManager] addDomain:self.webView.URL.host]; }]];
     [menu showInView:self.view];
 }
 
 - (void)showCookies {
     [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSMutableString *str = [NSMutableString stringWithString:@"Current Cookies:\n\n"];
-            for (NSHTTPCookie *cookie in cookies) {
-                [str appendFormat:@"Name: %@\nValue: %@\nDomain: %@\n\n", cookie.name, cookie.value, cookie.domain];
-            }
-            if (cookies.count == 0) [str appendString:@"No cookies found."];
-
-            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds];
-            tv.text = str;
-            tv.editable = NO;
-            tv.backgroundColor = [UIColor blackColor];
-            tv.textColor = [UIColor greenColor];
-            tv.font = [UIFont fontWithName:@"Menlo" size:12];
-
-            UIViewController *vc = [[UIViewController alloc] init];
-            vc.view = tv;
-            vc.title = @"Cookies";
-            [self.navigationController pushViewController:vc animated:YES];
+            NSMutableString *str = [NSMutableString stringWithFormat:@"Current Cookies: %lu\n\n", (unsigned long)cookies.count];
+            for (NSHTTPCookie *cookie in cookies) { [str appendFormat:@"Name: %@\nValue: %@\nDomain: %@\n\n", cookie.name, cookie.value, cookie.domain]; }
+            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds]; tv.text = str; tv.editable = NO; tv.backgroundColor = [UIColor blackColor]; tv.textColor = [UIColor greenColor]; tv.font = [UIFont fontWithName:@"Menlo" size:12];
+            UIViewController *vc = [[UIViewController alloc] init]; vc.view = tv; vc.title = @"Cookies"; [self.navigationController pushViewController:vc animated:YES];
         });
     }];
 }
 
 - (void)showWebInspector {
-    // Basic element/source viewer using JS injection
-    NSString *js = @"document.documentElement.outerHTML";
-    [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+    [self.webView evaluateJavaScript:@"document.documentElement.outerHTML" completionHandler:^(id result, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds];
-            tv.text = (NSString *)result;
-            tv.editable = NO;
-            tv.backgroundColor = [UIColor blackColor];
-            tv.textColor = [UIColor whiteColor];
-            tv.font = [UIFont fontWithName:@"Menlo" size:11];
-
-            UIViewController *vc = [[UIViewController alloc] init];
-            vc.view = tv;
-            vc.title = @"Source Inspector";
-            [self.navigationController pushViewController:vc animated:YES];
+            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds]; tv.text = (NSString *)result; tv.editable = NO; tv.backgroundColor = [UIColor blackColor]; tv.textColor = [UIColor whiteColor]; tv.font = [UIFont fontWithName:@"Menlo" size:11];
+            UIViewController *vc = [[UIViewController alloc] init]; vc.view = tv; vc.title = @"Source Inspector"; [self.navigationController pushViewController:vc animated:YES];
         });
     }];
 }
-
-#pragma mark - Downloads
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     NSString *downloadsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     downloadsPath = [downloadsPath stringByAppendingPathComponent:@"Downloads"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
-
     [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
-        NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
-        [request setAllHTTPHeaderFields:headers];
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath];
-            DownloadsViewController *vc = [[DownloadsViewController alloc] init];
-            [self.navigationController pushViewController:vc animated:YES];
-        });
+        [request setAllHTTPHeaderFields:[NSHTTPCookie requestHeaderFieldsWithCookies:cookies]];
+        dispatch_async(dispatch_get_main_queue(), ^{ [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath]; DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; });
     }];
 }
 

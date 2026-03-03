@@ -36,7 +36,6 @@
 
 - (void)downloadFileWithRequest:(NSURLRequest *)request toPath:(NSString *)path {
     if (!request) return;
-
     DownloadTask *dTask = [[DownloadTask alloc] init];
     NSString *name = [request.URL lastPathComponent];
     if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
@@ -44,13 +43,10 @@
     dTask.destinationPath = path;
     dTask.isDownloading = YES;
     dTask.progress = 0;
-
     NSURLSessionDownloadTask *task = [self.session downloadTaskWithRequest:request];
     dTask.task = task;
-
     [self.tasks addObject:dTask];
     self.taskMap[@(task.taskIdentifier)] = dTask;
-
     [task resume];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
 }
@@ -78,6 +74,12 @@
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
 }
 
+- (void)clearCompletedTasks {
+    NSPredicate *pred = [NSPredicate predicateWithFormat:@"isDownloading == YES"];
+    [self.tasks filterUsingPredicate:pred];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
+}
+
 #pragma mark - NSURLSessionDownloadDelegate
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
@@ -95,13 +97,10 @@
     if (dTask) {
         NSString *suggested = downloadTask.response.suggestedFilename;
         if (suggested) dTask.filename = suggested;
-
         NSFileManager *fm = [NSFileManager defaultManager];
         [fm createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
-
         if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
-
         NSError *moveError = nil;
         if ([fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:&moveError]) {
             dTask.isDownloading = NO;
