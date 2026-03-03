@@ -19,31 +19,33 @@
     if (self) {
         self.container = [[UIView alloc] initWithFrame:self.bounds];
         self.container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        self.container.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
-        self.container.layer.cornerRadius = 16;
+        self.container.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        self.container.layer.cornerRadius = 20;
+        self.container.layer.borderWidth = 1.0;
+        self.container.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15].CGColor;
         self.container.clipsToBounds = YES;
         [self.contentView addSubview:self.container];
 
-        UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, 34)];
-        header.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+        UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, 36)];
+        header.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.04];
         [self.container addSubview:header];
 
-        _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 0, frame.size.width-44, 34)];
+        _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 0, frame.size.width-44, 36)];
         _titleLabel.textColor = [UIColor whiteColor];
-        _titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        _titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
         [header addSubview:_titleLabel];
 
         _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [_closeButton setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
-        _closeButton.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-        _closeButton.frame = CGRectMake(frame.size.width-34, 0, 34, 34);
+        [_closeButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
+        _closeButton.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+        _closeButton.frame = CGRectMake(frame.size.width-36, 0, 36, 36);
         [_closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
         [header addSubview:_closeButton];
 
-        _previewImage = [[UIImageView alloc] initWithFrame:CGRectMake(0, 34, frame.size.width, frame.size.height-34)];
+        _previewImage = [[UIImageView alloc] initWithFrame:CGRectMake(0, 36, frame.size.width, frame.size.height-36)];
         _previewImage.contentMode = UIViewContentModeScaleAspectFill;
         _previewImage.clipsToBounds = YES;
-        _previewImage.backgroundColor = [UIColor blackColor];
+        _previewImage.backgroundColor = [UIColor colorWithWhite:0.05 alpha:1.0];
         [self.container addSubview:_previewImage];
 
         UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLP:)];
@@ -135,8 +137,8 @@
 
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
     CGFloat w = (self.view.bounds.size.width - 45) / 2;
-    layout.itemSize = CGSizeMake(w, w * 1.3);
-    layout.sectionInset = UIEdgeInsetsMake(20, 15, 100, 15);
+    layout.itemSize = CGSizeMake(w, w * 1.35);
+    layout.sectionInset = UIEdgeInsetsMake(20, 15, 120, 15);
     layout.minimumInteritemSpacing = 15;
     layout.minimumLineSpacing = 20;
 
@@ -148,7 +150,7 @@
     [_collectionView registerClass:[TabCell class] forCellWithReuseIdentifier:@"TabCell"];
     [self.view addSubview:_collectionView];
 
-    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height-80, self.view.bounds.size.width, 80)];
+    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height-90, self.view.bounds.size.width, 90)];
     [ThemeEngine applyGlassStyleToView:bottomBar cornerRadius:0];
     [self.view addSubview:bottomBar];
 

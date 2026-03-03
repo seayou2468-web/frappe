@@ -18,7 +18,9 @@
 @property (nonatomic, strong) NSMutableArray<CustomMenuAction *> *actions;
 @property (nonatomic, strong) UIView *backgroundDimmer;
 @property (nonatomic, strong) NSLayoutConstraint *contentBottomConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *contentHeightConstraint;
 @property (nonatomic, assign) CGPoint panStartPoint;
+@property (nonatomic, assign) CGFloat initialHeight;
 @end
 
 @implementation CustomMenuView
@@ -54,12 +56,10 @@
     self.contentView = [[UIView alloc] init];
     self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
     [ThemeEngine applyGlassStyleToView:self.contentView cornerRadius:25];
-    // Mask only top corners
     self.contentView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     self.contentView.clipsToBounds = YES;
     [self addSubview:self.contentView];
 
-    // Also try to mask the blur view corners if it was added by ThemeEngine
     for (UIView *subview in self.contentView.subviews) {
         if ([subview isKindOfClass:[UIVisualEffectView class]]) {
             subview.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
@@ -96,7 +96,7 @@
         [self.contentView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.contentView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         self.contentBottomConstraint,
-        [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.9],
+        [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.95],
 
         [grabber.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
         [grabber.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
@@ -123,22 +123,28 @@
     CGPoint translation = [pan translationInView:self];
     if (pan.state == UIGestureRecognizerStateBegan) {
         self.panStartPoint = translation;
+        self.initialHeight = self.contentView.frame.size.height;
     } else if (pan.state == UIGestureRecognizerStateChanged) {
         CGFloat y = translation.y - self.panStartPoint.y;
         if (y > 0) {
+            // Drag down to dismiss
             self.contentBottomConstraint.constant = y;
             self.backgroundDimmer.alpha = 1.0 - (y / 300.0);
+        } else {
+            // Pull up to expand
+            CGFloat resistance = 0.3; // Elastic feel
+            self.contentBottomConstraint.constant = y * resistance;
         }
     } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
         CGFloat y = translation.y - self.panStartPoint.y;
         if (y > 100) {
             [self dismiss];
         } else {
-            [UIView animateWithDuration:0.3 animations:^{
+            [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
                 self.contentBottomConstraint.constant = 0;
                 self.backgroundDimmer.alpha = 1.0;
                 [self layoutIfNeeded];
-            }];
+            } completion:nil];
         }
     }
 }
@@ -192,7 +198,6 @@
         [self.stackView addArrangedSubview:btn];
         [btn.heightAnchor constraintEqualToConstant:54].active = YES;
 
-        // Separator
         if (i < self.actions.count - 1) {
             UIView *sep = [[UIView alloc] init];
             sep.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
