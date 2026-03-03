@@ -9,6 +9,7 @@
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIImageView *previewImage;
 @property (nonatomic, strong) UIButton *closeButton;
+@property (nonatomic, strong) UIView *folderIndicator;
 @property (nonatomic, copy) void (^onClose)(void);
 @property (nonatomic, copy) void (^onLongPress)(void);
 @end
@@ -46,12 +47,22 @@
         _previewImage.backgroundColor = [UIColor blackColor];
         [self.container addSubview:_previewImage];
 
+        _folderIndicator = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
+        _folderIndicator.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
+        _folderIndicator.layer.cornerRadius = 20;
+        _folderIndicator.center = CGPointMake(frame.size.width/2, frame.size.height/2 + 17);
+        UIImageView *folderIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"folder.fill"]];
+        folderIcon.tintColor = [UIColor whiteColor];
+        folderIcon.frame = CGRectMake(10, 10, 20, 20);
+        [_folderIndicator addSubview:folderIcon];
+        _folderIndicator.hidden = YES;
+        [self.container addSubview:_folderIndicator];
+
         UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLP:)];
         [self addGestureRecognizer:lp];
 
-        UISwipeGestureRecognizer *swipe = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipe:)];
-        swipe.direction = UISwipeGestureRecognizerDirectionLeft;
-        [self addGestureRecognizer:swipe];
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        [self addGestureRecognizer:pan];
     }
     return self;
 }
@@ -59,14 +70,37 @@
 - (void)handleLP:(UILongPressGestureRecognizer *)lp {
     if (lp.state == UIGestureRecognizerStateBegan && self.onLongPress) self.onLongPress();
 }
-- (void)handleSwipe:(UISwipeGestureRecognizer *)swipe {
-    if (swipe.state == UIGestureRecognizerStateRecognized && self.onClose) self.onClose();
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    CGPoint translation = [pan translationInView:self];
+    if (pan.state == UIGestureRecognizerStateChanged) {
+        if (translation.x < 0) self.container.transform = CGAffineTransformMakeTranslation(translation.x, 0);
+    } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
+        if (translation.x < -80) {
+            [UIView animateWithDuration:0.2 animations:^{
+                self.container.transform = CGAffineTransformMakeTranslation(-self.bounds.size.width, 0);
+                self.container.alpha = 0;
+            } completion:^(BOOL finished) {
+                if (self.onClose) self.onClose();
+            }];
+        } else {
+            [UIView animateWithDuration:0.2 animations:^{
+                self.container.transform = CGAffineTransformIdentity;
+            }];
+        }
+    }
+}
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    self.container.transform = CGAffineTransformIdentity;
+    self.container.alpha = 1.0;
+    self.folderIndicator.hidden = YES;
 }
 @end
 
 @implementation TabSwitcherViewController {
     UICollectionView *_collectionView;
     NSMutableArray *_displayItems;
+    TabGroup *_currentGroupScope;
 }
 
 - (void)authenticateWithTab:(TabInfo *)tab completion:(void (^)(BOOL success))completion {
@@ -145,13 +179,25 @@
     [bottomBar addSubview:doneBtn];
 }
 
-- (void)doneTapped { [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)doneTapped {
+    if (_currentGroupScope) {
+        _currentGroupScope = nil;
+        [self updateDisplayItems];
+        [_collectionView reloadData];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
 
 - (void)updateDisplayItems {
     _displayItems = [NSMutableArray array];
-    [_displayItems addObjectsFromArray:[TabManager sharedManager].groups];
-    for (TabInfo *tab in [TabManager sharedManager].tabs) {
-        if (!tab.group) [_displayItems addObject:tab];
+    if (_currentGroupScope) {
+        [_displayItems addObjectsFromArray:_currentGroupScope.tabs];
+    } else {
+        [_displayItems addObjectsFromArray:[TabManager sharedManager].groups];
+        for (TabInfo *tab in [TabManager sharedManager].tabs) {
+            if (!tab.group) [_displayItems addObject:tab];
+        }
     }
 }
 
@@ -177,8 +223,9 @@
 
     if ([item isKindOfClass:[TabGroup class]]) {
         TabGroup *group = (TabGroup *)item;
-        cell.titleLabel.text = [NSString stringWithFormat:@"%@ (%lu)", group.title, (unsigned long)group.tabs.count];
+        cell.titleLabel.text = group.title;
         cell.previewImage.image = (group.tabs.count > 0) ? group.tabs.firstObject.screenshot : nil;
+        cell.folderIndicator.hidden = NO;
         cell.onClose = ^{
             [[TabManager sharedManager].groups removeObject:group];
             [self updateDisplayItems];
@@ -201,25 +248,21 @@
 
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
     id item = _displayItems[indexPath.item];
-    NSInteger idx = -1;
     if ([item isKindOfClass:[TabGroup class]]) {
         TabGroup *group = (TabGroup *)item;
-        if (group.tabs.count > 0) idx = [[TabManager sharedManager].tabs indexOfObject:group.tabs.firstObject];
+        [self authenticateWithGroup:group completion:^(BOOL success) {
+            if (success) {
+                _currentGroupScope = group;
+                [self updateDisplayItems];
+                [collectionView reloadData];
+            }
+        }];
     } else {
-        idx = [[TabManager sharedManager].tabs indexOfObject:item];
-    }
-
-    if (idx != -1) {
-        TabInfo *info = ([item isKindOfClass:[TabGroup class]] && ((TabGroup *)item).tabs.count > 0) ? ((TabGroup *)item).tabs.firstObject : (TabInfo *)item;
+        TabInfo *info = (TabInfo *)item;
+        NSInteger idx = [[TabManager sharedManager].tabs indexOfObject:info];
         [self authenticateWithTab:info completion:^(BOOL success) {
             if (success) {
-                if (info.group) {
-                    [self authenticateWithGroup:info.group completion:^(BOOL gSuccess) {
-                        if (gSuccess && self.onTabSelected) self.onTabSelected(idx);
-                    }];
-                } else if (self.onTabSelected) {
-                    self.onTabSelected(idx);
-                }
+                if (self.onTabSelected) self.onTabSelected(idx);
             }
         }];
     }
