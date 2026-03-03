@@ -1,12 +1,17 @@
 #import "TabManager.h"
 #import "WebBrowserViewController.h"
 
-
-
 @implementation TabInfo
 @end
+
 @implementation TabGroup
-- (instancetype)init { self = [super init]; if (self) { _tabs = [NSMutableArray array]; } return self; }
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _tabs = [NSMutableArray array];
+    }
+    return self;
+}
 @end
 
 @implementation TabManager
@@ -30,8 +35,27 @@
     return self;
 }
 
-- (void)createGroupWithTitle:(NSString *)title { TabGroup *group = [[TabGroup alloc] init]; group.title = title; [_groups addObject:group]; }
-- (void)addTab:(TabInfo *)tab toGroup:(TabGroup *)group { if (tab.group) { [tab.group.tabs removeObject:tab]; } tab.group = group; [group.tabs addObject:tab]; }
+- (TabGroup *)createGroupWithTitle:(NSString *)title {
+    TabGroup *group = [[TabGroup alloc] init];
+    group.title = title;
+    [_groups addObject:group];
+    return group;
+}
+
+- (void)addTab:(TabInfo *)tab toGroup:(TabGroup *)group {
+    TabGroup *oldGroup = tab.group;
+    if (oldGroup) {
+        [oldGroup.tabs removeObject:tab];
+        if (oldGroup.tabs.count == 0) {
+            [_groups removeObject:oldGroup];
+        }
+    }
+    tab.group = group;
+    if (group) {
+        [group.tabs addObject:tab];
+    }
+}
+
 - (void)addNewTabWithType:(TabType)type path:(NSString *)path {
     TabInfo *tab = [[TabInfo alloc] init];
     tab.type = type;
@@ -50,6 +74,15 @@
     if (index < _tabs.count) {
         TabInfo *removed = _tabs[index];
         removed.viewController = nil;
+
+        TabGroup *group = removed.group;
+        if (group) {
+            [group.tabs removeObject:removed];
+            if (group.tabs.count == 0) {
+                [_groups removeObject:group];
+            }
+        }
+
         [_tabs removeObjectAtIndex:index];
 
         // Check if any browser tabs remain
@@ -70,6 +103,18 @@
     }
 }
 
+- (void)removeGroup:(TabGroup *)group {
+    if (!group) return;
+    NSArray *tabsToRemove = [group.tabs copy];
+    for (TabInfo *tab in tabsToRemove) {
+        NSInteger idx = [_tabs indexOfObject:tab];
+        if (idx != NSNotFound) {
+            [self removeTabAtIndex:idx];
+        }
+    }
+    [_groups removeObject:group];
+}
+
 - (TabInfo *)activeTab {
     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.count) {
         return _tabs[_activeTabIndex];
@@ -78,4 +123,3 @@
 }
 
 @end
-
