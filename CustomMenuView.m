@@ -12,11 +12,13 @@
 }
 @end
 
-@interface CustomMenuView ()
+@interface CustomMenuView () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIView *contentView;
 @property (nonatomic, strong) UIStackView *stackView;
 @property (nonatomic, strong) NSMutableArray<CustomMenuAction *> *actions;
 @property (nonatomic, strong) UIView *backgroundDimmer;
+@property (nonatomic, strong) NSLayoutConstraint *contentBottomConstraint;
+@property (nonatomic, assign) CGPoint panStartPoint;
 @end
 
 @implementation CustomMenuView
@@ -29,7 +31,6 @@
 }
 
 - (void)setupUI {
-    // Determine screen bounds from window context
     CGRect screenBounds = CGRectZero;
     UIWindow *window = self.window ?: self.superview.window;
     if (window.windowScene) {
@@ -37,14 +38,13 @@
     }
 
     if (CGRectIsEmpty(screenBounds)) {
-        // Fallback to superview bounds or some default if window scene is unavailable
-        screenBounds = self.superview ? self.superview.bounds : CGRectMake(0, 0, 393, 852); // Default iPhone 14-ish size as last resort
+        screenBounds = self.superview ? self.superview.bounds : CGRectMake(0, 0, 393, 852);
     }
 
     self.frame = screenBounds;
 
     self.backgroundDimmer = [[UIView alloc] initWithFrame:self.bounds];
-    self.backgroundDimmer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
+    self.backgroundDimmer.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
     self.backgroundDimmer.alpha = 0;
     [self addSubview:self.backgroundDimmer];
 
@@ -54,13 +54,31 @@
     self.contentView = [[UIView alloc] init];
     self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
     [ThemeEngine applyGlassStyleToView:self.contentView cornerRadius:25];
+    // Mask only top corners
+    self.contentView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    self.contentView.clipsToBounds = YES;
     [self addSubview:self.contentView];
+
+    // Also try to mask the blur view corners if it was added by ThemeEngine
+    for (UIView *subview in self.contentView.subviews) {
+        if ([subview isKindOfClass:[UIVisualEffectView class]]) {
+            subview.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+            subview.layer.cornerRadius = 25;
+            subview.clipsToBounds = YES;
+        }
+    }
+
+    UIView *grabber = [[UIView alloc] init];
+    grabber.translatesAutoresizingMaskIntoConstraints = NO;
+    grabber.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.3];
+    grabber.layer.cornerRadius = 2.5;
+    [self.contentView addSubview:grabber];
 
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = self.menuTitle;
-    titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightBold];
-    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
+    titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
     titleLabel.textAlignment = NSTextAlignmentCenter;
     titleLabel.numberOfLines = 0;
     [self.contentView addSubview:titleLabel];
@@ -68,28 +86,61 @@
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.stackView.axis = UILayoutConstraintAxisVertical;
-    self.stackView.spacing = 10;
-    self.stackView.distribution = UIStackViewDistributionFillProportionally;
+    self.stackView.spacing = 2;
+    self.stackView.distribution = UIStackViewDistributionFill;
     [self.contentView addSubview:self.stackView];
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.contentView.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
-        [self.contentView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-        [self.contentView.widthAnchor constraintEqualToAnchor:self.widthAnchor multiplier:0.85],
-        [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.8],
+    self.contentBottomConstraint = [self.contentView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:800];
 
-        [titleLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:25],
+    [NSLayoutConstraint activateConstraints:@[
+        [self.contentView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [self.contentView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        self.contentBottomConstraint,
+        [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.9],
+
+        [grabber.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
+        [grabber.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [grabber.widthAnchor constraintEqualToConstant:36],
+        [grabber.heightAnchor constraintEqualToConstant:5],
+
+        [titleLabel.topAnchor constraintEqualToAnchor:grabber.bottomAnchor constant:10],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
 
-        [self.stackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:20],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:15],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-15],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-20],
+        [self.stackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:15],
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
+        [self.stackView.bottomAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.bottomAnchor constant:-15],
     ]];
 
-    self.contentView.alpha = 0;
-    self.contentView.transform = CGAffineTransformMakeScale(0.8, 0.8);
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    [self.contentView addGestureRecognizer:pan];
+
+    [self layoutIfNeeded];
+}
+
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    CGPoint translation = [pan translationInView:self];
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        self.panStartPoint = translation;
+    } else if (pan.state == UIGestureRecognizerStateChanged) {
+        CGFloat y = translation.y - self.panStartPoint.y;
+        if (y > 0) {
+            self.contentBottomConstraint.constant = y;
+            self.backgroundDimmer.alpha = 1.0 - (y / 300.0);
+        }
+    } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
+        CGFloat y = translation.y - self.panStartPoint.y;
+        if (y > 100) {
+            [self dismiss];
+        } else {
+            [UIView animateWithDuration:0.3 animations:^{
+                self.contentBottomConstraint.constant = 0;
+                self.backgroundDimmer.alpha = 1.0;
+                [self layoutIfNeeded];
+            }];
+        }
+    }
 }
 
 - (void)addAction:(CustomMenuAction *)action {
@@ -107,18 +158,14 @@
     [view addSubview:self];
     [self setupUI];
 
-    // Add buttons to stack view here
     for (NSInteger i = 0; i < self.actions.count; i++) {
         CustomMenuAction *action = self.actions[i];
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
-        btn.layer.cornerRadius = 14;
-
-        btn.titleLabel.numberOfLines = 0;
-        btn.titleLabel.textAlignment = NSTextAlignmentCenter;
+        btn.backgroundColor = [UIColor clearColor];
+        btn.translatesAutoresizingMaskIntoConstraints = NO;
 
         NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:action.title attributes:@{
-            NSFontAttributeName: [UIFont systemFontOfSize:17 weight:UIFontWeightMedium],
+            NSFontAttributeName: [UIFont systemFontOfSize:18 weight:UIFontWeightMedium],
             NSForegroundColorAttributeName: (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor]
         }];
         [btn setAttributedTitle:str forState:UIControlStateNormal];
@@ -127,28 +174,39 @@
             UIImage *img = [UIImage systemImageNamed:action.systemImageName];
             [btn setImage:img forState:UIControlStateNormal];
             UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-            config.imagePadding = 12;
-            config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+            config.imagePadding = 16;
+            config.contentInsets = NSDirectionalEdgeInsetsMake(0, 16, 0, 16);
             config.imagePlacement = NSDirectionalRectEdgeLeading;
             btn.configuration = config;
         } else {
             UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-            config.contentInsets = NSDirectionalEdgeInsetsMake(14, 16, 14, 16);
+            config.contentInsets = NSDirectionalEdgeInsetsMake(0, 16, 0, 16);
             btn.configuration = config;
         }
 
         btn.tintColor = (action.style == CustomMenuActionStyleDestructive) ? [UIColor systemRedColor] : [UIColor whiteColor];
+        btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
         [btn addTarget:self action:@selector(btnTapped:) forControlEvents:UIControlEventTouchUpInside];
         btn.tag = i;
 
         [self.stackView addArrangedSubview:btn];
-        [btn.heightAnchor constraintGreaterThanOrEqualToConstant:54].active = YES;
+        [btn.heightAnchor constraintEqualToConstant:54].active = YES;
+
+        // Separator
+        if (i < self.actions.count - 1) {
+            UIView *sep = [[UIView alloc] init];
+            sep.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+            [self.stackView addArrangedSubview:sep];
+            [sep.heightAnchor constraintEqualToConstant:0.5].active = YES;
+        }
     }
 
-    [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:0 animations:^{
+    [self layoutIfNeeded];
+
+    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
         self.backgroundDimmer.alpha = 1.0;
-        self.contentView.alpha = 1.0;
-        self.contentView.transform = CGAffineTransformIdentity;
+        self.contentBottomConstraint.constant = 0;
+        [self layoutIfNeeded];
     } completion:nil];
 }
 
@@ -157,10 +215,10 @@
 }
 
 - (void)dismissWithCompletion:(void (^)(void))completion {
-    [UIView animateWithDuration:0.25 animations:^{
+    [UIView animateWithDuration:0.3 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
         self.backgroundDimmer.alpha = 0;
-        self.contentView.alpha = 0;
-        self.contentView.transform = CGAffineTransformMakeScale(0.9, 0.9);
+        self.contentBottomConstraint.constant = 800;
+        [self layoutIfNeeded];
     } completion:^(BOOL finished) {
         [self removeFromSuperview];
         if (completion) completion();
