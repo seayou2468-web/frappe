@@ -18,7 +18,7 @@
 #import "FileInfoViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate>
+@interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate, UIGestureRecognizerDelegate>
 @property (strong, nonatomic) UITableView *tableView;
 @property (strong, nonatomic) NSArray<FileItem *> *items;
 @property (strong, nonatomic) PathBarView *pathBar;
@@ -140,6 +140,22 @@
 
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     [self.tableView addGestureRecognizer:lp];
+
+    // Swipe Right to Go Up Gesture
+    UISwipeGestureRecognizer *swipeRight = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeRight:)];
+    swipeRight.direction = UISwipeGestureRecognizerDirectionRight;
+    swipeRight.delegate = self;
+    [self.view addGestureRecognizer:swipeRight];
+}
+
+- (void)handleSwipeRight:(UISwipeGestureRecognizer *)gesture {
+    if (![self.currentPath isEqualToString:@"/"]) {
+        [self goUp];
+    }
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
 }
 
 - (void)reloadData {
