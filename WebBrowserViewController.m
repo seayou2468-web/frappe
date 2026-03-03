@@ -127,6 +127,11 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    TabInfo *active = [[TabManager sharedManager] activeTab];
+    if (active && active.type == TabTypeWebBrowser) {
+        active.currentPath = webView.URL.absoluteString;
+        active.title = webView.title.length > 0 ? webView.title : @"Browser";
+    }
     self.urlField.text = webView.URL.absoluteString;
 }
 

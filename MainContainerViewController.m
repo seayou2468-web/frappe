@@ -72,6 +72,13 @@
         UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 0);
         [self.view drawViewHierarchyInRect:self.view.bounds afterScreenUpdates:YES];
         active.screenshot = UIGraphicsGetImageFromCurrentImageContext();
+        if (active.type == TabTypeWebBrowser) {
+            UINavigationController *nav = (UINavigationController *)self.currentContentController;
+            WebBrowserViewController *webVC = (WebBrowserViewController *)nav.topViewController;
+            if ([webVC isKindOfClass:[WebBrowserViewController class]]) {
+                active.currentPath = webVC.webView.URL.absoluteString;
+            }
+        }
         UIGraphicsEndImageContext();
     }
 
