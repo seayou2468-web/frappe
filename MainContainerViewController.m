@@ -55,6 +55,7 @@
             [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
         }
         [nav setViewControllers:vcs animated:NO];
+        nav.interactivePopGestureRecognizer.delegate = self;
         nav.navigationBar.barStyle = UIBarStyleBlack;
         active.viewController = nav;
     }
@@ -64,7 +65,6 @@
     [self.view addSubview:nav.view];
     [nav didMoveToParentViewController:self];
     self.currentContentController = nav;
-}
 }
 
 - (void)showTabSwitcher {
