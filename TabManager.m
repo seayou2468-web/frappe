@@ -42,6 +42,8 @@
 
 - (void)removeTabAtIndex:(NSInteger)index {
     if (index < _tabs.count) {
+        TabInfo *removed = _tabs[index];
+        removed.viewController = nil;
         [_tabs removeObjectAtIndex:index];
 
         // Check if any browser tabs remain

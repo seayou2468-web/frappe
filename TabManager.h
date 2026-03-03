@@ -13,6 +13,7 @@ typedef NS_ENUM(NSInteger, TabType) {
 @property (nonatomic, copy) NSString *currentPath;
 @property (nonatomic, assign) TabType type;
 @property (nonatomic, strong) UIImage *screenshot;
+@property (nonatomic, strong) UIViewController *viewController;
 @end
 
 @interface TabManager : NSObject

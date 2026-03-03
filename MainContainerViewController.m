@@ -36,34 +36,35 @@
         [self.currentContentController removeFromParentViewController];
     }
 
-    UINavigationController *nav = [[UINavigationController alloc] init];
-    NSMutableArray *vcs = [NSMutableArray array];
-
-    if (active.type == TabTypeFileBrowser) {
-        NSString *tempPath = @"/";
-        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
-
-        NSArray *components = [active.currentPath pathComponents];
-        for (NSString *comp in components) {
-            if ([comp isEqualToString:@"/"]) continue;
-            tempPath = [tempPath stringByAppendingPathComponent:comp];
+    UINavigationController *nav = (UINavigationController *)active.viewController;
+    if (!nav) {
+        nav = [[UINavigationController alloc] init];
+        NSMutableArray *vcs = [NSMutableArray array];
+        if (active.type == TabTypeFileBrowser) {
+            NSString *tempPath = @"/";
             [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+            NSArray *components = [active.currentPath pathComponents];
+            for (NSString *comp in components) {
+                if ([comp isEqualToString:@"/"]) continue;
+                tempPath = [tempPath stringByAppendingPathComponent:comp];
+                [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
+            }
+        } else if (active.type == TabTypeWebBrowser) {
+            [vcs addObject:[[WebBrowserViewController alloc] initWithURL:active.currentPath]];
+        } else {
+            [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
         }
-    } else if (active.type == TabTypeWebBrowser) {
-        [vcs addObject:[[WebBrowserViewController alloc] initWithURL:active.currentPath]];
-    } else {
-        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
+        [nav setViewControllers:vcs animated:NO];
+        nav.navigationBar.barStyle = UIBarStyleBlack;
+        active.viewController = nav;
     }
-
-    [nav setViewControllers:vcs animated:NO];
-    nav.interactivePopGestureRecognizer.delegate = self;
-    nav.navigationBar.barStyle = UIBarStyleBlack;
 
     [self addChildViewController:nav];
     nav.view.frame = self.view.bounds;
     [self.view addSubview:nav.view];
     [nav didMoveToParentViewController:self];
     self.currentContentController = nav;
+}
 }
 
 - (void)showTabSwitcher {

@@ -1,4 +1,5 @@
 #import "AppDelegate.h"
+#import "DownloadManager.h"
 
 
 
@@ -10,7 +11,6 @@
 }
 
 
-#import "DownloadManager.h"
 - (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)(void))completionHandler {
     if ([identifier isEqualToString:@"com.app.godspeed.download"]) {
         [DownloadManager sharedManager].completionHandler = completionHandler;

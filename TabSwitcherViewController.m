@@ -16,14 +16,14 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        _container = [[LiquidGlassView alloc] initWithFrame:self.bounds cornerRadius:20];
+        _container = [[LiquidGlassView alloc] initWithFrame:self.bounds cornerRadius:40];
         _container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self.contentView addSubview:_container];
 
         _previewImage = [[UIImageView alloc] initWithFrame:CGRectMake(10, 40, frame.size.width-20, frame.size.height-50)];
         _previewImage.contentMode = UIViewContentModeScaleAspectFill;
         _previewImage.clipsToBounds = YES;
-        _previewImage.layer.cornerRadius = 10;
+        _previewImage.layer.cornerRadius = 30;
         _previewImage.backgroundColor = [UIColor blackColor];
         [_container addSubview:_previewImage];
 
