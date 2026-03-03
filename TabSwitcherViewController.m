@@ -101,6 +101,7 @@
     UICollectionView *_collectionView;
     NSMutableArray *_displayItems;
     TabGroup *_currentGroupScope;
+    UIButton *_groupButton;
 }
 
 - (void)authenticateWithTab:(TabInfo *)tab completion:(void (^)(BOOL success))completion {
@@ -108,16 +109,14 @@
     if (tab.useFaceID) {
         LAContext *context = [[LAContext alloc] init];
         [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) completion(YES);
+                else if (tab.password) [self showPasswordPromptForItem:tab completion:completion];
+                else completion(NO);
+            });
         }];
     } else {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
-        [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            completion([alert.textFields.firstObject.text isEqualToString:tab.password]);
-        }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
-        [self presentViewController:alert animated:YES completion:nil];
+        [self showPasswordPromptForItem:tab completion:completion];
     }
 }
 
@@ -126,17 +125,26 @@
     if (group.useFaceID) {
         LAContext *context = [[LAContext alloc] init];
         [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) completion(YES);
+                else if (group.password) [self showPasswordPromptForItem:group completion:completion];
+                else completion(NO);
+            });
         }];
     } else {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"グループパスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
-        [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-            completion([alert.textFields.firstObject.text isEqualToString:group.password]);
-        }]];
-        [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
-        [self presentViewController:alert animated:YES completion:nil];
+        [self showPasswordPromptForItem:group completion:completion];
     }
+}
+
+- (void)showPasswordPromptForItem:(id)item completion:(void (^)(BOOL success))completion {
+    NSString *storedPw = [item isKindOfClass:[TabInfo class]] ? ((TabInfo *)item).password : ((TabGroup *)item).password;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        completion([alert.textFields.firstObject.text isEqualToString:storedPw]);
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)viewDidLoad {
@@ -166,9 +174,17 @@
     UIButton *plusBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [plusBtn setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
     plusBtn.tintColor = [UIColor whiteColor];
-    plusBtn.frame = CGRectMake(self.view.bounds.size.width/2 - 25, 10, 50, 50);
+    plusBtn.frame = CGRectMake(15, 10, 50, 50);
     [plusBtn addTarget:self action:@selector(newTabTapped) forControlEvents:UIControlEventTouchUpInside];
     [bottomBar addSubview:plusBtn];
+
+    _groupButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_groupButton setTitle:@"メインタブ" forState:UIControlStateNormal];
+    _groupButton.tintColor = [UIColor whiteColor];
+    _groupButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    _groupButton.frame = CGRectMake(self.view.bounds.size.width/2 - 80, 10, 160, 50);
+    [_groupButton addTarget:self action:@selector(groupSwitcherTapped) forControlEvents:UIControlEventTouchUpInside];
+    [bottomBar addSubview:_groupButton];
 
     UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [doneBtn setTitle:@"完了" forState:UIControlStateNormal];
@@ -179,14 +195,29 @@
     [bottomBar addSubview:doneBtn];
 }
 
-- (void)doneTapped {
-    if (_currentGroupScope) {
-        _currentGroupScope = nil;
+- (void)doneTapped { [self dismissViewControllerAnimated:YES completion:nil]; }
+
+- (void)groupSwitcherTapped {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"タブグループ"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"メインタブ" systemImage:@"tray.full" style:CustomMenuActionStyleDefault handler:^{
+        self->_currentGroupScope = nil;
+        [self->_groupButton setTitle:@"メインタブ" forState:UIControlStateNormal];
         [self updateDisplayItems];
-        [_collectionView reloadData];
-    } else {
-        [self dismissViewControllerAnimated:YES completion:nil];
+        [self->_collectionView reloadData];
+    }]];
+    for (TabGroup *g in [TabManager sharedManager].groups) {
+        [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{
+            [self authenticateWithGroup:g completion:^(BOOL success) {
+                if (success) {
+                    self->_currentGroupScope = g;
+                    [self->_groupButton setTitle:g.title forState:UIControlStateNormal];
+                    [self updateDisplayItems];
+                    [self->_collectionView reloadData];
+                }
+            }];
+        }]];
     }
+    [menu showInView:self.view];
 }
 
 - (void)updateDisplayItems {
@@ -237,9 +268,14 @@
         cell.titleLabel.text = info.title;
         cell.previewImage.image = info.screenshot;
         cell.onClose = ^{
-            [[TabManager sharedManager] removeTabAtIndex:[[TabManager sharedManager].tabs indexOfObject:info]];
-            [self updateDisplayItems];
-            [collectionView reloadData];
+            NSIndexPath *currentPath = [collectionView indexPathForCell:cell];
+            if (!currentPath) return;
+            [collectionView performBatchUpdates:^{
+                NSInteger idx = [[TabManager sharedManager].tabs indexOfObject:info];
+                [[TabManager sharedManager] removeTabAtIndex:idx];
+                [self updateDisplayItems];
+                [collectionView deleteItemsAtIndexPaths:@[currentPath]];
+            } completion:nil];
         };
         cell.onLongPress = ^{ [self showTabMenu:info]; };
     }
@@ -252,7 +288,8 @@
         TabGroup *group = (TabGroup *)item;
         [self authenticateWithGroup:group completion:^(BOOL success) {
             if (success) {
-                _currentGroupScope = group;
+                self->_currentGroupScope = group;
+                [self->_groupButton setTitle:group.title forState:UIControlStateNormal];
                 [self updateDisplayItems];
                 [collectionView reloadData];
             }
@@ -281,13 +318,13 @@
             [tab.group.tabs removeObject:tab];
             tab.group = nil;
             [self updateDisplayItems];
-            [_collectionView reloadData];
+            [self->_collectionView reloadData];
         }]];
     }
     [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
         [[TabManager sharedManager] removeTabAtIndex:[[TabManager sharedManager].tabs indexOfObject:tab]];
         [self updateDisplayItems];
-        [_collectionView reloadData];
+        [self->_collectionView reloadData];
     }]];
     [menu showInView:self.view];
 }
@@ -304,12 +341,12 @@
         for (TabInfo *t in group.tabs) t.group = nil;
         [[TabManager sharedManager].groups removeObject:group];
         [self updateDisplayItems];
-        [_collectionView reloadData];
+        [self->_collectionView reloadData];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
         [[TabManager sharedManager].groups removeObject:group];
         [self updateDisplayItems];
-        [_collectionView reloadData];
+        [self->_collectionView reloadData];
     }]];
     [menu showInView:self.view];
 }
@@ -320,7 +357,7 @@
         [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{
             [[TabManager sharedManager] addTab:tab toGroup:g];
             [self updateDisplayItems];
-            [_collectionView reloadData];
+            [self->_collectionView reloadData];
         }]];
     }
     [menu addAction:[CustomMenuAction actionWithTitle:@"新規グループ作成" systemImage:@"plus.rectangle.on.folder" style:CustomMenuActionStyleDefault handler:^{
@@ -336,7 +373,7 @@
         TabGroup *g = [TabManager sharedManager].groups.lastObject;
         [[TabManager sharedManager] addTab:tab toGroup:g];
         [self updateDisplayItems];
-        [_collectionView reloadData];
+        [self->_collectionView reloadData];
     }];
 }
 
@@ -344,7 +381,7 @@
     [self showInputMenuWithTitle:@"新しい名前" completion:^(NSString *name) {
         if (name.length > 0) group.title = name;
         [self updateDisplayItems];
-        [_collectionView reloadData];
+        [self->_collectionView reloadData];
     }];
 }
 
@@ -353,8 +390,8 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"パスワードを設定" systemImage:@"key" style:CustomMenuActionStyleDefault handler:^{
         [self showInputMenuWithTitle:@"パスワード" completion:^(NSString *pw) {
             if (pw.length == 0) pw = nil;
-            if ([item isKindOfClass:[TabInfo class]]) ((TabInfo *)item).password = pw;
-            else if ([item isKindOfClass:[TabGroup class]]) ((TabGroup *)item).password = pw;
+            if ([item isKindOfClass:[TabInfo class]]) { ((TabInfo *)item).password = pw; ((TabInfo *)item).useFaceID = NO; }
+            else if ([item isKindOfClass:[TabGroup class]]) { ((TabGroup *)item).password = pw; ((TabGroup *)item).useFaceID = NO; }
         }];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"FaceIDを使用" systemImage:@"faceid" style:CustomMenuActionStyleDefault handler:^{
