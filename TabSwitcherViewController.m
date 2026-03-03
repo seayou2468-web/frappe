@@ -1,8 +1,7 @@
 #import "TabSwitcherViewController.h"
 #import "TabManager.h"
 #import "ThemeEngine.h"
-
-
+#import <LocalAuthentication/LocalAuthentication.h>
 
 @interface TabCell : UICollectionViewCell
 @property (nonatomic, strong) LiquidGlassView *container;
@@ -46,6 +45,42 @@
 
 @implementation TabSwitcherViewController {
     UICollectionView *_collectionView;
+}
+
+- (void)authenticateWithTab:(TabInfo *)tab completion:(void (^)(BOOL success))completion {
+    if (!tab.password && !tab.useFaceID) { completion(YES); return; }
+    if (tab.useFaceID) {
+        LAContext *context = [[LAContext alloc] init];
+        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
+        }];
+    } else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
+        [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            completion([alert.textFields.firstObject.text isEqualToString:tab.password]);
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
+        [self presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+- (void)authenticateWithGroup:(TabGroup *)group completion:(void (^)(BOOL success))completion {
+    if (!group.password && !group.useFaceID) { completion(YES); return; }
+    if (group.useFaceID) {
+        LAContext *context = [[LAContext alloc] init];
+        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
+        }];
+    } else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"グループパスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
+        [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            completion([alert.textFields.firstObject.text isEqualToString:group.password]);
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
+        [self presentViewController:alert animated:YES completion:nil];
+    }
 }
 
 - (void)viewDidLoad {
@@ -92,8 +127,17 @@
 }
 
 - (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath {
-    if (self.onTabSelected) self.onTabSelected(indexPath.item);
+    TabInfo *info = [TabManager sharedManager].tabs[indexPath.item];
+    [self authenticateWithTab:info completion:^(BOOL success) {
+        if (success) {
+            if (info.group) {
+                [self authenticateWithGroup:info.group completion:^(BOOL gSuccess) {
+                    if (gSuccess && self.onTabSelected) self.onTabSelected(indexPath.item);
+                }];
+            } else if (self.onTabSelected) {
+                self.onTabSelected(indexPath.item);
+            }
+        }
+    }];
 }
-
 @end
-

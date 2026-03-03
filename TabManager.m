@@ -5,6 +5,9 @@
 
 @implementation TabInfo
 @end
+@implementation TabGroup
+- (instancetype)init { self = [super init]; if (self) { _tabs = [NSMutableArray array]; } return self; }
+@end
 
 @implementation TabManager
 
@@ -21,11 +24,14 @@
     self = [super init];
     if (self) {
         _tabs = [[NSMutableArray alloc] init];
+        _groups = [[NSMutableArray alloc] init];
         _activeTabIndex = -1;
     }
     return self;
 }
 
+- (void)createGroupWithTitle:(NSString *)title { TabGroup *group = [[TabGroup alloc] init]; group.title = title; [_groups addObject:group]; }
+- (void)addTab:(TabInfo *)tab toGroup:(TabGroup *)group { if (tab.group) { [tab.group.tabs removeObject:tab]; } tab.group = group; [group.tabs addObject:tab]; }
 - (void)addNewTabWithType:(TabType)type path:(NSString *)path {
     TabInfo *tab = [[TabInfo alloc] init];
     tab.type = type;
