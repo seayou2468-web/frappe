@@ -28,12 +28,11 @@
         config.HTTPMaximumConnectionsPerHost = 16;
         config.waitsForConnectivity = YES;
         config.allowsCellularAccess = YES;
-        config.timeoutIntervalForResource = 24 * 60 * 60; // 24 hours
+        config.timeoutIntervalForResource = 24 * 60 * 60;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
     return self;
 }
-
 
 - (void)downloadFileWithRequest:(NSURLRequest *)request toPath:(NSString *)path {
     if (!request) return;
@@ -58,23 +57,7 @@
 
 - (void)downloadFileAtURL:(NSURL *)url toPath:(NSString *)path {
     if (!url) return;
-
-    DownloadTask *dTask = [[DownloadTask alloc] init];
-    NSString *name = [url lastPathComponent];
-    if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
-    dTask.filename = name;
-    dTask.destinationPath = path;
-    dTask.isDownloading = YES;
-    dTask.progress = 0;
-
-    NSURLSessionDownloadTask *task = [self.session downloadTaskWithURL:url];
-    dTask.task = task;
-
-    [self.tasks addObject:dTask];
-    self.taskMap[@(task.taskIdentifier)] = dTask;
-
-    [task resume];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
+    [self downloadFileWithRequest:[NSURLRequest requestWithURL:url] toPath:path];
 }
 
 - (void)resumeTask:(DownloadTask *)task {
@@ -86,20 +69,12 @@
         self.taskMap[@(newDownloadTask.taskIdentifier)] = task;
         [newDownloadTask resume];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
-    } else if (task.task.originalRequest.URL) {
-        [self downloadFileAtURL:task.task.originalRequest.URL toPath:task.destinationPath];
     }
 }
 
 - (void)cancelTask:(DownloadTask *)task {
     [task.task cancel];
     [self.tasks removeObject:task];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
-}
-
-- (void)clearCompletedTasks {
-    NSPredicate *pred = [NSPredicate predicateWithFormat:@"isDownloading == YES"];
-    [self.tasks filterUsingPredicate:pred];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
 }
 
@@ -110,9 +85,7 @@
     if (dTask) {
         dTask.receivedBytes = totalBytesWritten;
         dTask.totalBytes = totalBytesExpectedToWrite;
-        if (totalBytesExpectedToWrite > 0) {
-            dTask.progress = (float)totalBytesWritten / (float)totalBytesExpectedToWrite;
-        }
+        if (totalBytesExpectedToWrite > 0) dTask.progress = (float)totalBytesWritten / (float)totalBytesExpectedToWrite;
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
     }
 }
@@ -123,16 +96,20 @@
         NSString *suggested = downloadTask.response.suggestedFilename;
         if (suggested) dTask.filename = suggested;
 
-        [[NSFileManager defaultManager] createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        [fm createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:dest]) {
-             [[NSFileManager defaultManager] removeItemAtPath:dest error:nil];
-        }
-        [[NSFileManager defaultManager] moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:nil];
 
-        dTask.isDownloading = NO;
-        dTask.progress = 1.0;
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
+        if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
+
+        NSError *moveError = nil;
+        if ([fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:&moveError]) {
+            dTask.isDownloading = NO;
+            dTask.progress = 1.0;
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
+        } else {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
+        }
     }
 }
 
@@ -142,9 +119,7 @@
         dTask.isDownloading = NO;
         if (error) {
             NSData *resumeData = error.userInfo[NSURLSessionDownloadTaskResumeData];
-            if (resumeData) {
-                dTask.resumeData = resumeData;
-            }
+            if (resumeData) dTask.resumeData = resumeData;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:error];
         } else {
             [self.taskMap removeObjectForKey:@(task.taskIdentifier)];

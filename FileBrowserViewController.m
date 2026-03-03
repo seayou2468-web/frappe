@@ -62,7 +62,7 @@
 
     UIBarButtonItem *searchBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(toggleSearch)];
     UIBarButtonItem *selectBtn = [[UIBarButtonItem alloc] initWithTitle:@"選択" style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectionMode)];
-    UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc colorWithRed:1.0 green:1.0 blue:1.0 alpha:1.0] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
+    UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
     self.navigationItem.rightBarButtonItems = @[moreBtn, selectBtn, searchBtn];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -114,16 +114,13 @@
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
-
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
-
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.searchBar.heightAnchor constraintEqualToConstant:50],
-
         [self.searchScope.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:5],
         [self.searchScope.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.searchScope.heightAnchor constraintEqualToConstant:32],
@@ -191,39 +188,19 @@
 
 - (void)navigateToPath:(NSString *)path {
     if (!path || [path isEqualToString:self.currentPath]) return;
-
     NSString *parentOfCurrent = [self.currentPath stringByDeletingLastPathComponent];
     if (parentOfCurrent.length == 0) parentOfCurrent = @"/";
-
-    if ([path isEqualToString:parentOfCurrent]) {
-        [self.navigationController popViewControllerAnimated:YES];
-        return;
-    }
-
-    if ([path.stringByDeletingLastPathComponent isEqualToString:self.currentPath]) {
-        FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path];
-        [self.navigationController pushViewController:vc animated:YES];
-        return;
-    }
-
-    NSMutableArray *vcs = [NSMutableArray array];
-    NSString *tempPath = @"/";
-    [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
-
+    if ([path isEqualToString:parentOfCurrent]) { [self.navigationController popViewControllerAnimated:YES]; return; }
+    if ([path.stringByDeletingLastPathComponent isEqualToString:self.currentPath]) { FileBrowserViewController *vc = [[FileBrowserViewController alloc] initWithPath:path]; [self.navigationController pushViewController:vc animated:YES]; return; }
+    NSMutableArray *vcs = [NSMutableArray array]; NSString *tempPath = @"/"; [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
     NSArray *components = [path pathComponents];
-    for (NSString *comp in components) {
-        if ([comp isEqualToString:@"/"]) continue;
-        tempPath = [tempPath stringByAppendingPathComponent:comp];
-        [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]];
-    }
-
+    for (NSString *comp in components) { if ([comp isEqualToString:@"/"]) continue; tempPath = [tempPath stringByAppendingPathComponent:comp]; [vcs addObject:[[FileBrowserViewController alloc] initWithPath:tempPath]]; }
     [self.navigationController setViewControllers:vcs animated:YES];
 }
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
     [self.searchTimer invalidate];
     if (searchText.length == 0) { [self reloadData]; return; }
-
     __weak typeof(self) weakSelf = self;
     self.searchTimer = [NSTimer scheduledTimerWithTimeInterval:0.3 repeats:NO block:^(NSTimer *timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -231,22 +208,16 @@
         NSString *searchPath = (strongSelf.searchScope.selectedSegmentIndex == 1) ? @"/" : strongSelf.currentPath;
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             NSArray *results = [[FileManagerCore sharedManager] searchFilesWithQuery:searchText inPath:searchPath recursive:YES];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                strongSelf.items = results;
-                [strongSelf.tableView reloadData];
-            });
+            dispatch_async(dispatch_get_main_queue(), ^{ strongSelf.items = results; [strongSelf.tableView reloadData]; });
         });
     }];
 }
 
-- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
-    [searchBar resignFirstResponder];
-}
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar { [searchBar resignFirstResponder]; }
 
 #pragma mark - TableView
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *cellId = @"LiquidGlassFileCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellId];
@@ -260,7 +231,6 @@
         liquidBg.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         cell.backgroundView = [[UIView alloc] init];
         [cell.backgroundView addSubview:liquidBg];
-
         UIView *selectedBg = [[UIView alloc] init];
         UIView *selectedInner = [[UIView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60)];
         selectedInner.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15];
@@ -272,13 +242,9 @@
     }
     FileItem *item = self.items[indexPath.row];
     cell.textLabel.text = item.name;
-    if (item.isDirectory) {
-        cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"];
-        cell.imageView.tintColor = [UIColor whiteColor];
-    } else {
-        cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"];
-        cell.imageView.tintColor = [UIColor whiteColor];
-    }
+    if (item.isDirectory) { cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"]; }
+    else { cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"]; }
+    cell.imageView.tintColor = [UIColor whiteColor];
     cell.detailTextLabel.text = item.isSymbolicLink ? [NSString stringWithFormat:@" Alias ➜ %@", item.linkTarget] : nil;
     return cell;
 }
@@ -294,8 +260,7 @@
     NSString *effectivePath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!effectivePath) return;
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:effectivePath error:nil];
-    BOOL isDir = [[attrs fileType] isEqualToString:NSFileTypeDirectory];
-    if (isDir) { [self navigateToPath:effectivePath]; } else { [self openFile:item]; }
+    if ([[attrs fileType] isEqualToString:NSFileTypeDirectory]) { [self navigateToPath:effectivePath]; } else { [self openFile:item]; }
 }
 
 - (void)openFile:(FileItem *)item {
@@ -319,16 +284,10 @@
     BOOL shouldConfirm = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
     if (shouldConfirm) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"削除の確認" message:[NSString stringWithFormat:@"'%@' を削除してもよろしいですか？", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"削除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-            [[FileManagerCore sharedManager] removeItemAtPath:path error:nil];
-            [self reloadData];
-        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"削除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { [[FileManagerCore sharedManager] removeItemAtPath:path error:nil]; [self reloadData]; }]];
         [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
-    } else {
-        [[FileManagerCore sharedManager] removeItemAtPath:path error:nil];
-        [self reloadData];
-    }
+    } else { [[FileManagerCore sharedManager] removeItemAtPath:path error:nil]; [self reloadData]; }
 }
 
 #pragma mark - Context Menu
@@ -352,7 +311,7 @@
     [menu showInView:self.view];
 }
 
-#pragma mark - Rest of logic (Menu Actions, Bulk Actions, etc) ...
+#pragma mark - Helper UI
 
 - (void)showInfoForItem:(FileItem *)item { FileInfoViewController *vc = [[FileInfoViewController alloc] initWithItem:item]; [self.navigationController pushViewController:vc animated:YES]; }
 - (void)showEditLinkForItem:(FileItem *)item {
@@ -401,12 +360,23 @@
 }
 - (void)showOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]]; dp.delegate = self; [self presentViewController:dp animated:YES completion:nil]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES]; dp.delegate = self; [self presentViewController:dp animated:YES completion:nil]; }]];
     [menu showInView:self.view];
 }
 - (void)showSettings { SettingsViewController *vc = [[SettingsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; }
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls { for (NSURL *url in urls) { [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:[self.currentPath stringByAppendingPathComponent:url.lastPathComponent] error:nil]; } [self reloadData]; }
-- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+
+#pragma mark - UIDocumentPickerDelegate
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    for (NSURL *url in urls) {
+        BOOL access = [url startAccessingSecurityScopedResource];
+        [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:[self.currentPath stringByAppendingPathComponent:url.lastPathComponent] error:nil];
+        if (access) [url stopAccessingSecurityScopedResource];
+    }
+    [self reloadData];
+}
+
+#pragma mark - Selection Mode
 
 - (void)toggleSelectionMode {
     BOOL isEditing = !self.tableView.isEditing; [self.tableView setEditing:isEditing animated:YES];
@@ -459,5 +429,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { NSString *name = alert.textFields[0].text; if (name.length == 0) return; NSString *path = [self.currentPath stringByAppendingPathComponent:name]; if (isDir) { [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; } else { [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil]; } [self reloadData]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:alert animated:YES completion:nil];
 }
+
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
 @end
