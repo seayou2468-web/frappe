@@ -58,6 +58,7 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.navigationDelegate = self;
+    self.webView.allowsBackForwardNavigationGestures = YES;
     self.webView.backgroundColor = [UIColor clearColor];
     self.webView.opaque = NO;
     [self.view addSubview:self.webView];
