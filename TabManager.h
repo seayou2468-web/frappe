@@ -32,6 +32,8 @@ typedef NS_ENUM(NSInteger, TabType) {
 @property (nonatomic, strong, readonly) NSMutableArray<TabGroup *> *groups;
 @property (nonatomic, assign) NSInteger activeTabIndex;
 
+- (void)createGroupWithTitle:(NSString *)title;
+- (void)addTab:(TabInfo *)tab toGroup:(TabGroup *)group;
 - (void)addNewTabWithType:(TabType)type path:(NSString * )path;
 - (void)removeTabAtIndex:(NSInteger)index;
 - (TabInfo * )activeTab;
