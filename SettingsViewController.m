@@ -3,6 +3,7 @@
 #import "BookmarksManager.h"
 #import "CustomMenuView.h"
 #import "WebBrowserViewController.h"
+#import "PersistenceManager.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 
 @interface SettingsViewController ()
@@ -26,18 +27,19 @@
 #pragma mark - TableView
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 7;
+    return 8;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
-        case 0: return 2; // General: Default Path, Confirm Delete
-        case 1: return 3; // Display: Hidden, Folders First, Always Search
+        case 0: return 2; // General
+        case 1: return 3; // Display
         case 2: return 1; // Sort
-        case 3: return 2; // Appearance: Alpha, Accent
-        case 4: return 2; // Web: Search Engine, Clear Data
-        case 5: return 1; // Advanced: Reset
-        case 6: return [BookmarksManager sharedManager].bookmarks.count; // Favorites
+        case 3: return 2; // Appearance
+        case 4: return 3; // Web: Engine, Clear Data, Persistent Sites
+        case 5: return [PersistenceManager sharedManager].persistentDomains.count; // Whitelisted Domains
+        case 6: return 1; // Advanced
+        case 7: return [BookmarksManager sharedManager].bookmarks.count; // Favorites
         default: return 0;
     }
 }
@@ -49,8 +51,9 @@
         case 2: return @"並び替え";
         case 3: return @"外観カスタマイズ";
         case 4: return @"ウェブブラウザ";
-        case 5: return @"詳細";
-        case 6: return @"お気に入り";
+        case 5: return @"永続データを許可するサイト";
+        case 6: return @"詳細";
+        case 7: return @"お気に入り";
         default: return nil;
     }
 }
@@ -66,6 +69,7 @@
 
     cell.accessoryView = nil;
     cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.textLabel.textColor = [UIColor whiteColor];
 
     if (indexPath.section == 0) {
         if (indexPath.row == 0) {
@@ -120,14 +124,21 @@
             cell.textLabel.text = @"検索エンジン";
             cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"SearchEngine"] ?: @"Google";
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        } else {
+        } else if (indexPath.row == 1) {
             cell.textLabel.text = @"ブラウザデータを消去";
             cell.textLabel.textColor = [UIColor systemRedColor];
+        } else {
+            cell.textLabel.text = @"ドメインを永続リストに追加";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 5) {
+        NSString *domain = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
+        cell.textLabel.text = domain;
+        cell.accessoryType = UITableViewCellAccessoryNone;
+    } else if (indexPath.section == 6) {
         cell.textLabel.text = @"全ての設定をリセット";
         cell.textLabel.textColor = [UIColor systemRedColor];
-    } else if (indexPath.section == 6) {
+    } else if (indexPath.section == 7) {
         NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
         cell.textLabel.text = [path lastPathComponent];
         cell.detailTextLabel.text = path;
@@ -145,11 +156,45 @@
         else [self selectAccentColor];
     } else if (indexPath.section == 4) {
         if (indexPath.row == 0) [self selectSearchEngine];
-        else [self clearBrowserData];
-    } else if (indexPath.section == 5) [self confirmResetSettings];
+        else if (indexPath.row == 1) [self clearBrowserData];
+        else [self addNewPersistentDomain];
+    } else if (indexPath.section == 6) [self confirmResetSettings];
+}
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    return (indexPath.section == 5 || indexPath.section == 7);
+}
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (editingStyle == UITableViewCellEditingStyleDelete) {
+        if (indexPath.section == 5) {
+            NSString *domain = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
+            [[PersistenceManager sharedManager] removeDomain:domain];
+        } else if (indexPath.section == 7) {
+            NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
+            [[BookmarksManager sharedManager] removeBookmark:path];
+        }
+        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
+    }
 }
 
 #pragma mark - Actions
+
+- (void)addNewPersistentDomain {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"永続ドメイン" message:@"ドメイン名を入力してください (例: google.com)" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:nil];
+    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *domain = alert.textFields[0].text;
+        if (domain.length > 0) {
+            [[PersistenceManager sharedManager] addDomain:domain];
+            [self.tableView reloadData];
+        }
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Rest of logic (Settings helpers) ...
 
 - (void)editDefaultPath {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"起動パス" message:@"アプリ起動時に開くパスを入力してください" preferredStyle:UIAlertControllerStyleAlert];
@@ -216,10 +261,7 @@
 
 - (void)clearBrowserData {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"データ消去" message:@"履歴、クッキー、キャッシュを全て消去しますか？" preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"消去" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-        [WebBrowserViewController resetSharedDataStore];
-        // Note: Actual deletion of data from disk happens when WKWebsiteDataStore is destroyed/reassigned.
-    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"消去" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { [WebBrowserViewController resetSharedDataStore]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -236,25 +278,9 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-#pragma mark - Switches
-
-- (void)confirmDeleteToggled:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ConfirmDeletion"];
-}
-
-- (void)hiddenSwitchToggled:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ShowHiddenFiles"];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
-}
-
-- (void)foldersFirstToggled:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
-}
-
-- (void)alwaysShowSearchToggled:(UISwitch *)sender {
-    [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
-}
+- (void)confirmDeleteToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ConfirmDeletion"]; }
+- (void)hiddenSwitchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ShowHiddenFiles"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
+- (void)foldersFirstToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
+- (void)alwaysShowSearchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
 
 @end

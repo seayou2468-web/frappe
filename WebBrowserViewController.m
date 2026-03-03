@@ -6,10 +6,11 @@
 #import "CustomMenuView.h"
 #import "DownloadManager.h"
 #import "DownloadsViewController.h"
+#import "PersistenceManager.h"
 
-static WKWebsiteDataStore *_sharedDataStore = nil;
+static WKWebsiteDataStore *_nonPersistentStore = nil;
 
-@interface WebBrowserViewController ()
+@interface WebBrowserViewController () <WKUIDelegate>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
@@ -19,14 +20,14 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 @implementation WebBrowserViewController
 
 + (WKWebsiteDataStore *)sharedDataStore {
-    if (!_sharedDataStore) {
-        _sharedDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    if (!_nonPersistentStore) {
+        _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore];
     }
-    return _sharedDataStore;
+    return _nonPersistentStore;
 }
 
 + (void)resetSharedDataStore {
-    _sharedDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore];
 }
 
 - (instancetype)initWithURL:(NSString *)url {
@@ -44,7 +45,6 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 
     NSURL *url = [NSURL URLWithString:self.initialURL];
     [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
-
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
 }
 
@@ -54,10 +54,18 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
 
 - (void)setupUI {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-    config.websiteDataStore = [WebBrowserViewController sharedDataStore];
+
+    // Choose data store based on URL persistence
+    if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) {
+        config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+    } else {
+        config.websiteDataStore = [WebBrowserViewController sharedDataStore];
+    }
+
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.navigationDelegate = self;
+    self.webView.uiDelegate = self;
     self.webView.allowsBackForwardNavigationGestures = YES;
     self.webView.backgroundColor = [UIColor clearColor];
     self.webView.opaque = NO;
@@ -95,12 +103,10 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
         [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.progressView.heightAnchor constraintEqualToConstant:2],
-
         [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor],
         [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
-
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -119,7 +125,12 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
     NSString *urlStr = textField.text;
     if (urlStr.length == 0) return YES;
     if (![urlStr containsString:@"."] && ![urlStr hasPrefix:@"http"]) {
-        urlStr = [NSString stringWithFormat:@"https://www.google.com/search?q=%@", [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+        NSString *engine = [[NSUserDefaults standardUserDefaults] stringForKey:@"SearchEngine"] ?: @"Google";
+        NSString *baseUrl = @"https://www.google.com/search?q=";
+        if ([engine isEqualToString:@"Bing"]) baseUrl = @"https://www.bing.com/search?q=";
+        else if ([engine isEqualToString:@"DuckDuckGo"]) baseUrl = @"https://duckduckgo.com/?q=";
+        else if ([engine isEqualToString:@"Yahoo"]) baseUrl = @"https://search.yahoo.com/search?p=";
+        urlStr = [NSString stringWithFormat:@"%@%@", baseUrl, [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
     } else if (![urlStr hasPrefix:@"http"]) {
         urlStr = [@"https://" stringByAppendingString:urlStr];
     }
@@ -161,27 +172,72 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
     }
 }
 
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
-    NSURL *url = navigationAction.request.URL;
-    NSString *ext = [url pathExtension].lowercaseString;
-    NSArray *downloadExts = @[@"zip", @"ipa", @"deb", @"pdf", @"mp4", @"mp3", @"dmg", @"pkg", @"rar", @"7z", @"gz", @"tar"];
+#pragma mark - Developer Tools
 
-    if ([downloadExts containsObject:ext]) {
-        [self triggerDownloadWithURL:url];
-        decisionHandler(WKNavigationActionPolicyCancel);
-        return;
-    }
-    decisionHandler(WKNavigationActionPolicyAllow);
+- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
+    if (lp.state != UIGestureRecognizerStateBegan) return;
+
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ツール"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"クッキーを表示" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{
+        [self showCookies];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"Webインスペクタ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{
+        [self showWebInspector];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
+        [self triggerDownloadWithURL:self.webView.URL];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"永続サイトに追加" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{
+        [[PersistenceManager sharedManager] addDomain:self.webView.URL.host];
+    }]];
+    [menu showInView:self.view];
 }
 
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
-    if (navigationResponse.canShowMIMEType) {
-        decisionHandler(WKNavigationResponsePolicyAllow);
-    } else {
-        [self triggerDownloadWithURL:navigationResponse.response.URL];
-        decisionHandler(WKNavigationResponsePolicyCancel);
-    }
+- (void)showCookies {
+    [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSMutableString *str = [NSMutableString stringWithString:@"Current Cookies:\n\n"];
+            for (NSHTTPCookie *cookie in cookies) {
+                [str appendFormat:@"Name: %@\nValue: %@\nDomain: %@\n\n", cookie.name, cookie.value, cookie.domain];
+            }
+            if (cookies.count == 0) [str appendString:@"No cookies found."];
+
+            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds];
+            tv.text = str;
+            tv.editable = NO;
+            tv.backgroundColor = [UIColor blackColor];
+            tv.textColor = [UIColor greenColor];
+            tv.font = [UIFont fontWithName:@"Menlo" size:12];
+
+            UIViewController *vc = [[UIViewController alloc] init];
+            vc.view = tv;
+            vc.title = @"Cookies";
+            [self.navigationController pushViewController:vc animated:YES];
+        });
+    }];
 }
+
+- (void)showWebInspector {
+    // Basic element/source viewer using JS injection
+    NSString *js = @"document.documentElement.outerHTML";
+    [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds];
+            tv.text = (NSString *)result;
+            tv.editable = NO;
+            tv.backgroundColor = [UIColor blackColor];
+            tv.textColor = [UIColor whiteColor];
+            tv.font = [UIFont fontWithName:@"Menlo" size:11];
+
+            UIViewController *vc = [[UIViewController alloc] init];
+            vc.view = tv;
+            vc.title = @"Source Inspector";
+            [self.navigationController pushViewController:vc animated:YES];
+        });
+    }];
+}
+
+#pragma mark - Downloads
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     NSString *downloadsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
@@ -189,37 +245,16 @@ static WKWebsiteDataStore *_sharedDataStore = nil;
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
 
-    [[WebBrowserViewController sharedDataStore].httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
+    [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
         NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
         [request setAllHTTPHeaderFields:headers];
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath];
-
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ダウンロード" message:@"ダウンロードを開始しました" preferredStyle:UIAlertControllerStyleAlert];
-            [self presentViewController:alert animated:YES completion:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [alert dismissViewControllerAnimated:YES completion:nil];
-            });
-
             DownloadsViewController *vc = [[DownloadsViewController alloc] init];
             [self.navigationController pushViewController:vc animated:YES];
         });
     }];
-}
-
-- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
-    if (lp.state != UIGestureRecognizerStateBegan) return;
-
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ダウンロード"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"現在のページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{
-        [self triggerDownloadWithURL:self.webView.URL];
-    }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ダウンロード一覧を表示" systemImage:@"list.bullet" style:CustomMenuActionStyleDefault handler:^{
-        DownloadsViewController *vc = [[DownloadsViewController alloc] init];
-        [self.navigationController pushViewController:vc animated:YES];
-    }]];
-    [menu showInView:self.view];
 }
 
 @end
