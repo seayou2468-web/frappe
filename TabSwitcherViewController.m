@@ -5,7 +5,7 @@
 #import <LocalAuthentication/LocalAuthentication.h>
 
 @interface TabCell : UICollectionViewCell
-@property (nonatomic, strong) LiquidGlassView *container;
+@property (nonatomic, strong) UIView *container;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIImageView *previewImage;
 @property (nonatomic, strong) UIButton *closeButton;
@@ -17,28 +17,34 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        _container = [[LiquidGlassView alloc] initWithFrame:self.bounds cornerRadius:40];
-        _container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.contentView addSubview:_container];
+        self.container = [[UIView alloc] initWithFrame:self.bounds];
+        self.container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        self.container.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+        self.container.layer.cornerRadius = 16;
+        self.container.clipsToBounds = YES;
+        [self.contentView addSubview:self.container];
 
-        _previewImage = [[UIImageView alloc] initWithFrame:CGRectMake(10, 40, frame.size.width-20, frame.size.height-50)];
-        _previewImage.contentMode = UIViewContentModeScaleAspectFill;
-        _previewImage.clipsToBounds = YES;
-        _previewImage.layer.cornerRadius = 30;
-        _previewImage.backgroundColor = [UIColor blackColor];
-        [_container addSubview:_previewImage];
+        UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, 34)];
+        header.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+        [self.container addSubview:header];
 
-        _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, frame.size.width-60, 25)];
+        _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 0, frame.size.width-44, 34)];
         _titleLabel.textColor = [UIColor whiteColor];
-        _titleLabel.font = [UIFont boldSystemFontOfSize:14];
-        [_container addSubview:_titleLabel];
+        _titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        [header addSubview:_titleLabel];
 
         _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [_closeButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
-        _closeButton.tintColor = [UIColor systemRedColor];
-        _closeButton.frame = CGRectMake(frame.size.width-40, 5, 30, 30);
+        [_closeButton setImage:[UIImage systemImageNamed:@"xmark"] forState:UIControlStateNormal];
+        _closeButton.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        _closeButton.frame = CGRectMake(frame.size.width-34, 0, 34, 34);
         [_closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
-        [_container addSubview:_closeButton];
+        [header addSubview:_closeButton];
+
+        _previewImage = [[UIImageView alloc] initWithFrame:CGRectMake(0, 34, frame.size.width, frame.size.height-34)];
+        _previewImage.contentMode = UIViewContentModeScaleAspectFill;
+        _previewImage.clipsToBounds = YES;
+        _previewImage.backgroundColor = [UIColor blackColor];
+        [self.container addSubview:_previewImage];
 
         UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLP:)];
         [self addGestureRecognizer:lp];
@@ -60,7 +66,7 @@
 
 @implementation TabSwitcherViewController {
     UICollectionView *_collectionView;
-    NSMutableArray *_displayItems; // Mixture of TabInfo and TabGroup
+    NSMutableArray *_displayItems;
 }
 
 - (void)authenticateWithTab:(TabInfo *)tab completion:(void (^)(BOOL success))completion {
@@ -105,25 +111,41 @@
     [self updateDisplayItems];
 
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
-    layout.itemSize = CGSizeMake(self.view.bounds.size.width/2 - 20, 250);
-    layout.sectionInset = UIEdgeInsetsMake(20, 15, 20, 15);
+    CGFloat w = (self.view.bounds.size.width - 45) / 2;
+    layout.itemSize = CGSizeMake(w, w * 1.3);
+    layout.sectionInset = UIEdgeInsetsMake(20, 15, 100, 15);
+    layout.minimumInteritemSpacing = 15;
+    layout.minimumLineSpacing = 20;
 
     _collectionView = [[UICollectionView alloc] initWithFrame:self.view.bounds collectionViewLayout:layout];
     _collectionView.backgroundColor = [UIColor clearColor];
     _collectionView.delegate = self;
     _collectionView.dataSource = self;
+    _collectionView.alwaysBounceVertical = YES;
     [_collectionView registerClass:[TabCell class] forCellWithReuseIdentifier:@"TabCell"];
     [self.view addSubview:_collectionView];
 
+    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height-80, self.view.bounds.size.width, 80)];
+    [ThemeEngine applyGlassStyleToView:bottomBar cornerRadius:0];
+    [self.view addSubview:bottomBar];
+
     UIButton *plusBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [plusBtn setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
-    plusBtn.backgroundColor = [UIColor systemBlueColor];
     plusBtn.tintColor = [UIColor whiteColor];
-    plusBtn.layer.cornerRadius = 30;
-    plusBtn.frame = CGRectMake(self.view.bounds.size.width/2 - 30, self.view.bounds.size.height - 100, 60, 60);
+    plusBtn.frame = CGRectMake(self.view.bounds.size.width/2 - 25, 10, 50, 50);
     [plusBtn addTarget:self action:@selector(newTabTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:plusBtn];
+    [bottomBar addSubview:plusBtn];
+
+    UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [doneBtn setTitle:@"完了" forState:UIControlStateNormal];
+    doneBtn.tintColor = [UIColor whiteColor];
+    doneBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    doneBtn.frame = CGRectMake(self.view.bounds.size.width - 80, 10, 70, 50);
+    [doneBtn addTarget:self action:@selector(doneTapped) forControlEvents:UIControlEventTouchUpInside];
+    [bottomBar addSubview:doneBtn];
 }
+
+- (void)doneTapped { [self dismissViewControllerAnimated:YES completion:nil]; }
 
 - (void)updateDisplayItems {
     _displayItems = [NSMutableArray array];
@@ -155,7 +177,7 @@
 
     if ([item isKindOfClass:[TabGroup class]]) {
         TabGroup *group = (TabGroup *)item;
-        cell.titleLabel.text = [NSString stringWithFormat:@"[G] %@", group.title];
+        cell.titleLabel.text = [NSString stringWithFormat:@"%@ (%lu)", group.title, (unsigned long)group.tabs.count];
         cell.previewImage.image = (group.tabs.count > 0) ? group.tabs.firstObject.screenshot : nil;
         cell.onClose = ^{
             [[TabManager sharedManager].groups removeObject:group];
