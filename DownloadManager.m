@@ -98,13 +98,7 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
 
-    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : nil;
-    if (!relativeDest) {
-        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *downloads = [docs stringByAppendingPathComponent:@"Downloads"];
-        relativeDest = [FileManagerCore relativeToHomePath:downloads];
-    }
-
+    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : @"Documents/Downloads";
     NSString *destPath = [FileManagerCore absoluteFromHomeRelativePath:relativeDest];
     NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
     if (!filename) filename = @"downloaded_file";
@@ -120,6 +114,7 @@
         }
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
     } else {
+        NSLog(@"Download Move Error: %@ to %@", moveError.localizedDescription, destPath);
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
     }
 }

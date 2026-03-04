@@ -171,11 +171,10 @@
     BOOL success = NO;
     if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
 
-    success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
-    if (!success && [moveError.domain isEqualToString:NSCocoaErrorDomain] && moveError.code == NSFileWriteFileExistsError) {
-        // Should not happen with unique naming, but as fallback
-        [fm removeItemAtPath:destPath error:nil];
-        success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+    if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
+    success = [fm copyItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+    if (success) {
+        [fm removeItemAtURL:srcURL error:nil];
     }
 
     if (error) *error = moveError;
@@ -184,10 +183,9 @@
 
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {
     if (!absolutePath) return nil;
-    NSString *standardized = [absolutePath stringByStandardizingPath];
-    NSString *home = [NSHomeDirectory() stringByStandardizingPath];
-    if ([standardized hasPrefix:home]) {
-        NSString *rel = [standardized substringFromIndex:home.length];
+    NSString *home = NSHomeDirectory();
+    if ([absolutePath hasPrefix:home]) {
+        NSString *rel = [absolutePath substringFromIndex:home.length];
         while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
         return rel;
     }
@@ -198,6 +196,6 @@
     if (!relativePath) return nil;
     NSString *clean = relativePath;
     while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
-    return [[NSHomeDirectory() stringByStandardizingPath] stringByAppendingPathComponent:clean];
+    return [NSHomeDirectory() stringByAppendingPathComponent:clean];
 }
 @end
