@@ -17,6 +17,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 @property (nonatomic, strong) UIProgressView *progressView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
 @property (nonatomic, strong) NSMutableArray<NSString *> *consoleLogs;
+@property (nonatomic, strong) NSMutableArray<NSDictionary *> *networkLogs;
 @end
 
 @implementation WebBrowserViewController
@@ -34,6 +35,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
         _initialURL = url ?: home;
         _consoleLogs = [NSMutableArray array];
+        _networkLogs = [NSMutableArray array];
     }
     return self;
 }
@@ -52,8 +54,27 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (void)setupUI {
     WKUserContentController *userContent = [[WKUserContentController alloc] init];
     [userContent addScriptMessageHandler:self name:@"logger"];
-    NSString *js = @"var originalLog = console.log; console.log = function(m) { window.webkit.messageHandlers.logger.postMessage(m); originalLog.apply(console, arguments); };"
-                    "var originalError = console.error; console.error = function(m) { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + m); originalError.apply(console, arguments); };";
+    [userContent addScriptMessageHandler:self name:@"network"];
+
+    NSString *js =
+        @"var originalLog = console.log; console.log = function(m) { window.webkit.messageHandlers.logger.postMessage(JSON.stringify(m)); originalLog.apply(console, arguments); };"
+        "var originalError = console.error; console.error = function(m) { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + JSON.stringify(m)); originalError.apply(console, arguments); };"
+        "var originalOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(method, url) {"
+        "  this._url = url; this._method = method; originalOpen.apply(this, arguments);"
+        "};"
+        "var originalSend = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function() {"
+        "  this.addEventListener('load', function() {"
+        "    window.webkit.messageHandlers.network.postMessage({url: this._url, method: this._method, status: this.status});"
+        "  });"
+        "  originalSend.apply(this, arguments);"
+        "};"
+        "var originalFetch = window.fetch; window.fetch = function() {"
+        "  var args = arguments; return originalFetch.apply(this, arguments).then(function(response) {"
+        "    window.webkit.messageHandlers.network.postMessage({url: response.url, method: 'FETCH', status: response.status});"
+        "    return response;"
+        "  });"
+        "};";
+
     WKUserScript *script = [[WKUserScript alloc] initWithSource:js injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];
     [userContent addUserScript:script];
 
@@ -78,17 +99,13 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.urlField.keyboardType = UIKeyboardTypeURL;
     self.urlField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.urlField.delegate = self;
-    self.urlField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
-    self.urlField.leftViewMode = UITextFieldViewModeAlways;
     self.navigationItem.titleView = self.urlField;
 
-    UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"terminal"] style:UIBarButtonItemStylePlain target:self action:@selector(showWebInspector)];
+    UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"terminal"] style:UIBarButtonItemStylePlain target:self action:@selector(prepareAndShowInspector)];
     self.navigationItem.rightBarButtonItem = inspectorBtn;
 
     self.progressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.progressView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.progressView.progressTintColor = [ThemeEngine liquidColor];
-    self.progressView.trackTintColor = [UIColor clearColor];
     [self.view addSubview:self.progressView];
 
     self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeWeb];
@@ -97,12 +114,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
 
-    UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
-    [self.webView addGestureRecognizer:lp];
-
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.progressView.topAnchor constraintEqualToAnchor:safe.topAnchor], [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.progressView.heightAnchor constraintEqualToConstant:2],
+        [self.progressView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor], [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.progressView.heightAnchor constraintEqualToConstant:2],
         [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor], [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor], [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
     ]];
@@ -112,17 +125,43 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"logger"]) {
-        NSString *log = [NSString stringWithFormat:@"[%@] %@", [NSDate date], message.body];
-        [self.consoleLogs addObject:log];
+        [self.consoleLogs addObject:[NSString stringWithFormat:@"%@", message.body]];
+    } else if ([message.name isEqualToString:@"network"]) {
+        NSMutableDictionary *dict = [message.body mutableCopy];
+        dict[@"time"] = [[NSDate date] description];
+        [self.networkLogs addObject:dict];
     }
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
-    if ([keyPath isEqualToString:@"estimatedProgress"]) {
-        self.progressView.progress = self.webView.estimatedProgress;
-        self.progressView.hidden = (self.webView.estimatedProgress >= 1.0);
-    }
+- (void)prepareAndShowInspector {
+    [self.webView evaluateJavaScript:@"document.documentElement.outerHTML" completionHandler:^(id html, NSError *error) {
+        [self.webView evaluateJavaScript:@"(function(){ return {local: JSON.stringify(localStorage), session: JSON.stringify(sessionStorage)}; })();" completionHandler:^(id storage, NSError *error2) {
+            [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    WebInspectorViewController *vc = [[WebInspectorViewController alloc] init];
+                    vc.htmlSource = (NSString *)html;
+                    vc.consoleLogs = self.consoleLogs;
+                    vc.networkLogs = self.networkLogs;
+                    vc.cookies = cookies;
+
+                    NSDictionary *sDict = (NSDictionary *)storage;
+                    NSMutableDictionary *finalStorage = [NSMutableDictionary dictionary];
+                    if (sDict[@"local"]) finalStorage[@"local"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"local"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+                    if (sDict[@"session"]) finalStorage[@"session"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"session"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+                    vc.storageData = finalStorage;
+
+                    vc.onCommand = ^(NSString *command) {
+                        [self.webView evaluateJavaScript:command completionHandler:nil];
+                    };
+
+                    [self.navigationController pushViewController:vc animated:YES];
+                });
+            }];
+        }];
+    }];
 }
+
+#pragma mark - Existing methods ... (textFieldShouldReturn, didFinishNavigation, handleMenuAction, triggerDownloadWithURL)
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     NSString *urlStr = textField.text;
@@ -152,45 +191,15 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
         case BottomMenuActionWebShare: { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL ?: [NSURL URLWithString:self.initialURL]] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; break; }
-        case BottomMenuActionWebHome: { NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com"; [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]]; break; }
+        case BottomMenuActionWebHome: {
+            NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
+            [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]];
+            break;
+        }
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         default: break;
     }
-}
-
-#pragma mark - Developer Tools
-
-- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
-    if (lp.state != UIGestureRecognizerStateBegan) return;
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ツール"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"クッキーを表示" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{ [self showCookies]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"Webインスペクタ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showWebInspector]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ページを保存" systemImage:@"arrow.down.doc" style:CustomMenuActionStyleDefault handler:^{ [self triggerDownloadWithURL:self.webView.URL]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"永続サイトに追加" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [[PersistenceManager sharedManager] addDomain:self.webView.URL.host]; }]];
-    [menu showInView:self.view];
-}
-
-- (void)showCookies {
-    [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSMutableString *str = [NSMutableString stringWithFormat:@"Current Cookies: %lu\n\n", (unsigned long)cookies.count];
-            for (NSHTTPCookie *cookie in cookies) { [str appendFormat:@"Name: %@\nValue: %@\nDomain: %@\n\n", cookie.name, cookie.value, cookie.domain]; }
-            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds]; tv.text = str; tv.editable = NO; tv.backgroundColor = [UIColor blackColor]; tv.textColor = [UIColor greenColor]; tv.font = [UIFont fontWithName:@"Menlo" size:12];
-            UIViewController *vc = [[UIViewController alloc] init]; vc.view = tv; vc.title = @"Cookies"; [self.navigationController pushViewController:vc animated:YES];
-        });
-    }];
-}
-
-- (void)showWebInspector {
-    [self.webView evaluateJavaScript:@"document.documentElement.outerHTML" completionHandler:^(id result, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            WebInspectorViewController *vc = [[WebInspectorViewController alloc] init];
-            vc.htmlSource = (NSString *)result;
-            vc.consoleLogs = self.consoleLogs;
-            [self.navigationController pushViewController:vc animated:YES];
-        });
-    }];
 }
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
