@@ -44,12 +44,16 @@
     if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
     dTask.filename = name;
     dTask.destinationPath = path;
+    dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path];
 
     dTask.isDownloading = YES;
 
+
     dTask.progress = 0;
     NSURLSessionDownloadTask *task = [self.session downloadTaskWithRequest:request];
+    task.taskDescription = path;
     dTask.task = task;
+
     [self.tasks addObject:dTask];
     self.taskMap[@(task.taskIdentifier)] = dTask;
     [task resume];
@@ -100,13 +104,21 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
 
-    NSString *destPath = dTask.destinationPath;
+    NSString *rawPath = dTask.destinationPath ?: downloadTask.taskDescription;
+    NSString *destPath = nil;
+    if (rawPath) {
+        NSString *rel = [FileManagerCore relativeToHomePath:rawPath];
+        destPath = [FileManagerCore absoluteFromHomeRelativePath:rel];
+    }
+
     if (!destPath) {
         NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
         destPath = [docs stringByAppendingPathComponent:@"Downloads"];
     }
 
+
     NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
+
     if (!filename) filename = @"downloaded_file";
 
     NSError *moveError = nil;

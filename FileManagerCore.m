@@ -192,4 +192,34 @@
 }
 
 
+
++ (NSString *)relativeToHomePath:(NSString *)absolutePath {
+    if (!absolutePath) return nil;
+    NSString *stdPath = [absolutePath stringByStandardizingPath];
+    NSRange range = [stdPath rangeOfString:@"/Documents" options:NSBackwardsSearch];
+    if (range.location != NSNotFound) {
+        return [stdPath substringFromIndex:range.location + 1];
+    }
+    NSString *home = [NSHomeDirectory() stringByStandardizingPath];
+    if ([stdPath hasPrefix:home]) {
+        NSString *rel = [stdPath substringFromIndex:home.length];
+        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+        return rel;
+    }
+    return absolutePath;
+}
+
++ (NSString *)absoluteFromHomeRelativePath:(NSString *)relativePath {
+    if (!relativePath) return nil;
+    if ([relativePath isAbsolutePath]) return relativePath;
+    NSString *clean = relativePath;
+    while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
+    if ([clean hasPrefix:@"Documents"]) {
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *rel = [clean substringFromIndex:9]; // "Documents".length
+        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+        return [docs stringByAppendingPathComponent:rel];
+    }
+    return [NSHomeDirectory() stringByAppendingPathComponent:clean];
+}
 @end
