@@ -190,18 +190,20 @@
 
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {
     if (!absolutePath) return nil;
-    NSString *home = NSHomeDirectory();
 
-    if ([absolutePath hasPrefix:home]) {
-        NSString *rel = [absolutePath substringFromIndex:home.length];
+    // Try to anchor to Documents if possible
+    NSString *docs = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByStandardizingPath];
+    NSString *target = [absolutePath stringByStandardizingPath];
+
+    if ([target hasPrefix:docs]) {
+        NSString *rel = [target substringFromIndex:docs.length];
         while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
-        return rel;
+        return [@"Documents" stringByAppendingPathComponent:rel];
     }
 
-    NSString *standardizedPath = [absolutePath stringByStandardizingPath];
-    NSString *standardizedHome = [home stringByStandardizingPath];
-    if ([standardizedPath hasPrefix:standardizedHome]) {
-        NSString *rel = [standardizedPath substringFromIndex:standardizedHome.length];
+    NSString *home = [NSHomeDirectory() stringByStandardizingPath];
+    if ([target hasPrefix:home]) {
+        NSString *rel = [target substringFromIndex:home.length];
         while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
         return rel;
     }
@@ -213,6 +215,14 @@
     if (!relativePath) return nil;
     NSString *clean = relativePath;
     while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
+
+    if ([clean hasPrefix:@"Documents"]) {
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *rel = [clean substringFromIndex:@"Documents".length];
+        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+        return [docs stringByAppendingPathComponent:rel];
+    }
+
     return [NSHomeDirectory() stringByAppendingPathComponent:clean];
 }
 @end

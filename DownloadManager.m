@@ -98,7 +98,10 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
 
-    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : @"Documents/Downloads";
+    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : nil;
+    if (!relativeDest) {
+        relativeDest = @"Documents/Downloads";
+    }
     NSString *destPath = [FileManagerCore absoluteFromHomeRelativePath:relativeDest];
     NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
     if (!filename) filename = @"downloaded_file";
