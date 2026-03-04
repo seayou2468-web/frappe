@@ -65,12 +65,10 @@
         [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.headerView.heightAnchor constraintEqualToConstant:44],
-
         [stack.topAnchor constraintEqualToAnchor:self.headerView.topAnchor],
         [stack.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor],
         [stack.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor],
         [stack.bottomAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
-
         [separator.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor],
         [separator.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor],
         [separator.bottomAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
@@ -103,7 +101,6 @@
         [self.inputContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [self.inputContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.inputContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-
         [self.consoleInput.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:10],
         [self.consoleInput.leadingAnchor constraintEqualToAnchor:self.inputContainer.leadingAnchor constant:12],
         [self.consoleInput.trailingAnchor constraintEqualToAnchor:self.inputContainer.trailingAnchor constant:-12],
@@ -130,7 +127,6 @@
 }
 
 - (void)tabTapped:(UIButton *)sender { [self selectTab:sender.tag]; }
-
 - (void)selectTab:(NSInteger)index {
     self.activeTabIndex = index;
     for (UIButton *btn in self.tabButtons) {
@@ -183,11 +179,16 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"InspectorCell"];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"InspectorCell"];
-        cell.backgroundColor = [UIColor clearColor];
+        cell.backgroundColor = [UIColor colorWithWhite:0.04 alpha:1.0];
         cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:11];
-        cell.textLabel.numberOfLines = 0;
+        cell.textLabel.numberOfLines = 2;
         cell.detailTextLabel.font = [UIFont fontWithName:@"Menlo" size:9];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+        UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(10, 0, self.view.bounds.size.width-20, 0.5)];
+        sep.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+        sep.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [cell.contentView addSubview:sep];
     }
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.textColor = [UIColor grayColor];
@@ -210,8 +211,16 @@
             break;
         case 2: {
             NSDictionary *net = self.networkLogs[indexPath.row];
-            cell.textLabel.text = [NSString stringWithFormat:@"%@ %@", net[@"method"], net[@"url"]];
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"Status: %@ | %@", net[@"status"], net[@"time"]];
+            NSString *method = net[@"method"];
+            NSString *url = net[@"url"];
+            NSInteger status = [net[@"status"] integerValue];
+
+            NSMutableAttributedString *mas = [[NSMutableAttributedString alloc] initWithString:[NSString stringWithFormat:@"[%@] ", method] attributes:@{NSForegroundColorAttributeName: [UIColor cyanColor]}];
+            [mas appendAttributedString:[[NSAttributedString alloc] initWithString:url attributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]}]];
+            cell.textLabel.attributedText = mas;
+
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"Status: %ld | %@", (long)status, net[@"time"]];
+            cell.detailTextLabel.textColor = (status >= 200 && status < 300) ? [UIColor systemGreenColor] : [UIColor systemRedColor];
             break;
         }
         case 3: {
@@ -219,16 +228,19 @@
                 NSHTTPCookie *c = self.cookies[indexPath.row];
                 cell.textLabel.text = [NSString stringWithFormat:@"[Cookie] %@", c.name];
                 cell.detailTextLabel.text = c.value;
-            } else {
-                cell.textLabel.text = @"[WebStorage] Data";
-            }
+            } else { cell.textLabel.text = @"[WebStorage] Data"; }
             break;
         }
     }
     return cell;
 }
 
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 54;
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.activeTabIndex == 2) [self showNetworkDetail:self.networkLogs[indexPath.row]];
     else if (self.activeTabIndex == 0) [self showElementOptions:self.elementsTree[indexPath.row]];
 }
