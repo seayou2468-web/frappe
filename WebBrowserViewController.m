@@ -53,7 +53,6 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self setupUI];
-
     if (self.initialURL) {
         NSURL *url = [NSURL URLWithString:self.initialURL];
         if (url) [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
@@ -175,7 +174,14 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
                     __weak typeof(self) weakSelf = self;
                     vc.onCommand = ^(NSString *command) {
-                        if (command.length > 0) [weakSelf.webView evaluateJavaScript:command completionHandler:nil];
+                        if (command.length > 0) {
+                            [weakSelf.webView evaluateJavaScript:command completionHandler:^(id result, NSError *jsError) {
+                                dispatch_async(dispatch_get_main_queue(), ^{
+                                    NSString *echo = result ? [NSString stringWithFormat:@"OUT> %@", result] : (jsError ? [NSString stringWithFormat:@"ERR> %@", jsError.localizedDescription] : @"OUT> undefined");
+                                    [weakSelf.consoleLogs addObject:echo];
+                                });
+                            }];
+                        }
                     };
 
                     [self.navigationController pushViewController:vc animated:YES];
@@ -185,7 +191,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     }];
 }
 
-#pragma mark - Navigation Logic
+#pragma mark - Existing methods ... (textFieldShouldReturn, didFinishNavigation, handleMenuAction, triggerDownloadWithURL)
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     NSString *urlStr = textField.text;
@@ -199,7 +205,6 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         else if ([engine isEqualToString:@"Custom"]) baseUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: baseUrl;
         urlStr = [NSString stringWithFormat:@"%@%@", baseUrl, [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
     } else if (![urlStr hasPrefix:@"http"]) { urlStr = [@"https://" stringByAppendingString:urlStr]; }
-
     NSURL *target = [NSURL URLWithString:urlStr];
     if (target) [self.webView loadRequest:[NSURLRequest requestWithURL:target]];
     [textField resignFirstResponder];
@@ -216,18 +221,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     switch (action) {
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
-        case BottomMenuActionWebShare: {
-            if (self.webView.URL) {
-                UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil];
-                [self presentViewController:avc animated:YES completion:nil];
-            }
-            break;
-        }
-        case BottomMenuActionWebHome: {
-            NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
-            [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]];
-            break;
-        }
+        case BottomMenuActionWebShare: { if (self.webView.URL) { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; } break; }
+        case BottomMenuActionWebHome: { NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com"; [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]]; break; }
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         default: break;
