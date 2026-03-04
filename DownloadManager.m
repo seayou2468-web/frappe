@@ -104,7 +104,7 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
 
-    NSString *rawPath = dTask.destinationPath ?: downloadTask.taskDescription;
+    NSString *rawPath = dTask.relativeDestinationPath ?: dTask.destinationPath ?: downloadTask.taskDescription;
     NSString *destPath = nil;
     if (rawPath) {
         NSString *rel = [FileManagerCore relativeToHomePath:rawPath];
