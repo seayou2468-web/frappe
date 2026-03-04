@@ -22,15 +22,11 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 @implementation WebBrowserViewController
 
 + (WKWebsiteDataStore *)sharedDataStore {
-    if (!_nonPersistentStore) {
-        _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore];
-    }
+    if (!_nonPersistentStore) { _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore]; }
     return _nonPersistentStore;
 }
 
-+ (void)resetSharedDataStore {
-    _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore];
-}
++ (void)resetSharedDataStore { _nonPersistentStore = [WKWebsiteDataStore nonPersistentDataStore]; }
 
 - (instancetype)initWithURL:(NSString *)url {
     self = [super init];
@@ -56,8 +52,6 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (void)setupUI {
     WKUserContentController *userContent = [[WKUserContentController alloc] init];
     [userContent addScriptMessageHandler:self name:@"logger"];
-
-    // Console log redirection script
     NSString *js = @"var originalLog = console.log; console.log = function(m) { window.webkit.messageHandlers.logger.postMessage(m); originalLog.apply(console, arguments); };"
                     "var originalError = console.error; console.error = function(m) { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + m); originalError.apply(console, arguments); };";
     WKUserScript *script = [[WKUserScript alloc] initWithSource:js injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];
@@ -65,12 +59,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.userContentController = userContent;
-
-    if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) {
-        config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
-    } else {
-        config.websiteDataStore = [WebBrowserViewController sharedDataStore];
-    }
+    if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) { config.websiteDataStore = [WKWebsiteDataStore defaultDataStore]; }
+    else { config.websiteDataStore = [WebBrowserViewController sharedDataStore]; }
 
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -81,7 +71,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.webView.opaque = NO;
     [self.view addSubview:self.webView];
 
-    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 200, 36)];
+    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 160, 36)];
     self.urlField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     self.urlField.textColor = [UIColor whiteColor];
     self.urlField.layer.cornerRadius = 10;
@@ -91,6 +81,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.urlField.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
     self.urlField.leftViewMode = UITextFieldViewModeAlways;
     self.navigationItem.titleView = self.urlField;
+
+    UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"terminal"] style:UIBarButtonItemStylePlain target:self action:@selector(showWebInspector)];
+    self.navigationItem.rightBarButtonItem = inspectorBtn;
 
     self.progressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.progressView.translatesAutoresizingMaskIntoConstraints = NO;
