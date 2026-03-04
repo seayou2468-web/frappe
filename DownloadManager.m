@@ -1,4 +1,5 @@
 #import "DownloadManager.h"
+#import "FileManagerCore.h"
 
 @implementation DownloadTask
 @end
@@ -48,7 +49,6 @@
     dTask.task = task;
     [self.tasks addObject:dTask];
     self.taskMap[@(task.taskIdentifier)] = dTask;
-    NSLog(@"Download starting: %@ to %@", dTask.filename, dTask.destinationPath);
     [task resume];
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadStarted" object:nil];
 }
@@ -104,8 +104,7 @@
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
         if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
         NSError *moveError = nil;
-        NSLog(@"Download finished: %@ moving to %@", dTask.filename, dest);
-        if ([fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:&moveError]) {
+        if ([[FileManagerCore sharedManager] copyItemAtPath:location.path toPath:dest error:&moveError]) {
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
@@ -119,7 +118,6 @@
     DownloadTask *dTask = self.taskMap[@(task.taskIdentifier)];
     if (dTask) {
         dTask.isDownloading = NO;
-        NSLog(@"Download error: %@", error.localizedDescription);
         if (error) {
             NSData *resumeData = error.userInfo[NSURLSessionDownloadTaskResumeData];
             if (resumeData) dTask.resumeData = resumeData;
