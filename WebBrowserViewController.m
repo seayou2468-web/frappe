@@ -242,7 +242,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     if (!url) return;
-    NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+    NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *downloadsPath = [docs stringByAppendingPathComponent:@"Downloads"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
     [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {

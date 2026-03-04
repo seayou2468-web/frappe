@@ -142,8 +142,12 @@
 
 
 - (NSString *)copyItemAtPath:(NSString *)srcPath toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error {
+    return [self moveItemAtURL:[NSURL fileURLWithPath:srcPath] toDirectory:destDir uniqueName:preferredName error:error];
+}
+
+- (NSString *)moveItemAtURL:(NSURL *)srcURL toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error {
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *baseName = preferredName ?: [srcPath lastPathComponent];
+    NSString *baseName = preferredName ?: [srcURL lastPathComponent];
     NSString *nameWithoutExtension = [baseName stringByDeletingPathExtension];
     NSString *extension = [baseName pathExtension];
 
@@ -161,24 +165,39 @@
         counter++;
     }
 
-    BOOL success = [fm copyItemAtURL:[NSURL fileURLWithPath:srcPath] toURL:[NSURL fileURLWithPath:destPath] error:error];
+    [fm createDirectoryAtPath:destDir withIntermediateDirectories:YES attributes:nil error:nil];
+
+    NSError *moveError = nil;
+    BOOL success = NO;
+    if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
+
+    success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+    if (!success && [moveError.domain isEqualToString:NSCocoaErrorDomain] && moveError.code == NSFileWriteFileExistsError) {
+        // Should not happen with unique naming, but as fallback
+        [fm removeItemAtPath:destPath error:nil];
+        success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+    }
+
+    if (error) *error = moveError;
     return success ? finalName : nil;
 }
 
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {
     if (!absolutePath) return nil;
-    NSString *home = NSHomeDirectory();
-    if ([absolutePath hasPrefix:home]) {
-        return [absolutePath substringFromIndex:home.length];
+    NSString *standardized = [absolutePath stringByStandardizingPath];
+    NSString *home = [NSHomeDirectory() stringByStandardizingPath];
+    if ([standardized hasPrefix:home]) {
+        NSString *rel = [standardized substringFromIndex:home.length];
+        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+        return rel;
     }
     return absolutePath;
 }
 
 + (NSString *)absoluteFromHomeRelativePath:(NSString *)relativePath {
     if (!relativePath) return nil;
-    if ([relativePath hasPrefix:@"/"]) {
-        return [NSHomeDirectory() stringByAppendingPathComponent:relativePath];
-    }
-    return relativePath;
+    NSString *clean = relativePath;
+    while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
+    return [[NSHomeDirectory() stringByStandardizingPath] stringByAppendingPathComponent:clean];
 }
 @end

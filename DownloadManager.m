@@ -97,17 +97,20 @@
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
-    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : @"/Documents/Downloads";
+
+    NSString *relativeDest = dTask ? dTask.relativeDestinationPath : nil;
+    if (!relativeDest) {
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *downloads = [docs stringByAppendingPathComponent:@"Downloads"];
+        relativeDest = [FileManagerCore relativeToHomePath:downloads];
+    }
+
     NSString *destPath = [FileManagerCore absoluteFromHomeRelativePath:relativeDest];
     NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
     if (!filename) filename = @"downloaded_file";
 
-    NSFileManager *fm = [NSFileManager defaultManager];
-    [fm createDirectoryAtPath:destPath withIntermediateDirectories:YES attributes:nil error:nil];
-
     NSError *moveError = nil;
-    NSString *finalName = [[FileManagerCore sharedManager] copyItemAtPath:location.path toDirectory:destPath uniqueName:filename error:&moveError];
-
+    NSString *finalName = [[FileManagerCore sharedManager] moveItemAtURL:location toDirectory:destPath uniqueName:filename error:&moveError];
 
     if (finalName) {
         if (dTask) {
