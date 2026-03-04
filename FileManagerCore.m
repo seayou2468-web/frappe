@@ -172,9 +172,16 @@
     if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
 
     if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
-    success = [fm copyItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
-    if (success) {
-        [fm removeItemAtURL:srcURL error:nil];
+
+    // Try move first, as it is more likely to work with system-provided URLs
+    success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+
+    if (!success) {
+        // Fallback to copy if move fails (sometimes needed if files are on different partitions/volumes)
+        success = [fm copyItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+        if (success) {
+            [fm removeItemAtURL:srcURL error:nil];
+        }
     }
 
     if (error) *error = moveError;
@@ -184,11 +191,21 @@
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {
     if (!absolutePath) return nil;
     NSString *home = NSHomeDirectory();
+
     if ([absolutePath hasPrefix:home]) {
         NSString *rel = [absolutePath substringFromIndex:home.length];
         while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
         return rel;
     }
+
+    NSString *standardizedPath = [absolutePath stringByStandardizingPath];
+    NSString *standardizedHome = [home stringByStandardizingPath];
+    if ([standardizedPath hasPrefix:standardizedHome]) {
+        NSString *rel = [standardizedPath substringFromIndex:standardizedHome.length];
+        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+        return rel;
+    }
+
     return absolutePath;
 }
 
