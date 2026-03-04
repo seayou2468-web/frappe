@@ -36,8 +36,8 @@
         case 1: return 3; // Display
         case 2: return 1; // Sort
         case 3: return 2; // Appearance
-        case 4: return 3; // Web: Engine, Clear Data, Persistent Sites
-        case 5: return [PersistenceManager sharedManager].persistentDomains.count; // Whitelisted Domains
+        case 4: return 4; // Web: Engine, Homepage, Clear Data, Add Whitelist
+        case 5: return [PersistenceManager sharedManager].persistentDomains.count; // Whitelist items
         case 6: return 1; // Advanced
         case 7: return [BookmarksManager sharedManager].bookmarks.count; // Favorites
         default: return 0;
@@ -51,7 +51,7 @@
         case 2: return @"並び替え";
         case 3: return @"外観カスタマイズ";
         case 4: return @"ウェブブラウザ";
-        case 5: return @"永続データを許可するサイト";
+        case 5: return @"データを常に保持するサイト";
         case 6: return @"詳細";
         case 7: return @"お気に入り";
         default: return nil;
@@ -122,19 +122,27 @@
     } else if (indexPath.section == 4) {
         if (indexPath.row == 0) {
             cell.textLabel.text = @"検索エンジン";
-            cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"SearchEngine"] ?: @"Google";
+            NSString *engine = [[NSUserDefaults standardUserDefaults] stringForKey:@"SearchEngine"] ?: @"Google";
+            if ([engine isEqualToString:@"Custom"]) {
+                NSString *customUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"];
+                cell.detailTextLabel.text = customUrl ? [NSString stringWithFormat:@"カスタム (%@)", customUrl] : @"カスタム (未設定)";
+            } else {
+                cell.detailTextLabel.text = engine;
+            }
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else if (indexPath.row == 1) {
+            cell.textLabel.text = @"ホームページ";
+            cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        } else if (indexPath.row == 2) {
             cell.textLabel.text = @"ブラウザデータを消去";
             cell.textLabel.textColor = [UIColor systemRedColor];
         } else {
-            cell.textLabel.text = @"ドメインを永続リストに追加";
+            cell.textLabel.text = @"永続保存サイトを追加";
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 5) {
-        NSString *domain = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
-        cell.textLabel.text = domain;
-        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.textLabel.text = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
     } else if (indexPath.section == 6) {
         cell.textLabel.text = @"全ての設定をリセット";
         cell.textLabel.textColor = [UIColor systemRedColor];
@@ -156,7 +164,8 @@
         else [self selectAccentColor];
     } else if (indexPath.section == 4) {
         if (indexPath.row == 0) [self selectSearchEngine];
-        else if (indexPath.row == 1) [self clearBrowserData];
+        else if (indexPath.row == 1) [self editHomepage];
+        else if (indexPath.row == 2) [self clearBrowserData];
         else [self addNewPersistentDomain];
     } else if (indexPath.section == 6) [self confirmResetSettings];
 }
@@ -178,15 +187,35 @@
     }
 }
 
-#pragma mark - Actions
+#pragma mark - Browser Customization
 
-- (void)addNewPersistentDomain {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"永続ドメイン" message:@"ドメイン名を入力してください (例: google.com)" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:nil];
-    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *domain = alert.textFields[0].text;
-        if (domain.length > 0) {
-            [[PersistenceManager sharedManager] addDomain:domain];
+- (void)selectSearchEngine {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"検索エンジン"];
+    NSArray *engines = @[@"Google", @"Bing", @"DuckDuckGo", @"Yahoo", @"Custom"];
+    for (NSString *engine in engines) {
+        NSString *display = [engine isEqualToString:@"Custom"] ? @"カスタム設定..." : engine;
+        [menu addAction:[CustomMenuAction actionWithTitle:display systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+            if ([engine isEqualToString:@"Custom"]) {
+                [self editCustomSearchURL];
+            } else {
+                [[NSUserDefaults standardUserDefaults] setObject:engine forKey:@"SearchEngine"];
+                [self.tableView reloadData];
+            }
+        }]];
+    }
+    [menu showInView:self.view];
+}
+
+- (void)editCustomSearchURL {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"カスタム検索" message:@"検索URLを入力してください (例: https://example.com/search?q=)" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: @"";
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *url = alert.textFields[0].text;
+        if (url.length > 0) {
+            [[NSUserDefaults standardUserDefaults] setObject:@"Custom" forKey:@"SearchEngine"];
+            [[NSUserDefaults standardUserDefaults] setObject:url forKey:@"CustomSearchURL"];
             [self.tableView reloadData];
         }
     }]];
@@ -194,7 +223,20 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-#pragma mark - Rest of logic (Settings helpers) ...
+- (void)editHomepage {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ホームページ" message:@"URLを入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[NSUserDefaults standardUserDefaults] setObject:alert.textFields[0].text forKey:@"WebHomepage"];
+        [self.tableView reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Existing Logic
 
 - (void)editDefaultPath {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"起動パス" message:@"アプリ起動時に開くパスを入力してください" preferredStyle:UIAlertControllerStyleAlert];
@@ -247,16 +289,15 @@
     [menu showInView:self.view];
 }
 
-- (void)selectSearchEngine {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"検索エンジン"];
-    NSArray *engines = @[@"Google", @"Bing", @"DuckDuckGo", @"Yahoo"];
-    for (NSString *engine in engines) {
-        [menu addAction:[CustomMenuAction actionWithTitle:engine systemImage:@"magnifyingglass" style:CustomMenuActionStyleDefault handler:^{
-            [[NSUserDefaults standardUserDefaults] setObject:engine forKey:@"SearchEngine"];
-            [self.tableView reloadData];
-        }]];
-    }
-    [menu showInView:self.view];
+- (void)addNewPersistentDomain {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"永続ドメイン" message:@"ドメイン名を入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:nil];
+    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *domain = alert.textFields[0].text;
+        if (domain.length > 0) { [[PersistenceManager sharedManager] addDomain:domain]; [self.tableView reloadData]; }
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)clearBrowserData {

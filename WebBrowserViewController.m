@@ -33,7 +33,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (instancetype)initWithURL:(NSString *)url {
     self = [super init];
     if (self) {
-        _initialURL = url ?: @"https://www.google.com";
+        NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
+        _initialURL = url ?: home;
     }
     return self;
 }
@@ -47,9 +48,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
 }
 
-- (void)dealloc {
-    [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
-}
+- (void)dealloc { [self.webView removeObserver:self forKeyPath:@"estimatedProgress"]; }
 
 - (void)setupUI {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
@@ -95,18 +94,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.progressView.topAnchor constraintEqualToAnchor:safe.topAnchor],
-        [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.progressView.heightAnchor constraintEqualToConstant:2],
-        [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor],
-        [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
-        [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
+        [self.progressView.topAnchor constraintEqualToAnchor:safe.topAnchor], [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.progressView.heightAnchor constraintEqualToConstant:2],
+        [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor], [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
+        [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor], [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
     ]];
 }
 
@@ -126,6 +116,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         if ([engine isEqualToString:@"Bing"]) baseUrl = @"https://www.bing.com/search?q=";
         else if ([engine isEqualToString:@"DuckDuckGo"]) baseUrl = @"https://duckduckgo.com/?q=";
         else if ([engine isEqualToString:@"Yahoo"]) baseUrl = @"https://search.yahoo.com/search?p=";
+        else if ([engine isEqualToString:@"Custom"]) {
+            baseUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: baseUrl;
+        }
         urlStr = [NSString stringWithFormat:@"%@%@", baseUrl, [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
     } else if (![urlStr hasPrefix:@"http"]) {
         urlStr = [@"https://" stringByAppendingString:urlStr];
@@ -153,17 +146,13 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
             [self presentViewController:avc animated:YES completion:nil];
             break;
         }
-        case BottomMenuActionWebHome: [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://www.google.com"]]]; break;
-        case BottomMenuActionDownloads: {
-            DownloadsViewController *vc = [[DownloadsViewController alloc] init];
-            [self.navigationController pushViewController:vc animated:YES];
+        case BottomMenuActionWebHome: {
+            NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
+            [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]];
             break;
         }
-        case BottomMenuActionTabs: {
-            MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
-            if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher];
-            break;
-        }
+        case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
+        case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         default: break;
     }
 }
