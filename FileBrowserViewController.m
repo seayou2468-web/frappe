@@ -50,21 +50,17 @@
 
 - (void)setupUI {
     __weak typeof(self) weakSelf = self;
-
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectMake(0, 0, 200, 36)];
     [self.pathBar updatePath:self.currentPath];
     self.pathBar.onPathChanged = ^(NSString *newPath) { [weakSelf navigateToPath:newPath]; };
     self.navigationItem.titleView = self.pathBar;
-
     if (![self.currentPath isEqualToString:@"/"]) {
         self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(goUp)];
     }
-
     UIBarButtonItem *searchBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(toggleSearch)];
     UIBarButtonItem *selectBtn = [[UIBarButtonItem alloc] initWithTitle:@"選択" style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectionMode)];
     UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
     self.navigationItem.rightBarButtonItems = @[moreBtn, selectBtn, searchBtn];
-
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.delegate = self;
@@ -72,19 +68,15 @@
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.allowsMultipleSelectionDuringEditing = YES;
-
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(reloadData) forControlEvents:UIControlEventValueChanged];
     refresh.tintColor = [UIColor whiteColor];
     self.tableView.refreshControl = refresh;
-
     [self.view addSubview:self.tableView];
-
     self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeFiles];
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
-
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.barStyle = UIBarStyleBlack;
@@ -93,14 +85,12 @@
     self.searchBar.alpha = 0;
     self.searchBar.userInteractionEnabled = YES;
     [self.view addSubview:self.searchBar];
-
     self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"現在のフォルダ", @"全体検索"]];
     self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchScope.selectedSegmentIndex = 0;
     self.searchScope.alpha = 0;
     self.searchScope.userInteractionEnabled = YES;
     [self.view addSubview:self.searchScope];
-
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     BOOL alwaysSearch = [[NSUserDefaults standardUserDefaults] boolForKey:@"AlwaysShowSearch"];
     self.searchBarTopConstraint = [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:alwaysSearch ? 0 : -100];
@@ -108,7 +98,6 @@
     self.searchScope.alpha = alwaysSearch ? 1.0 : 0;
     if (alwaysSearch) self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0);
     self.searchBarTopConstraint.active = YES;
-
     [NSLayoutConstraint activateConstraints:@[
         [self.tableView.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -125,36 +114,23 @@
         [self.searchScope.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.searchScope.heightAnchor constraintEqualToConstant:32],
     ]];
-
     [self.view bringSubviewToFront:self.searchBar];
     [self.view bringSubviewToFront:self.searchScope];
-
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
     [self.tableView addGestureRecognizer:lp];
-
     UISwipeGestureRecognizer *swipeRight = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeRight:)];
     swipeRight.direction = UISwipeGestureRecognizerDirectionRight;
     swipeRight.delegate = self;
     [self.view addGestureRecognizer:swipeRight];
 }
 
-- (void)handleSwipeRight:(UISwipeGestureRecognizer *)gesture {
-    if (![self.currentPath isEqualToString:@"/"]) {
-        [self goUp];
-    }
-}
-
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    return YES;
-}
+- (void)handleSwipeRight:(UISwipeGestureRecognizer *)gesture { if (![self.currentPath isEqualToString:@"/"]) [self goUp]; }
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer { return YES; }
 
 - (void)reloadData {
     self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath];
-    [self.tableView reloadData];
-    [self.pathBar updatePath:self.currentPath];
-    if (self.tableView.refreshControl.isRefreshing) {
-        [self.tableView.refreshControl endRefreshing];
-    }
+    [self.tableView reloadData]; [self.pathBar updatePath:self.currentPath];
+    if (self.tableView.refreshControl.isRefreshing) [self.tableView.refreshControl endRefreshing];
 }
 
 - (void)goUp {
@@ -167,21 +143,11 @@
 - (void)toggleSearch {
     if (self.isSearchRevealed) {
         self.isSearchRevealed = NO;
-        [UIView animateWithDuration:0.3 animations:^{
-            self.searchBarTopConstraint.constant = -100;
-            self.searchBar.alpha = 0;
-            self.searchScope.alpha = 0;
-            self.tableView.contentInset = UIEdgeInsetsZero;
-        }];
+        [UIView animateWithDuration:0.3 animations:^{ self.searchBarTopConstraint.constant = -100; self.searchBar.alpha = 0; self.searchScope.alpha = 0; self.tableView.contentInset = UIEdgeInsetsZero; }];
         [self.searchBar resignFirstResponder];
     } else {
         self.isSearchRevealed = YES;
-        [UIView animateWithDuration:0.3 animations:^{
-            self.searchBarTopConstraint.constant = 0;
-            self.searchBar.alpha = 1.0;
-            self.searchScope.alpha = 1.0;
-            self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0);
-        }];
+        [UIView animateWithDuration:0.3 animations:^{ self.searchBarTopConstraint.constant = 0; self.searchBar.alpha = 1.0; self.searchScope.alpha = 1.0; self.tableView.contentInset = UIEdgeInsetsMake(100, 0, 0, 0); }];
         [self.searchBar becomeFirstResponder];
     }
 }
@@ -358,21 +324,30 @@
     for (NSString *path in [BookmarksManager sharedManager].bookmarks) { [menu addAction:[CustomMenuAction actionWithTitle:[path lastPathComponent] systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{ [self navigateToPath:path]; }]]; }
     [menu showInView:self.view];
 }
+
 - (void)showOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ UIDocumentPickerViewController *dp = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES]; dp.delegate = self; [self presentViewController:dp animated:YES completion:nil]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ [self selectFile]; }]];
     [menu showInView:self.view];
 }
+
+- (void)selectFile {
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
 - (void)showSettings { SettingsViewController *vc = [[SettingsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; }
 
 #pragma mark - UIDocumentPickerDelegate
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    for (NSURL *url in urls) {
-        BOOL access = [url startAccessingSecurityScopedResource];
-        [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:[self.currentPath stringByAppendingPathComponent:url.lastPathComponent] error:nil];
-        if (access) [url stopAccessingSecurityScopedResource];
-    }
+    NSURL *url = urls.firstObject;
+    if (!url) return;
+    BOOL access = [url startAccessingSecurityScopedResource];
+    NSString *dest = [self.currentPath stringByAppendingPathComponent:url.lastPathComponent];
+    [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:dest error:nil];
+    if (access) [url stopAccessingSecurityScopedResource];
     [self reloadData];
 }
 
