@@ -12,14 +12,18 @@
 }
 @end
 
-@interface CustomMenuView () <UIGestureRecognizerDelegate>
+@interface CustomMenuView () <UIGestureRecognizerDelegate, UIScrollViewDelegate>
 @property (nonatomic, strong) UIView *contentView;
+@property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *stackView;
 @property (nonatomic, strong) NSMutableArray<CustomMenuAction *> *actions;
 @property (nonatomic, strong) UIView *backgroundDimmer;
 @property (nonatomic, strong) NSLayoutConstraint *contentBottomConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *contentHeightConstraint;
 @property (nonatomic, assign) CGPoint panStartPoint;
+@property (nonatomic, assign) CGFloat neutralHeight;
 @property (nonatomic, strong) UIView *bottomExtension;
+@property (nonatomic, assign) BOOL isExpanded;
 @end
 
 @implementation CustomMenuView
@@ -54,14 +58,14 @@
 
     self.contentView = [[UIView alloc] init];
     self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [ThemeEngine applyGlassStyleToView:self.contentView cornerRadius:28];
+    [ThemeEngine applyGlassStyleToView:self.contentView cornerRadius:30];
     self.contentView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     self.contentView.clipsToBounds = YES;
     [self addSubview:self.contentView];
 
     self.bottomExtension = [[UIView alloc] init];
     self.bottomExtension.translatesAutoresizingMaskIntoConstraints = NO;
-    self.bottomExtension.backgroundColor = [[UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:1.0] colorWithAlphaComponent:0.9];
+    self.bottomExtension.backgroundColor = [[UIColor colorWithRed:0.08 green:0.08 blue:0.1 alpha:1.0] colorWithAlphaComponent:0.95];
     [self insertSubview:self.bottomExtension belowSubview:self.contentView];
 
     UIView *grabber = [[UIView alloc] init];
@@ -73,48 +77,63 @@
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.text = self.menuTitle;
-    titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
-    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+    titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
     titleLabel.textAlignment = NSTextAlignmentCenter;
     titleLabel.numberOfLines = 0;
     [self.contentView addSubview:titleLabel];
+
+    self.scrollView = [[UIScrollView alloc] init];
+    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.scrollView.showsVerticalScrollIndicator = NO;
+    self.scrollView.delegate = self;
+    [self.contentView addSubview:self.scrollView];
 
     self.stackView = [[UIStackView alloc] init];
     self.stackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.stackView.axis = UILayoutConstraintAxisVertical;
     self.stackView.spacing = 1;
     self.stackView.distribution = UIStackViewDistributionFill;
-    [self.contentView addSubview:self.stackView];
+    [self.scrollView addSubview:self.stackView];
 
-    self.contentBottomConstraint = [self.contentView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:800];
+    self.contentBottomConstraint = [self.contentView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:1000];
+    self.contentHeightConstraint = [self.contentView.heightAnchor constraintEqualToConstant:0];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.contentView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.contentView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         self.contentBottomConstraint,
+        self.contentHeightConstraint,
         [self.contentView.heightAnchor constraintLessThanOrEqualToAnchor:self.heightAnchor multiplier:0.95],
 
         [self.bottomExtension.topAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-30],
         [self.bottomExtension.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.bottomExtension.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-        [self.bottomExtension.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:300],
+        [self.bottomExtension.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:1000],
 
-        [grabber.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+        [grabber.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
         [grabber.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-        [grabber.widthAnchor constraintEqualToConstant:38],
+        [grabber.widthAnchor constraintEqualToConstant:36],
         [grabber.heightAnchor constraintEqualToConstant:5],
 
-        [titleLabel.topAnchor constraintEqualToAnchor:grabber.bottomAnchor constant:12],
+        [titleLabel.topAnchor constraintEqualToAnchor:grabber.bottomAnchor constant:10],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
 
-        [self.stackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:18],
-        [self.stackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:14],
-        [self.stackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-14],
-        [self.stackView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-self.safeAreaInsets.bottom - 20],
+        [self.scrollView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:15],
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
+
+        [self.stackView.topAnchor constraintEqualToAnchor:self.scrollView.contentLayoutGuide.topAnchor constant:5],
+        [self.stackView.leadingAnchor constraintEqualToAnchor:self.scrollView.contentLayoutGuide.leadingAnchor constant:14],
+        [self.stackView.trailingAnchor constraintEqualToAnchor:self.scrollView.contentLayoutGuide.trailingAnchor constant:-14],
+        [self.stackView.bottomAnchor constraintEqualToAnchor:self.scrollView.contentLayoutGuide.bottomAnchor constant:-20],
+        [self.stackView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor constant:-28],
     ]];
 
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    pan.delegate = self;
     [self.contentView addGestureRecognizer:pan];
 
     [self layoutIfNeeded];
@@ -127,24 +146,56 @@
     } else if (pan.state == UIGestureRecognizerStateChanged) {
         CGFloat y = translation.y - self.panStartPoint.y;
         if (y > 0) {
-            self.contentBottomConstraint.constant = y;
-            self.backgroundDimmer.alpha = 1.0 - (y / 400.0);
+            // Pulling down
+            if (self.isExpanded) {
+                // If expanded, reduce height first
+                CGFloat newHeight = (self.frame.size.height * 0.95) - y;
+                if (newHeight < self.neutralHeight) {
+                    // Transition back to neutral and then drag down
+                    self.contentHeightConstraint.constant = self.neutralHeight;
+                    self.contentBottomConstraint.constant = y - (self.frame.size.height * 0.95 - self.neutralHeight);
+                } else {
+                    self.contentHeightConstraint.constant = newHeight;
+                }
+            } else {
+                // Not expanded, drag down to dismiss
+                self.contentBottomConstraint.constant = y;
+                self.backgroundDimmer.alpha = 1.0 - (y / 400.0);
+            }
         } else {
-            CGFloat resistance = 0.35;
-            self.contentBottomConstraint.constant = y * resistance;
+            // Pulling up
+            CGFloat newHeight = (self.isExpanded ? self.frame.size.height * 0.95 : self.neutralHeight) - y;
+            self.contentHeightConstraint.constant = MIN(newHeight, self.frame.size.height * 0.95);
         }
     } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
         CGFloat y = translation.y - self.panStartPoint.y;
-        if (y > 100) {
+        if (!self.isExpanded && y > 150) {
             [self dismiss];
         } else {
-            [UIView animateWithDuration:0.45 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+            [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
                 self.contentBottomConstraint.constant = 0;
+                if (y < -50) {
+                    self.isExpanded = YES;
+                    self.contentHeightConstraint.constant = self.frame.size.height * 0.95;
+                } else if (y > 50 && self.isExpanded) {
+                    self.isExpanded = NO;
+                    self.contentHeightConstraint.constant = self.neutralHeight;
+                } else {
+                    self.contentHeightConstraint.constant = self.isExpanded ? self.frame.size.height * 0.95 : self.neutralHeight;
+                }
                 self.backgroundDimmer.alpha = 1.0;
                 [self layoutIfNeeded];
             } completion:nil];
         }
     }
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    if ([otherGestureRecognizer.view isKindOfClass:[UIScrollView class]]) {
+        UIScrollView *sv = (UIScrollView *)otherGestureRecognizer.view;
+        if (sv.contentOffset.y <= 0) return YES;
+    }
+    return NO;
 }
 
 - (void)addAction:(CustomMenuAction *)action {
@@ -194,7 +245,7 @@
         btn.tag = i;
 
         [self.stackView addArrangedSubview:btn];
-        [btn.heightAnchor constraintEqualToConstant:54].active = YES;
+        [btn.heightAnchor constraintEqualToConstant:56].active = YES;
 
         if (i < self.actions.count - 1) {
             UIView *sep = [[UIView alloc] init];
@@ -205,8 +256,12 @@
     }
 
     [self layoutIfNeeded];
+    CGFloat contentSizeHeight = self.stackView.frame.size.height + 100;
+    self.neutralHeight = MIN(contentSizeHeight, self.frame.size.height * 0.6);
+    self.contentHeightConstraint.constant = self.neutralHeight;
+    [self layoutIfNeeded];
 
-    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.88 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
         self.backgroundDimmer.alpha = 1.0;
         self.contentBottomConstraint.constant = 0;
         [self layoutIfNeeded];
@@ -220,7 +275,7 @@
 - (void)dismissWithCompletion:(void (^)(void))completion {
     [UIView animateWithDuration:0.35 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
         self.backgroundDimmer.alpha = 0;
-        self.contentBottomConstraint.constant = 800;
+        self.contentBottomConstraint.constant = 1000;
         [self layoutIfNeeded];
     } completion:^(BOOL finished) {
         [self removeFromSuperview];
