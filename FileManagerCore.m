@@ -164,4 +164,21 @@
     BOOL success = [fm copyItemAtURL:[NSURL fileURLWithPath:srcPath] toURL:[NSURL fileURLWithPath:destPath] error:error];
     return success ? finalName : nil;
 }
+
++ (NSString *)relativeToHomePath:(NSString *)absolutePath {
+    if (!absolutePath) return nil;
+    NSString *home = NSHomeDirectory();
+    if ([absolutePath hasPrefix:home]) {
+        return [absolutePath substringFromIndex:home.length];
+    }
+    return absolutePath;
+}
+
++ (NSString *)absoluteFromHomeRelativePath:(NSString *)relativePath {
+    if (!relativePath) return nil;
+    if ([relativePath hasPrefix:@"/"]) {
+        return [NSHomeDirectory() stringByAppendingPathComponent:relativePath];
+    }
+    return relativePath;
+}
 @end
