@@ -11,6 +11,15 @@
 
 static WKWebsiteDataStore *_nonPersistentStore = nil;
 
+@interface WeakScriptMessageProxy : NSObject <WKScriptMessageHandler>
+@property (nonatomic, weak) id<WKScriptMessageHandler> delegate;
+@end
+@implementation WeakScriptMessageProxy
+- (void)userContentController:(WKUserContentController *)ucc didReceiveScriptMessage:(WKScriptMessage *)m {
+    [self.delegate userContentController:ucc didReceiveScriptMessage:m];
+}
+@end
+
 @interface WebBrowserViewController () <WKUIDelegate, WKScriptMessageHandler>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UITextField *urlField;
@@ -33,7 +42,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self = [super init];
     if (self) {
         NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
-        _initialURL = url ?: home;
+        _initialURL = ([url hasPrefix:@"http"] || [url containsString:@"."]) ? url : home;
         _consoleLogs = [NSMutableArray array];
         _networkLogs = [NSMutableArray array];
     }
@@ -44,33 +53,42 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self setupUI];
-    NSURL *url = [NSURL URLWithString:self.initialURL];
-    [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+
+    if (self.initialURL) {
+        NSURL *url = [NSURL URLWithString:self.initialURL];
+        if (url) [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+    }
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
 }
 
-- (void)dealloc { [self.webView removeObserver:self forKeyPath:@"estimatedProgress"]; }
+- (void)dealloc {
+    [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"logger"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"network"];
+}
 
 - (void)setupUI {
     WKUserContentController *userContent = [[WKUserContentController alloc] init];
-    [userContent addScriptMessageHandler:self name:@"logger"];
-    [userContent addScriptMessageHandler:self name:@"network"];
+    WeakScriptMessageProxy *proxy = [[WeakScriptMessageProxy alloc] init];
+    proxy.delegate = self;
+    [userContent addScriptMessageHandler:proxy name:@"logger"];
+    [userContent addScriptMessageHandler:proxy name:@"network"];
 
     NSString *js =
-        @"var originalLog = console.log; console.log = function(m) { window.webkit.messageHandlers.logger.postMessage(JSON.stringify(m)); originalLog.apply(console, arguments); };"
-        "var originalError = console.error; console.error = function(m) { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + JSON.stringify(m)); originalError.apply(console, arguments); };"
+        @"var originalLog = console.log; console.log = function(m) { try { window.webkit.messageHandlers.logger.postMessage(JSON.stringify(m)); } catch(e) {} originalLog.apply(console, arguments); };"
+        "var originalError = console.error; console.error = function(m) { try { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + JSON.stringify(m)); } catch(e) {} originalError.apply(console, arguments); };"
         "var originalOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(method, url) {"
         "  this._url = url; this._method = method; originalOpen.apply(this, arguments);"
         "};"
         "var originalSend = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function() {"
         "  this.addEventListener('load', function() {"
-        "    window.webkit.messageHandlers.network.postMessage({url: this._url, method: this._method, status: this.status});"
+        "    try { window.webkit.messageHandlers.network.postMessage({url: this._url, method: this._method, status: this.status}); } catch(e) {}"
         "  });"
         "  originalSend.apply(this, arguments);"
         "};"
         "var originalFetch = window.fetch; window.fetch = function() {"
         "  var args = arguments; return originalFetch.apply(this, arguments).then(function(response) {"
-        "    window.webkit.messageHandlers.network.postMessage({url: response.url, method: 'FETCH', status: response.status});"
+        "    try { window.webkit.messageHandlers.network.postMessage({url: response.url, method: 'FETCH', status: response.status}); } catch(e) {}"
         "    return response;"
         "  });"
         "};";
@@ -125,11 +143,14 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"logger"]) {
-        [self.consoleLogs addObject:[NSString stringWithFormat:@"%@", message.body]];
+        NSString *log = [NSString stringWithFormat:@"%@", message.body];
+        if (log.length > 0) [self.consoleLogs addObject:log];
     } else if ([message.name isEqualToString:@"network"]) {
-        NSMutableDictionary *dict = [message.body mutableCopy];
-        dict[@"time"] = [[NSDate date] description];
-        [self.networkLogs addObject:dict];
+        if ([message.body isKindOfClass:[NSDictionary class]]) {
+            NSMutableDictionary *dict = [message.body mutableCopy];
+            dict[@"time"] = [[NSDate date] description];
+            [self.networkLogs addObject:dict];
+        }
     }
 }
 
@@ -139,19 +160,22 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
             [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     WebInspectorViewController *vc = [[WebInspectorViewController alloc] init];
-                    vc.htmlSource = (NSString *)html;
+                    vc.htmlSource = html ?: @"";
                     vc.consoleLogs = self.consoleLogs;
                     vc.networkLogs = self.networkLogs;
-                    vc.cookies = cookies;
+                    vc.cookies = cookies ?: @[];
 
-                    NSDictionary *sDict = (NSDictionary *)storage;
-                    NSMutableDictionary *finalStorage = [NSMutableDictionary dictionary];
-                    if (sDict[@"local"]) finalStorage[@"local"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"local"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
-                    if (sDict[@"session"]) finalStorage[@"session"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"session"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
-                    vc.storageData = finalStorage;
+                    if ([storage isKindOfClass:[NSDictionary class]]) {
+                        NSDictionary *sDict = (NSDictionary *)storage;
+                        NSMutableDictionary *finalStorage = [NSMutableDictionary dictionary];
+                        if (sDict[@"local"]) finalStorage[@"local"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"local"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+                        if (sDict[@"session"]) finalStorage[@"session"] = [NSJSONSerialization JSONObjectWithData:[sDict[@"session"] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+                        vc.storageData = finalStorage;
+                    }
 
+                    __weak typeof(self) weakSelf = self;
                     vc.onCommand = ^(NSString *command) {
-                        [self.webView evaluateJavaScript:command completionHandler:nil];
+                        if (command.length > 0) [weakSelf.webView evaluateJavaScript:command completionHandler:nil];
                     };
 
                     [self.navigationController pushViewController:vc animated:YES];
@@ -161,7 +185,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     }];
 }
 
-#pragma mark - Existing methods ... (textFieldShouldReturn, didFinishNavigation, handleMenuAction, triggerDownloadWithURL)
+#pragma mark - Navigation Logic
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     NSString *urlStr = textField.text;
@@ -175,7 +199,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         else if ([engine isEqualToString:@"Custom"]) baseUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: baseUrl;
         urlStr = [NSString stringWithFormat:@"%@%@", baseUrl, [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
     } else if (![urlStr hasPrefix:@"http"]) { urlStr = [@"https://" stringByAppendingString:urlStr]; }
-    [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlStr]]];
+
+    NSURL *target = [NSURL URLWithString:urlStr];
+    if (target) [self.webView loadRequest:[NSURLRequest requestWithURL:target]];
     [textField resignFirstResponder];
     return YES;
 }
@@ -190,7 +216,13 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     switch (action) {
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
-        case BottomMenuActionWebShare: { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL ?: [NSURL URLWithString:self.initialURL]] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; break; }
+        case BottomMenuActionWebShare: {
+            if (self.webView.URL) {
+                UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil];
+                [self presentViewController:avc animated:YES completion:nil];
+            }
+            break;
+        }
         case BottomMenuActionWebHome: {
             NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
             [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]];
@@ -203,6 +235,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 }
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
+    if (!url) return;
     NSString *downloadsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     downloadsPath = [downloadsPath stringByAppendingPathComponent:@"Downloads"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
@@ -211,6 +244,13 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         [request setAllHTTPHeaderFields:[NSHTTPCookie requestHeaderFieldsWithCookies:cookies]];
         dispatch_async(dispatch_get_main_queue(), ^{ [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath]; DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; });
     }];
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
+    if ([keyPath isEqualToString:@"estimatedProgress"]) {
+        self.progressView.progress = self.webView.estimatedProgress;
+        self.progressView.hidden = (self.webView.estimatedProgress >= 1.0);
+    }
 }
 
 @end
