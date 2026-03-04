@@ -173,14 +173,17 @@
 
     if ([fm fileExistsAtPath:destPath]) [fm removeItemAtPath:destPath error:nil];
 
-    // Try move first, as it is more likely to work with system-provided URLs
     success = [fm moveItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+    if (!success) {
+        success = [fm copyItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
+        if (success) [fm removeItemAtURL:srcURL error:nil];
+    }
 
     if (!success) {
-        // Fallback to copy if move fails (sometimes needed if files are on different partitions/volumes)
-        success = [fm copyItemAtURL:srcURL toURL:[NSURL fileURLWithPath:destPath] error:&moveError];
-        if (success) {
-            [fm removeItemAtURL:srcURL error:nil];
+        NSData *data = [NSData dataWithContentsOfURL:srcURL options:0 error:&moveError];
+        if (data) {
+            success = [data writeToFile:destPath options:NSDataWritingAtomic error:&moveError];
+            if (success) [fm removeItemAtURL:srcURL error:nil];
         }
     }
 
@@ -190,24 +193,12 @@
 
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {
     if (!absolutePath) return nil;
-
-    // Try to anchor to Documents if possible
-    NSString *docs = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByStandardizingPath];
-    NSString *target = [absolutePath stringByStandardizingPath];
-
-    if ([target hasPrefix:docs]) {
-        NSString *rel = [target substringFromIndex:docs.length];
-        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
-        return [@"Documents" stringByAppendingPathComponent:rel];
-    }
-
-    NSString *home = [NSHomeDirectory() stringByStandardizingPath];
-    if ([target hasPrefix:home]) {
-        NSString *rel = [target substringFromIndex:home.length];
+    NSString *home = NSHomeDirectory();
+    if ([absolutePath hasPrefix:home]) {
+        NSString *rel = [absolutePath substringFromIndex:home.length];
         while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
         return rel;
     }
-
     return absolutePath;
 }
 
@@ -215,14 +206,6 @@
     if (!relativePath) return nil;
     NSString *clean = relativePath;
     while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
-
-    if ([clean hasPrefix:@"Documents"]) {
-        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *rel = [clean substringFromIndex:@"Documents".length];
-        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
-        return [docs stringByAppendingPathComponent:rel];
-    }
-
     return [NSHomeDirectory() stringByAppendingPathComponent:clean];
 }
 @end
