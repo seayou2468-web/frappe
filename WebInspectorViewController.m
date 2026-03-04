@@ -98,7 +98,7 @@
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.inputContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.inputContainer.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
         [self.inputContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.inputContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.consoleInput.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:10],
@@ -115,8 +115,9 @@
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     [self.view addSubview:self.tableView];
+    self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.tableView.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
@@ -185,10 +186,6 @@
         cell.detailTextLabel.font = [UIFont fontWithName:@"Menlo" size:9];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
-        UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(10, 0, self.view.bounds.size.width-20, 0.5)];
-        sep.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
-        sep.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        [cell.contentView addSubview:sep];
     }
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.textColor = [UIColor grayColor];

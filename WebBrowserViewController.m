@@ -217,6 +217,17 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.urlField.text = webView.URL.absoluteString;
 }
 
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSURL *url = navigationAction.request.URL;
+    NSString *ext = url.pathExtension.lowercaseString;
+    if ([@[@"zip", @"rar", @"7z", @"tar", @"gz", @"ipa", @"deb", @"mp4", @"mov", @"mp3", @"pdf"] containsObject:ext]) {
+        [self triggerDownloadWithURL:url];
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
         case BottomMenuActionWebBack: [self.webView goBack]; break;
