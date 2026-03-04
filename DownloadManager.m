@@ -25,8 +25,10 @@
     if (self) {
         _tasks = [NSMutableArray array];
         _taskMap = [NSMutableDictionary dictionary];
-        NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-        config.HTTPMaximumConnectionsPerHost = 8;
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"com.app.godspeed.download"];
+        config.HTTPMaximumConnectionsPerHost = 16;
+        config.waitsForConnectivity = YES;
+        config.allowsCellularAccess = YES;
         config.timeoutIntervalForResource = 24 * 60 * 60;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
@@ -94,22 +96,25 @@
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
-    if (dTask) {
-        NSString *suggested = downloadTask.response.suggestedFilename;
-        if (suggested) dTask.filename = suggested;
-        NSFileManager *fm = [NSFileManager defaultManager];
-        [fm createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *destPath = dTask ? dTask.destinationPath : [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Downloads"];
+    NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
+    if (!filename) filename = @"downloaded_file";
 
-        NSError *moveError = nil;
-        NSString *finalName = [[FileManagerCore sharedManager] copyItemAtPath:location.path toDirectory:dTask.destinationPath uniqueName:dTask.filename error:&moveError];
-        if (finalName) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    [fm createDirectoryAtPath:destPath withIntermediateDirectories:YES attributes:nil error:nil];
+
+    NSError *moveError = nil;
+    NSString *finalName = [[FileManagerCore sharedManager] copyItemAtPath:location.path toDirectory:destPath uniqueName:filename error:&moveError];
+
+    if (finalName) {
+        if (dTask) {
             dTask.filename = finalName;
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
-        } else {
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
         }
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
+    } else {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
     }
 }
 
