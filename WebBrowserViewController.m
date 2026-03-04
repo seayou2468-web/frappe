@@ -7,14 +7,16 @@
 #import "DownloadManager.h"
 #import "DownloadsViewController.h"
 #import "PersistenceManager.h"
+#import "WebInspectorViewController.h"
 
 static WKWebsiteDataStore *_nonPersistentStore = nil;
 
-@interface WebBrowserViewController () <WKUIDelegate>
+@interface WebBrowserViewController () <WKUIDelegate, WKScriptMessageHandler>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
+@property (nonatomic, strong) NSMutableArray<NSString *> *consoleLogs;
 @end
 
 @implementation WebBrowserViewController
@@ -35,6 +37,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     if (self) {
         NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
         _initialURL = url ?: home;
+        _consoleLogs = [NSMutableArray array];
     }
     return self;
 }
@@ -51,12 +54,24 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (void)dealloc { [self.webView removeObserver:self forKeyPath:@"estimatedProgress"]; }
 
 - (void)setupUI {
+    WKUserContentController *userContent = [[WKUserContentController alloc] init];
+    [userContent addScriptMessageHandler:self name:@"logger"];
+
+    // Console log redirection script
+    NSString *js = @"var originalLog = console.log; console.log = function(m) { window.webkit.messageHandlers.logger.postMessage(m); originalLog.apply(console, arguments); };"
+                    "var originalError = console.error; console.error = function(m) { window.webkit.messageHandlers.logger.postMessage('ERROR: ' + m); originalError.apply(console, arguments); };";
+    WKUserScript *script = [[WKUserScript alloc] initWithSource:js injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];
+    [userContent addUserScript:script];
+
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+    config.userContentController = userContent;
+
     if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) {
         config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
     } else {
         config.websiteDataStore = [WebBrowserViewController sharedDataStore];
     }
+
     self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
     self.webView.translatesAutoresizingMaskIntoConstraints = NO;
     self.webView.navigationDelegate = self;
@@ -100,6 +115,15 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     ]];
 }
 
+#pragma mark - WKScriptMessageHandler
+
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if ([message.name isEqualToString:@"logger"]) {
+        NSString *log = [NSString stringWithFormat:@"[%@] %@", [NSDate date], message.body];
+        [self.consoleLogs addObject:log];
+    }
+}
+
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
     if ([keyPath isEqualToString:@"estimatedProgress"]) {
         self.progressView.progress = self.webView.estimatedProgress;
@@ -116,13 +140,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         if ([engine isEqualToString:@"Bing"]) baseUrl = @"https://www.bing.com/search?q=";
         else if ([engine isEqualToString:@"DuckDuckGo"]) baseUrl = @"https://duckduckgo.com/?q=";
         else if ([engine isEqualToString:@"Yahoo"]) baseUrl = @"https://search.yahoo.com/search?p=";
-        else if ([engine isEqualToString:@"Custom"]) {
-            baseUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: baseUrl;
-        }
+        else if ([engine isEqualToString:@"Custom"]) baseUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: baseUrl;
         urlStr = [NSString stringWithFormat:@"%@%@", baseUrl, [urlStr stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
-    } else if (![urlStr hasPrefix:@"http"]) {
-        urlStr = [@"https://" stringByAppendingString:urlStr];
-    }
+    } else if (![urlStr hasPrefix:@"http"]) { urlStr = [@"https://" stringByAppendingString:urlStr]; }
     [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlStr]]];
     [textField resignFirstResponder];
     return YES;
@@ -130,10 +150,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     TabInfo *active = [[TabManager sharedManager] activeTab];
-    if (active && active.type == TabTypeWebBrowser) {
-        active.currentPath = webView.URL.absoluteString;
-        active.title = webView.title.length > 0 ? webView.title : @"Browser";
-    }
+    if (active && active.type == TabTypeWebBrowser) { active.currentPath = webView.URL.absoluteString; active.title = webView.title.length > 0 ? webView.title : @"Browser"; }
     self.urlField.text = webView.URL.absoluteString;
 }
 
@@ -141,16 +158,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     switch (action) {
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
-        case BottomMenuActionWebShare: {
-            UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL ?: [NSURL URLWithString:self.initialURL]] applicationActivities:nil];
-            [self presentViewController:avc animated:YES completion:nil];
-            break;
-        }
-        case BottomMenuActionWebHome: {
-            NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
-            [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]];
-            break;
-        }
+        case BottomMenuActionWebShare: { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL ?: [NSURL URLWithString:self.initialURL]] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; break; }
+        case BottomMenuActionWebHome: { NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com"; [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]]; break; }
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         default: break;
@@ -183,8 +192,10 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (void)showWebInspector {
     [self.webView evaluateJavaScript:@"document.documentElement.outerHTML" completionHandler:^(id result, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            UITextView *tv = [[UITextView alloc] initWithFrame:self.view.bounds]; tv.text = (NSString *)result; tv.editable = NO; tv.backgroundColor = [UIColor blackColor]; tv.textColor = [UIColor whiteColor]; tv.font = [UIFont fontWithName:@"Menlo" size:11];
-            UIViewController *vc = [[UIViewController alloc] init]; vc.view = tv; vc.title = @"Source Inspector"; [self.navigationController pushViewController:vc animated:YES];
+            WebInspectorViewController *vc = [[WebInspectorViewController alloc] init];
+            vc.htmlSource = (NSString *)result;
+            vc.consoleLogs = self.consoleLogs;
+            [self.navigationController pushViewController:vc animated:YES];
         });
     }];
 }
