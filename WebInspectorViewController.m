@@ -22,22 +22,29 @@
     self.commandHistory = [NSMutableArray array];
 
     [self setupHeader];
-    [self setupTableView];
     [self setupConsoleInput];
+    [self setupTableView];
 
     [self parseElements];
     [self selectTab:1];
 }
 
 - (void)setupHeader {
-    self.headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 50)];
+    self.headerView = [[UIView alloc] init];
+    self.headerView.translatesAutoresizingMaskIntoConstraints = NO;
     [ThemeEngine applyGlassStyleToView:self.headerView cornerRadius:0];
     [self.view addSubview:self.headerView];
 
-    UIStackView *stack = [[UIStackView alloc] initWithFrame:self.headerView.bounds];
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisHorizontal;
     stack.distribution = UIStackViewDistributionFillEqually;
     [self.headerView addSubview:stack];
+
+    UIView *separator = [[UIView alloc] init];
+    separator.translatesAutoresizingMaskIntoConstraints = NO;
+    separator.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    [self.headerView addSubview:separator];
 
     self.tabButtons = [NSMutableArray array];
     NSArray *titles = @[@"要素", @"ログ", @"通信", @"保存"];
@@ -45,12 +52,64 @@
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
         [btn setTitle:titles[i] forState:UIControlStateNormal];
         btn.tintColor = [UIColor grayColor];
-        btn.titleLabel.font = [UIFont boldSystemFontOfSize:14];
+        btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         btn.tag = i;
         [btn addTarget:self action:@selector(tabTapped:) forControlEvents:UIControlEventTouchUpInside];
         [stack addArrangedSubview:btn];
         [self.tabButtons addObject:btn];
     }
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.headerView.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.headerView.heightAnchor constraintEqualToConstant:44],
+
+        [stack.topAnchor constraintEqualToAnchor:self.headerView.topAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
+
+        [separator.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor],
+        [separator.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor],
+        [separator.bottomAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
+        [separator.heightAnchor constraintEqualToConstant:0.5],
+    ]];
+}
+
+- (void)setupConsoleInput {
+    self.inputContainer = [[UIView alloc] init];
+    self.inputContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [ThemeEngine applyGlassStyleToView:self.inputContainer cornerRadius:0];
+    [self.view addSubview:self.inputContainer];
+
+    self.consoleInput = [[UITextField alloc] init];
+    self.consoleInput.translatesAutoresizingMaskIntoConstraints = NO;
+    self.consoleInput.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.06];
+    self.consoleInput.textColor = [UIColor cyanColor];
+    self.consoleInput.font = [UIFont fontWithName:@"Menlo" size:14];
+    self.consoleInput.placeholder = @"> JS実行...";
+    self.consoleInput.delegate = self;
+    self.consoleInput.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
+    self.consoleInput.leftViewMode = UITextFieldViewModeAlways;
+    self.consoleInput.layer.cornerRadius = 10;
+    self.consoleInput.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.consoleInput.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    [self.inputContainer addSubview:self.consoleInput];
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.inputContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.inputContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.inputContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+
+        [self.consoleInput.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:10],
+        [self.consoleInput.leadingAnchor constraintEqualToAnchor:self.inputContainer.leadingAnchor constant:12],
+        [self.consoleInput.trailingAnchor constraintEqualToAnchor:self.inputContainer.trailingAnchor constant:-12],
+        [self.consoleInput.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-10],
+        [self.consoleInput.heightAnchor constraintEqualToConstant:40],
+    ]];
 }
 
 - (void)setupTableView {
@@ -66,46 +125,19 @@
         [self.tableView.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-    ]];
-}
-
-- (void)setupConsoleInput {
-    self.inputContainer = [[UIView alloc] init];
-    self.inputContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [ThemeEngine applyGlassStyleToView:self.inputContainer cornerRadius:0];
-    [self.view addSubview:self.inputContainer];
-
-    self.consoleInput = [[UITextField alloc] init];
-    self.consoleInput.translatesAutoresizingMaskIntoConstraints = NO;
-    self.consoleInput.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-    self.consoleInput.textColor = [UIColor cyanColor];
-    self.consoleInput.font = [UIFont fontWithName:@"Menlo" size:14];
-    self.consoleInput.placeholder = @"> JS実行...";
-    self.consoleInput.delegate = self;
-    self.consoleInput.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
-    self.consoleInput.leftViewMode = UITextFieldViewModeAlways;
-    self.consoleInput.layer.cornerRadius = 8;
-    self.consoleInput.autocorrectionType = UITextAutocorrectionTypeNo;
-    self.consoleInput.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    [self.inputContainer addSubview:self.consoleInput];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.inputContainer.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
-        [self.inputContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.inputContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.inputContainer.heightAnchor constraintEqualToConstant:60],
-        [self.consoleInput.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:10],
-        [self.consoleInput.leadingAnchor constraintEqualToAnchor:self.inputContainer.leadingAnchor constant:15],
-        [self.consoleInput.trailingAnchor constraintEqualToAnchor:self.inputContainer.trailingAnchor constant:-15],
-        [self.consoleInput.bottomAnchor constraintEqualToAnchor:self.inputContainer.bottomAnchor constant:-10],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.inputContainer.topAnchor],
     ]];
 }
 
 - (void)tabTapped:(UIButton *)sender { [self selectTab:sender.tag]; }
+
 - (void)selectTab:(NSInteger)index {
     self.activeTabIndex = index;
-    for (UIButton *btn in self.tabButtons) btn.tintColor = (btn.tag == index) ? [ThemeEngine liquidColor] : [UIColor grayColor];
+    for (UIButton *btn in self.tabButtons) {
+        BOOL active = (btn.tag == index);
+        btn.tintColor = active ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:active ? UIFontWeightBold : UIFontWeightMedium];
+    }
     self.inputContainer.hidden = (index != 1);
     [self.tableView reloadData];
 }
@@ -137,21 +169,12 @@
 
 #pragma mark - TableView
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    if (self.activeTabIndex == 3) return 3; // Cookies, Local, Session
-    return 1;
-}
-
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (self.activeTabIndex) {
         case 0: return self.elementsTree.count;
         case 1: return self.consoleLogs.count;
         case 2: return self.networkLogs.count;
-        case 3: {
-            if (section == 0) return self.cookies.count;
-            if (section == 1) return [self.storageData[@"local"] count];
-            return [self.storageData[@"session"] count];
-        }
+        case 3: return self.cookies.count + [self.storageData[@"local"] count] + [self.storageData[@"session"] count];
         default: return 0;
     }
 }
@@ -160,10 +183,11 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"InspectorCell"];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"InspectorCell"];
-        cell.backgroundColor = [UIColor colorWithWhite:0.04 alpha:1.0];
+        cell.backgroundColor = [UIColor clearColor];
         cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:11];
         cell.textLabel.numberOfLines = 0;
         cell.detailTextLabel.font = [UIFont fontWithName:@"Menlo" size:9];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.textColor = [UIColor grayColor];
@@ -191,15 +215,12 @@
             break;
         }
         case 3: {
-            if (indexPath.section == 0) {
+            if (indexPath.row < self.cookies.count) {
                 NSHTTPCookie *c = self.cookies[indexPath.row];
-                cell.textLabel.text = c.name;
+                cell.textLabel.text = [NSString stringWithFormat:@"[Cookie] %@", c.name];
                 cell.detailTextLabel.text = c.value;
             } else {
-                NSDictionary *data = (indexPath.section == 1) ? self.storageData[@"local"] : self.storageData[@"session"];
-                NSString *key = [data allKeys][indexPath.row];
-                cell.textLabel.text = key;
-                cell.detailTextLabel.text = [NSString stringWithFormat:@"%@", data[key]];
+                cell.textLabel.text = @"[WebStorage] Data";
             }
             break;
         }
@@ -208,7 +229,6 @@
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.activeTabIndex == 2) [self showNetworkDetail:self.networkLogs[indexPath.row]];
     else if (self.activeTabIndex == 0) [self showElementOptions:self.elementsTree[indexPath.row]];
 }
