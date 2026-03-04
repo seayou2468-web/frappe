@@ -161,7 +161,7 @@
         counter++;
     }
 
-    BOOL success = [fm copyItemAtPath:srcPath toPath:destPath error:error];
+    BOOL success = [fm copyItemAtURL:[NSURL fileURLWithPath:srcPath] toURL:[NSURL fileURLWithPath:destPath] error:error];
     return success ? finalName : nil;
 }
 @end

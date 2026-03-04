@@ -25,10 +25,8 @@
     if (self) {
         _tasks = [NSMutableArray array];
         _taskMap = [NSMutableDictionary dictionary];
-        NSURLSessionConfiguration *config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:@"com.app.godspeed.download"];
-        config.HTTPMaximumConnectionsPerHost = 16;
-        config.waitsForConnectivity = YES;
-        config.allowsCellularAccess = YES;
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+        config.HTTPMaximumConnectionsPerHost = 8;
         config.timeoutIntervalForResource = 24 * 60 * 60;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
     }
