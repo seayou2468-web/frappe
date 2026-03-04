@@ -139,4 +139,29 @@
     return results;
 }
 
+
+
+- (NSString *)copyItemAtPath:(NSString *)srcPath toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *baseName = preferredName ?: [srcPath lastPathComponent];
+    NSString *nameWithoutExtension = [baseName stringByDeletingPathExtension];
+    NSString *extension = [baseName pathExtension];
+
+    NSString *destPath = [destDir stringByAppendingPathComponent:baseName];
+    NSString *finalName = baseName;
+
+    int counter = 1;
+    while ([fm fileExistsAtPath:destPath]) {
+        if (extension.length > 0) {
+            finalName = [NSString stringWithFormat:@"%@ (%d).%@", nameWithoutExtension, counter, extension];
+        } else {
+            finalName = [NSString stringWithFormat:@"%@ (%d)", nameWithoutExtension, counter];
+        }
+        destPath = [destDir stringByAppendingPathComponent:finalName];
+        counter++;
+    }
+
+    BOOL success = [fm copyItemAtPath:srcPath toPath:destPath error:error];
+    return success ? finalName : nil;
+}
 @end

@@ -22,5 +22,6 @@
 - (BOOL)moveItemAtPath:(NSString *)src toPath:(NSString *)dest error:(NSError **)error;
 - (BOOL)createSymbolicLinkAtPath:(NSString *)path withDestinationPath:(NSString *)dest error:(NSError **)error;
 - (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive;
+- (NSString *)copyItemAtPath:(NSString *)srcPath toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error;
 @end
 

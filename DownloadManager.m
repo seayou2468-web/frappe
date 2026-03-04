@@ -101,10 +101,11 @@
         if (suggested) dTask.filename = suggested;
         NSFileManager *fm = [NSFileManager defaultManager];
         [fm createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
-        NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
-        if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
+
         NSError *moveError = nil;
-        if ([[FileManagerCore sharedManager] copyItemAtPath:location.path toPath:dest error:&moveError]) {
+        NSString *finalName = [[FileManagerCore sharedManager] copyItemAtPath:location.path toDirectory:dTask.destinationPath uniqueName:dTask.filename error:&moveError];
+        if (finalName) {
+            dTask.filename = finalName;
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];

@@ -345,8 +345,7 @@
     NSURL *url = urls.firstObject;
     if (!url) return;
     BOOL access = [url startAccessingSecurityScopedResource];
-    NSString *dest = [self.currentPath stringByAppendingPathComponent:url.lastPathComponent];
-    [[FileManagerCore sharedManager] copyItemAtPath:url.path toPath:dest error:nil];
+    [[FileManagerCore sharedManager] copyItemAtPath:url.path toDirectory:self.currentPath uniqueName:nil error:nil];
     if (access) [url stopAccessingSecurityScopedResource];
     [self reloadData];
 }
