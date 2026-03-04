@@ -99,17 +99,16 @@
     if (dTask) {
         NSString *suggested = downloadTask.response.suggestedFilename;
         if (suggested) dTask.filename = suggested;
-        NSFileManager *fm = [NSFileManager defaultManager];
-        [fm createDirectoryAtPath:dTask.destinationPath withIntermediateDirectories:YES attributes:nil error:nil];
+
         NSString *dest = [dTask.destinationPath stringByAppendingPathComponent:dTask.filename];
-        if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
-        NSError *moveError = nil;
-        if ([[FileManagerCore sharedManager] copyItemAtPath:location.path toPath:dest error:&moveError]) {
+        NSError *error = nil;
+
+        if ([[FileManagerCore sharedManager] copyItemAtPath:location.path toPath:dest error:&error]) {
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
         } else {
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:error];
         }
     }
 }
