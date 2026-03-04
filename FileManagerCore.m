@@ -191,21 +191,5 @@
     return success ? finalName : nil;
 }
 
-+ (NSString *)relativeToHomePath:(NSString *)absolutePath {
-    if (!absolutePath) return nil;
-    NSString *home = NSHomeDirectory();
-    if ([absolutePath hasPrefix:home]) {
-        NSString *rel = [absolutePath substringFromIndex:home.length];
-        while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
-        return rel;
-    }
-    return absolutePath;
-}
 
-+ (NSString *)absoluteFromHomeRelativePath:(NSString *)relativePath {
-    if (!relativePath) return nil;
-    NSString *clean = relativePath;
-    while ([clean hasPrefix:@"/"]) clean = [clean substringFromIndex:1];
-    return [NSHomeDirectory() stringByAppendingPathComponent:clean];
-}
 @end

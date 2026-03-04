@@ -7,7 +7,7 @@
 @property (nonatomic, assign) int64_t totalBytes;
 @property (nonatomic, assign) int64_t receivedBytes;
 @property (nonatomic, assign) BOOL isDownloading;
-@property (nonatomic, copy) NSString *relativeDestinationPath;
+@property (nonatomic, copy) NSString *destinationPath;
 @property (nonatomic, strong) NSData *resumeData;
 @end
 
