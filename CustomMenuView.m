@@ -256,8 +256,8 @@
     }
 
     [self layoutIfNeeded];
-    CGFloat contentSizeHeight = self.stackView.frame.size.height + 100;
-    self.neutralHeight = MIN(contentSizeHeight, self.frame.size.height * 0.6);
+    CGFloat contentSizeHeight = self.stackView.frame.size.height + 150;
+    self.neutralHeight = MIN(contentSizeHeight, self.frame.size.height * 0.75);
     self.contentHeightConstraint.constant = self.neutralHeight;
     [self layoutIfNeeded];
 
