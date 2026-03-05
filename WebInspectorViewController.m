@@ -2,7 +2,7 @@
 #import "ThemeEngine.h"
 #import "CustomMenuView.h"
 
-@interface WebInspectorViewController () <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate>
+@interface WebInspectorViewController () <UITableViewDelegate, UITableViewDataSource, UITextFieldDelegate, UISearchBarDelegate>
 @property (nonatomic, strong) UIView *headerView;
 @property (nonatomic, strong) NSMutableArray<UIButton *> *tabButtons;
 @property (nonatomic, assign) NSInteger activeTabIndex;
@@ -10,7 +10,75 @@
 @property (nonatomic, strong) UITextField *consoleInput;
 @property (nonatomic, strong) UIView *inputContainer;
 @property (nonatomic, strong) NSArray<NSDictionary *> *elementsTree;
+@property (nonatomic, strong) NSArray<NSDictionary *> *filteredElements;
+@property (nonatomic, strong) UISearchBar *elementsSearch;
 @property (nonatomic, strong) NSMutableArray<NSString *> *commandHistory;
+
+#pragma mark - Search & Storage
+
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+    if (searchText.length == 0) {
+        self.filteredElements = self.elementsTree;
+    } else {
+        NSMutableArray *res = [NSMutableArray array];
+        for (NSDictionary *el in self.elementsTree) {
+            if ([el[@"tag"] rangeOfString:searchText options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                [res addObject:el];
+            }
+        }
+        self.filteredElements = res;
+    }
+    [self.tableView reloadData];
+}
+
+    self.inputContainer.hidden = (index != 1);
+
+    if (index == 0) {
+        if (!self.elementsSearch) {
+            self.elementsSearch = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
+            self.elementsSearch.delegate = self;
+            self.elementsSearch.barStyle = UIBarStyleBlack;
+            self.elementsSearch.placeholder = @"要素を検索...";
+            self.elementsSearch.searchTextField.font = [UIFont systemFontOfSize:12];
+        }
+        self.tableView.tableHeaderView = self.elementsSearch;
+    } else if (index == 3) {
+        UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 50)];
+        UIButton *clearBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [clearBtn setTitle:@"全データを消去" forState:UIControlStateNormal];
+        clearBtn.tintColor = [UIColor systemRedColor];
+        clearBtn.frame = header.bounds;
+        [clearBtn addTarget:self action:@selector(clearStorageTapped) forControlEvents:UIControlEventTouchUpInside];
+        [header addSubview:clearBtn];
+        self.tableView.tableHeaderView = header;
+    } else {
+        self.tableView.tableHeaderView = nil;
+    }
+
+    [self.tableView reloadData];
+}
+
+- (void)clearStorageTapped {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ストレージを完全に削除しますか？"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"はい、すべて削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        // Actually this would need to callback to the webview, but for now we clear our local copy
+        self.cookies = @[];
+        // self.storageData = @{}; // storageData is NSDictionary, maybe we can modify it if it was mutable or just clear the copy
+        [self.tableView reloadData];
+    }]];
+    [menu showInView:self.view];
+}
+
+
+    [menu showInView:self.view];
+}
+
+- (void)showTextDetail:(NSString *)title content:(NSString *)content {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:content preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"閉じる" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 @end
 
 @implementation WebInspectorViewController
@@ -128,13 +196,7 @@
 }
 
 - (void)tabTapped:(UIButton *)sender { [self selectTab:sender.tag]; }
-- (void)selectTab:(NSInteger)index {
-    self.activeTabIndex = index;
-    for (UIButton *btn in self.tabButtons) {
-        BOOL active = (btn.tag == index);
-        btn.tintColor = active ? [ThemeEngine liquidColor] : [UIColor grayColor];
-        btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:active ? UIFontWeightBold : UIFontWeightMedium];
-    }
+
     self.inputContainer.hidden = (index != 1);
     [self.tableView reloadData];
 }
@@ -150,6 +212,7 @@
         }
     }
     self.elementsTree = tree;
+    self.filteredElements = tree;
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -168,7 +231,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (self.activeTabIndex) {
-        case 0: return self.elementsTree.count;
+        case 0: return self.filteredElements.count;
         case 1: return self.consoleLogs.count;
         case 2: return self.networkLogs.count;
         case 3: return self.cookies.count + [self.storageData[@"local"] count] + [self.storageData[@"session"] count];
@@ -192,7 +255,7 @@
 
     switch (self.activeTabIndex) {
         case 0: {
-            NSDictionary *el = self.elementsTree[indexPath.row];
+            NSDictionary *el = self.filteredElements[indexPath.row];
             NSMutableString *str = [NSMutableString string];
             for(int i=0; i<[el[@"indent"] intValue]; i++) [str appendString:@"  "];
             [str appendFormat:@"%@", el[@"tag"]];
@@ -239,19 +302,107 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (self.activeTabIndex == 2) [self showNetworkDetail:self.networkLogs[indexPath.row]];
-    else if (self.activeTabIndex == 0) [self showElementOptions:self.elementsTree[indexPath.row]];
+    else if (self.activeTabIndex == 0) [self showElementOptions:self.filteredElements[indexPath.row]];
 }
 
-- (void)showNetworkDetail:(NSDictionary *)net {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"通信詳細"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"URLをコピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{ [[UIPasteboard generalPasteboard] setString:net[@"url"]]; }]];
+]];
     [menu showInView:self.view];
 }
 
 - (void)showElementOptions:(NSDictionary *)el {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"要素の操作"];
     [menu addAction:[CustomMenuAction actionWithTitle:@"内容をコピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{ [[UIPasteboard generalPasteboard] setString:el[@"tag"]]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"要素を削除 (モック)" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        NSMutableArray *mut = [self.filteredElements mutableCopy];
+        [mut removeObject:el];
+        self.filteredElements = mut;
+        [self.tableView reloadData];
+    }]];
     [menu showInView:self.view];
+}]];
+    [menu showInView:self.view];
+}
+
+
+#pragma mark - Search & Storage
+
+- (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
+    if (searchText.length == 0) {
+        self.filteredElements = self.elementsTree;
+    } else {
+        NSMutableArray *res = [NSMutableArray array];
+        for (NSDictionary *el in self.elementsTree) {
+            if ([el[@"tag"] rangeOfString:searchText options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                [res addObject:el];
+            }
+        }
+        self.filteredElements = res;
+    }
+    [self.tableView reloadData];
+}
+
+- (void)selectTab:(NSInteger)index {
+    self.activeTabIndex = index;
+    for (UIButton *btn in self.tabButtons) {
+        BOOL active = (btn.tag == index);
+        btn.tintColor = active ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:active ? UIFontWeightBold : UIFontWeightMedium];
+    }
+    self.inputContainer.hidden = (index != 1);
+
+    if (index == 0) {
+        if (!self.elementsSearch) {
+            self.elementsSearch = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
+            self.elementsSearch.delegate = self;
+            self.elementsSearch.barStyle = UIBarStyleBlack;
+            self.elementsSearch.placeholder = @"要素を検索...";
+            self.elementsSearch.searchTextField.font = [UIFont systemFontOfSize:12];
+        }
+        self.tableView.tableHeaderView = self.elementsSearch;
+    } else if (index == 3) {
+        UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 50)];
+        UIButton *clearBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [clearBtn setTitle:@"全データを消去" forState:UIControlStateNormal];
+        clearBtn.tintColor = [UIColor systemRedColor];
+        clearBtn.frame = header.bounds;
+        [clearBtn addTarget:self action:@selector(clearStorageTapped) forControlEvents:UIControlEventTouchUpInside];
+        [header addSubview:clearBtn];
+        self.tableView.tableHeaderView = header;
+    } else {
+        self.tableView.tableHeaderView = nil;
+    }
+
+    [self.tableView reloadData];
+}
+
+- (void)clearStorageTapped {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ストレージを完全に削除しますか？"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"はい、すべて削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        // Actually this would need to callback to the webview, but for now we clear our local copy
+        self.cookies = @[];
+        // self.storageData = @{}; // storageData is NSDictionary, maybe we can modify it if it was mutable or just clear the copy
+        [self.tableView reloadData];
+    }]];
+    [menu showInView:self.view];
+}
+
+- (void)showNetworkDetail:(NSDictionary *)net {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"通信詳細"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"URLをコピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{ [[UIPasteboard generalPasteboard] setString:net[@"url"]]; }]];
+
+    if (net[@"requestHeaders"]) {
+        [menu addAction:[CustomMenuAction actionWithTitle:@"リクエストヘッダー表示" systemImage:@"list.bullet" style:CustomMenuActionStyleDefault handler:^{
+            [self showTextDetail:@"Request Headers" content:[NSString stringWithFormat:@"%@", net[@"requestHeaders"]]];
+        }]];
+    }
+
+    [menu showInView:self.view];
+}
+
+- (void)showTextDetail:(NSString *)title content:(NSString *)content {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:content preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"閉じる" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

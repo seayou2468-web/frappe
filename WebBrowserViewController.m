@@ -118,14 +118,33 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.webView.opaque = NO;
     [self.view addSubview:self.webView];
 
-    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 160, 36)];
-    self.urlField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 240, 36)];
+    self.urlField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12];
     self.urlField.textColor = [UIColor whiteColor];
-    self.urlField.layer.cornerRadius = 10;
+    self.urlField.layer.cornerRadius = 12;
+    self.urlField.layer.borderWidth = 1.0;
+    self.urlField.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2].CGColor;
+    self.urlField.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     self.urlField.keyboardType = UIKeyboardTypeURL;
     self.urlField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    self.urlField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.urlField.delegate = self;
+    self.urlField.textAlignment = NSTextAlignmentCenter;
+    self.urlField.placeholder = @"検索またはURLを入力";
+
+    UIImageView *searchIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]];
+    searchIcon.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+    searchIcon.contentMode = UIViewContentModeScaleAspectFit;
+    UIView *leftPadding = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 20)];
+    searchIcon.frame = CGRectMake(10, 0, 16, 20);
+    [leftPadding addSubview:searchIcon];
+    self.urlField.leftView = leftPadding;
+    self.urlField.leftViewMode = UITextFieldViewModeAlways;
+
     self.navigationItem.titleView = self.urlField;
+
+    UIBarButtonItem *menuBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showBrowserOthersMenu)];
+    self.navigationItem.leftBarButtonItem = menuBtn;
 
     UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"terminal"] style:UIBarButtonItemStylePlain target:self action:@selector(prepareAndShowInspector)];
     self.navigationItem.rightBarButtonItem = inspectorBtn;

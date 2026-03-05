@@ -52,7 +52,6 @@
         [self addButtonWithSystemImage:@"house" action:BottomMenuActionWebHome];
         [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
         [self addButtonWithSystemImage:@"arrow.down.circle" action:BottomMenuActionDownloads];
-        [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
     } else {
         [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
         [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];
