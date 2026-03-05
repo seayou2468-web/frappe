@@ -10,16 +10,6 @@
 
 @interface MainContainerViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIViewController *currentContentController;
-
-
-
-- (void)refreshUI {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-        // Add other UI components that need refreshing
-    });
-}
-
 @end
 
 @implementation MainContainerViewController
