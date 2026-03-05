@@ -31,6 +31,8 @@
 @property (strong, nonatomic) UISegmentedControl *searchScope;
 @property (strong, nonatomic) NSLayoutConstraint *searchBarTopConstraint;
 @property (assign, nonatomic) BOOL isSearchRevealed;
+- (void)createNewPDF;
+- (void)createNewSpreadsheet;
 @end
 
 @implementation FileBrowserViewController

@@ -59,8 +59,11 @@
         PDFPage *current = self.pdfView.currentPage;
         if (current) {
             NSData *data = [current dataRepresentation];
-            PDFPage *newP = [[PDFPage alloc] initWithData:data];
-            [self.pdfView.document insertPage:newP atIndex:[self.pdfView.document indexForPage:current] + 1];
+            PDFDocument *tempDoc = [[PDFDocument alloc] initWithData:data];
+            if (tempDoc.pageCount > 0) {
+                PDFPage *newP = [tempDoc pageAtIndex:0];
+                [self.pdfView.document insertPage:newP atIndex:[self.pdfView.document indexForPage:current] + 1];
+            }
         }
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを追加" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{
@@ -90,7 +93,7 @@
     PDFPage *page = self.pdfView.currentPage;
     if (!page) return;
     CGRect bounds = CGRectMake(50, [page boundsForBox:kPDFDisplayBoxMediaBox].size.height - 100, 200, 50);
-    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:kPDFAnnotationTypeFreeText withProperties:nil];
+    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:PDFAnnotationSubtypeFreeText withProperties:nil];
     annot.contents = text;
     annot.font = [UIFont systemFontOfSize:18];
     annot.fontColor = [UIColor redColor];
@@ -117,7 +120,7 @@
     PDFPage *page = self.pdfView.currentPage;
     if (!page) return;
     CGRect bounds = CGRectMake(100, 100, 200, 200);
-    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:kPDFAnnotationTypeStamp withProperties:nil];
+    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:PDFAnnotationSubtypeStamp withProperties:nil];
     // In PDFKit, to add an image we can use the "stamp" annotation type.
     // Some versions of PDFKit allow setting an appearance stream.
     [page addAnnotation:annot];
@@ -144,7 +147,7 @@
     [self.toolPicker addObserver:self.canvasView];
     [self.canvasView becomeFirstResponder];
 
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"完了" style:UIBarButtonItemStyleDone target:self action:@selector(finishDrawing)];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"完了" style:UIBarButtonItemStylePlain target:self action:@selector(finishDrawing)];
 }
 
 - (void)finishDrawing {
