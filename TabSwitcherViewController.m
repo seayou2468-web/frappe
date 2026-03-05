@@ -11,6 +11,14 @@
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, copy) void (^onClose)(void);
 @property (nonatomic, copy) void (^onLongPress)(void);
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        // Add other UI components that need refreshing
+    });
+}
+
 @end
 
 @implementation TabCell
@@ -92,6 +100,14 @@
     self.container.transform = CGAffineTransformIdentity;
     self.container.alpha = 1.0;
 }
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        // Add other UI components that need refreshing
+    });
+}
+
 @end
 
 @implementation TabSwitcherViewController {
@@ -140,6 +156,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshUI) name:@"SettingsChanged" object:nil];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self updateDisplayItems];
 
@@ -387,6 +404,14 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { if (completion) completion(alert.textFields.firstObject.text); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { if (completion) completion(nil); }]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        // Add other UI components that need refreshing
+    });
 }
 
 @end

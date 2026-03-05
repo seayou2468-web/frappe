@@ -11,6 +11,8 @@
 #import "WebStartPageView.h"
 #import "WebBookmarksManager.h"
 #import "CookieEditorViewController.h"
+#import "WebHistoryManager.h"
+#import "WebHistoryViewController.h"
 #import "Logger.h"
 #import "FileManagerCore.h"
 
@@ -33,6 +35,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
 @property (nonatomic, strong) NSMutableArray<NSString *> *consoleLogs;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *networkLogs;
+@property (nonatomic, assign) BOOL isPrivateMode;
 @end
 
 @implementation WebBrowserViewController
@@ -63,6 +66,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         if (url) [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
     }
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshUI) name:@"SettingsChanged" object:nil];
 }
 
 - (void)dealloc {
@@ -229,6 +233,16 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 }
 
 
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        self.startPage.backgroundColor = [ThemeEngine mainBackgroundColor];
+        [self.bottomMenu setupUI];
+        // Other UI updates if needed
+    });
+}
+
 - (void)bookmarkCurrentPage {
     NSString *url = self.webView.URL.absoluteString;
     NSString *title = self.webView.title;
@@ -244,6 +258,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     if (active && active.type == TabTypeWebBrowser) { active.currentPath = webView.URL.absoluteString; active.title = webView.title.length > 0 ? webView.title : @"Browser"; }
     self.urlField.text = webView.URL.absoluteString;
     self.startPage.hidden = (webView.URL != nil && ![webView.URL.absoluteString isEqualToString:@"about:blank"]);
+    if (webView.URL && ![webView.URL.absoluteString isEqualToString:@"about:blank"]) {
+        [[WebHistoryManager sharedManager] addHistoryEntryWithTitle:webView.title url:webView.URL.absoluteString];
+    }
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
@@ -258,11 +275,102 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 }
 
 
+
+
+
+- (void)promptFindOnPage {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ページ内検索" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"検索ワード"; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"検索" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *query = alert.textFields[0].text;
+        if (query.length > 0) {
+            [self.webView findString:query configuration:[[WKFindConfiguration alloc] init] completionHandler:^(WKFindResult *result) {
+                if (!result.matchFound) {
+                    [[Logger sharedLogger] log:@"[BROWSER] No matches found for search"];
+                }
+            }];
+        }
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showUserAgentMenu {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"User-Agent設定"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"モバイル (デフォルト)" systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{
+        [self applyUserAgent:NO];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"デスクトップ" systemImage:@"desktopcomputer" style:CustomMenuActionStyleDefault handler:^{
+        [self applyUserAgent:YES];
+    }]];
+    [menu showInView:self.view];
+}
+
+- (void)applyUserAgent:(BOOL)desktop {
+    NSString *ua = desktop ? @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15" : nil;
+    self.webView.customUserAgent = ua;
+    [self.webView reload];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] User-Agent changed to: %@", desktop ? @"Desktop" : @"Mobile"]];
+}
+
+- (void)showHistory {
+    WebHistoryViewController *vc = [[WebHistoryViewController alloc] init];
+    __weak typeof(self) weakSelf = self;
+    vc.onUrlSelected = ^(NSString *url) {
+        [weakSelf.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
+    };
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+
+- (void)togglePrivateMode {
+    self.isPrivateMode = !self.isPrivateMode;
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Private Mode: %@", self.isPrivateMode ? @"ON" : @"OFF"]];
+
+    // Re-initialize WebView with correct data store
+    [self.webView removeFromSuperview];
+    [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
+
+    WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+    config.websiteDataStore = self.isPrivateMode ? [WKWebsiteDataStore nonPersistentDataStore] : [WKWebsiteDataStore defaultDataStore];
+
+    // Restore message handlers
+    WKUserContentController *userContent = [[WKUserContentController alloc] init];
+    WeakScriptMessageProxy *proxy = [[WeakScriptMessageProxy alloc] init];
+    proxy.delegate = self;
+    [userContent addScriptMessageHandler:proxy name:@"logger"];
+    [userContent addScriptMessageHandler:proxy name:@"network"];
+    config.userContentController = userContent;
+
+    self.webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
+    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.webView.navigationDelegate = self;
+    self.webView.UIDelegate = self;
+    [self.view insertSubview:self.webView belowSubview:self.progressView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor],
+        [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
+    ]];
+
+    [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
+
+    if (self.webView.URL) [self.webView reload];
+    else [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+}
+
 - (void)showBrowserOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ブラウザ操作"];
     [menu addAction:[CustomMenuAction actionWithTitle:@"このページをブックマーク" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{ [self bookmarkCurrentPage]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"履歴" systemImage:@"clock" style:CustomMenuActionStyleDefault handler:^{ [self showHistory]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"User-Agent切替" systemImage:@"person.crop.circle.badge.questionmark" style:CustomMenuActionStyleDefault handler:^{ [self showUserAgentMenu]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"Cookieの管理" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [self showCookieEditor]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ページ内検索" systemImage:@"magnifyingglass" style:CustomMenuActionStyleDefault handler:^{ [self promptFindOnPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{ [self handleMenuAction:BottomMenuActionWebShare]; }]];
+    NSString *privateTitle = self.isPrivateMode ? @"プライベートモード: ON" : @"プライベートモード: OFF";
+    [menu addAction:[CustomMenuAction actionWithTitle:privateTitle systemImage:@"eye.slash" style:CustomMenuActionStyleDefault handler:^{ [self togglePrivateMode]; }]];
     [menu showInView:self.view];
 }
 

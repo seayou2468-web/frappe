@@ -3,6 +3,7 @@
 
 @interface BottomMenuView ()
 @property (strong, nonatomic) UIStackView *stackView;
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 @end
 
 @implementation BottomMenuView
@@ -12,6 +13,7 @@
     if (self) {
         _mode = mode;
         [self setupUI];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(setupUI) name:@"SettingsChanged" object:nil];
     }
     return self;
 }
@@ -74,4 +76,5 @@
     if (self.onAction) self.onAction(sender.tag);
 }
 
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 @end

@@ -12,12 +12,21 @@
 @property (nonatomic, strong) UIViewController *currentContentController;
 
 
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        // Add other UI components that need refreshing
+    });
+}
+
 @end
 
 @implementation MainContainerViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshUI) name:@"SettingsChanged" object:nil];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
         if ([TabManager sharedManager].tabs.count == 0) {
@@ -124,6 +133,14 @@
         }
         default: break;
     }
+}
+
+
+- (void)refreshUI {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        // Add other UI components that need refreshing
+    });
 }
 
 @end
