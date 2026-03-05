@@ -138,7 +138,6 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
     self.startPage = [[WebStartPageView alloc] initWithFrame:self.view.bounds];
     self.startPage.translatesAutoresizingMaskIntoConstraints = NO;
-    __weak typeof(self) weakSelf = self;
     self.startPage.onBookmarkSelect = ^(NSString *url) { [weakSelf.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]]; };
     self.startPage.onSearch = ^(NSString *query) {
         UITextField *dummy = [[UITextField alloc] init];
