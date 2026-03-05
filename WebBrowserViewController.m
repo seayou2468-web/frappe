@@ -284,8 +284,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [alert addAction:[UIAlertAction actionWithTitle:@"検索" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *query = alert.textFields[0].text;
         if (query.length > 0) {
-            [self.webView findString:query configuration:[[WKFindConfiguration alloc] init] completionHandler:^(WKFindResult *result) {
-                if (!result.matchFound) {
+            NSString *js = [NSString stringWithFormat:@"window.find('%@', false, false, true, false, false, true)", query];
+            [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+                if ([result boolValue] == NO) {
                     [[Logger sharedLogger] log:@"[BROWSER] No matches found for search"];
                 }
             }];

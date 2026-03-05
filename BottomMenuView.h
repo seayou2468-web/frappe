@@ -23,4 +23,5 @@ typedef NS_ENUM(NSInteger, BottomMenuMode) {
 @property (copy, nonatomic) void (^onAction)(BottomMenuAction action);
 @property (assign, nonatomic) BottomMenuMode mode;
 - (instancetype)initWithMode:(BottomMenuMode)mode;
+- (void)setupUI;
 @end
