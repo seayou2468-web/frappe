@@ -45,7 +45,9 @@
     if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
     dTask.filename = name;
     dTask.destinationPath = path;
-    dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path]; [[Logger sharedLogger] log:[NSString stringWithFormat:@"Download target path: %@", path]];
+    dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Starting: %@ to %@", request.URL.absoluteString, path]];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Relative Target: %@", dTask.relativeDestinationPath]];
     dTask.isDownloading = YES;
     dTask.progress = 0;
 
@@ -103,6 +105,7 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
     NSFileManager *fm = [NSFileManager defaultManager];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Finished data: %@", location.path]];
 
     // Step 1: Immediately move to an internal temporary location within the app sandbox
     // (This helps bypass issues where system background daemon cannot reach guest app sub-directories)
@@ -117,9 +120,10 @@
     NSError *tmpError = nil;
     if ([fm fileExistsAtPath:tmpPath]) [fm removeItemAtPath:tmpPath error:nil];
 
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Step 1: Internal tmp move to %@", tmpPath]];
     BOOL tmpSuccess = [fm moveItemAtURL:location toURL:tmpURL error:&tmpError];
     if (!tmpSuccess) {
-        // Fallback to copy if move fails
+        [[Logger sharedLogger] log:@"[DOWNLOAD] Move failed, trying copy fallback..."];
         tmpSuccess = [fm copyItemAtURL:location toURL:tmpURL error:&tmpError];
     }
 
@@ -155,7 +159,8 @@
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
         }
-        [[Logger sharedLogger] log:[NSString stringWithFormat:@"Download Finished: %@", finalName]]; [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] SUCCESS: Saved as %@", finalName]];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
     } else {
         [[Logger sharedLogger] log:[NSString stringWithFormat:@"Final Move Error: %@ to %@", moveError.localizedDescription, destPath]];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];

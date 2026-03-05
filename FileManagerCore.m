@@ -1,4 +1,5 @@
 #import "FileManagerCore.h"
+#import "Logger.h"
 
 @implementation FileItem
 @end

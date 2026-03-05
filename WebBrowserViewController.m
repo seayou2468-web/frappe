@@ -8,6 +8,8 @@
 #import "DownloadsViewController.h"
 #import "PersistenceManager.h"
 #import "WebInspectorViewController.h"
+#import "Logger.h"
+#import "FileManagerCore.h"
 
 static WKWebsiteDataStore *_nonPersistentStore = nil;
 
