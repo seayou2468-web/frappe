@@ -40,6 +40,7 @@
     if (!request) return;
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Ensured Target Dir exists: %@", path]];
     DownloadTask *dTask = [[DownloadTask alloc] init];
     NSString *name = [request.URL lastPathComponent];
     if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
@@ -105,7 +106,9 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
     NSFileManager *fm = [NSFileManager defaultManager];
-    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Finished data: %@", location.path]];
+    NSString *sourcePath = location.path;
+    BOOL exists = [fm fileExistsAtPath:sourcePath];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Fin location: %@ (exists: %d)", sourcePath, exists]];
 
     // Step 1: Immediately move to an internal temporary location within the app sandbox
     // (This helps bypass issues where system background daemon cannot reach guest app sub-directories)
@@ -121,10 +124,15 @@
     if ([fm fileExistsAtPath:tmpPath]) [fm removeItemAtPath:tmpPath error:nil];
 
     [[Logger sharedLogger] log:[NSString stringWithFormat:@"[DOWNLOAD] Step 1: Internal tmp move to %@", tmpPath]];
-    BOOL tmpSuccess = [fm moveItemAtURL:location toURL:tmpURL error:&tmpError];
-    if (!tmpSuccess) {
-        [[Logger sharedLogger] log:@"[DOWNLOAD] Move failed, trying copy fallback..."];
-        tmpSuccess = [fm copyItemAtURL:location toURL:tmpURL error:&tmpError];
+    BOOL tmpSuccess = NO;
+    if (exists) {
+        tmpSuccess = [fm moveItemAtURL:location toURL:tmpURL error:&tmpError];
+        if (!tmpSuccess) {
+            [[Logger sharedLogger] log:@"[DOWNLOAD] Move failed, trying copy fallback..."];
+            tmpSuccess = [fm copyItemAtURL:location toURL:tmpURL error:&tmpError];
+        }
+    } else {
+        [[Logger sharedLogger] log:@"[DOWNLOAD] SOURCE MISSING, cannot transfer!"];
     }
 
     if (!tmpSuccess) {

@@ -195,8 +195,13 @@
 
 
 + (NSString *)effectiveHomeDirectory {
-    NSString *home = NSHomeDirectory();
-    [[Logger sharedLogger] log:[NSString stringWithFormat:@"Effective Home: %@", home]];
+    NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *home = docs ? [docs stringByDeletingLastPathComponent] : NSHomeDirectory();
+    NSString *cwd = [[NSFileManager defaultManager] currentDirectoryPath];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[SYSTEM] CWD: %@", cwd]];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[SYSTEM] Home: %@", NSHomeDirectory()]];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[SYSTEM] Docs: %@", docs]];
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[SYSTEM] Effective Home: %@", home]];
     return home;
 }
 
