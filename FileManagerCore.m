@@ -194,7 +194,9 @@
 
 
 + (NSString *)effectiveHomeDirectory {
-    return NSHomeDirectory();
+    NSString *home = NSHomeDirectory();
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"Effective Home: %@", home]];
+    return home;
 }
 
 + (NSString *)relativeToHomePath:(NSString *)absolutePath {

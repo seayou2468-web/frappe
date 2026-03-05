@@ -16,6 +16,7 @@
 #import "PDFViewerViewController.h"
 #import "HexEditorViewController.h"
 #import "FileInfoViewController.h"
+#import "LogViewerViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate, UIGestureRecognizerDelegate>
@@ -328,7 +329,13 @@
 - (void)showOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ [self selectFile]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"システムログ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showLogViewer]; }]];
     [menu showInView:self.view];
+}
+
+- (void)showLogViewer {
+    LogViewerViewController *vc = [[LogViewerViewController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)selectFile {

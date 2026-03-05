@@ -1,5 +1,6 @@
 #import "DownloadManager.h"
 #import "FileManagerCore.h"
+#import "Logger.h"
 
 @implementation DownloadTask
 @end
@@ -44,7 +45,7 @@
     if (name.length == 0 || [name isEqualToString:@"/"]) name = @"downloaded_file";
     dTask.filename = name;
     dTask.destinationPath = path;
-    dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path];
+    dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path]; [[Logger sharedLogger] log:[NSString stringWithFormat:@"Download target path: %@", path]];
     dTask.isDownloading = YES;
     dTask.progress = 0;
 
@@ -123,7 +124,7 @@
     }
 
     if (!tmpSuccess) {
-        NSLog(@"Intermediate Save Error: %@", tmpError.localizedDescription);
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"Intermediate Save Error: %@", tmpError.localizedDescription]];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:tmpError];
         return;
     }
@@ -154,9 +155,9 @@
             dTask.isDownloading = NO;
             dTask.progress = 1.0;
         }
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"Download Finished: %@", finalName]]; [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadFinished" object:nil];
     } else {
-        NSLog(@"Final Move Error: %@ to %@", moveError.localizedDescription, destPath);
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"Final Move Error: %@ to %@", moveError.localizedDescription, destPath]];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadError" object:moveError];
     }
 
