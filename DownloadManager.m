@@ -31,12 +31,15 @@
 
         // Use defaultSessionConfiguration for pseudo-backgrounding
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+        config.URLCache = nil;
+        config.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
         config.HTTPMaximumConnectionsPerHost = 8;
         config.timeoutIntervalForRequest = 60;
         config.timeoutIntervalForResource = 24 * 60 * 60;
         self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:[NSOperationQueue mainQueue]];
 
         [self setupAudioSession];
+        [self clearInternalCache];
     }
     return self;
 }
@@ -51,7 +54,10 @@
     if (self.audioPlayer.isPlaying) return;
 
     // Create a minimal silent WAV file (1 second of silence)
-    NSString *path = [[FileManagerCore effectiveHomeDirectory] stringByAppendingPathComponent:@"Documents/.silent.wav"];
+    NSString *path = [[FileManagerCore effectiveHomeDirectory] stringByAppendingPathComponent:@"Library/Caches/.silent.wav"];
+    // Cleanup old path
+    NSString *oldPath = [[FileManagerCore effectiveHomeDirectory] stringByAppendingPathComponent:@"Documents/.silent.wav"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:oldPath]) [[NSFileManager defaultManager] removeItemAtPath:oldPath error:nil];
     if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
         // WAV header for 8000Hz, 16-bit, mono, 1 second
         unsigned char header[] = {
@@ -110,7 +116,10 @@
 
     // Setup Temporary File for Streaming Write
     NSString *home = [FileManagerCore effectiveHomeDirectory];
-    NSString *tmpDir = [home stringByAppendingPathComponent:@"Documents/.download_tmp"];
+    NSString *tmpDir = [home stringByAppendingPathComponent:@"Library/Caches/.download_tmp"];
+    // Cleanup old path
+    NSString *oldTmpDir = [home stringByAppendingPathComponent:@"Documents/.download_tmp"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:oldTmpDir]) [[NSFileManager defaultManager] removeItemAtPath:oldTmpDir error:nil];
     [fm createDirectoryAtPath:tmpDir withIntermediateDirectories:YES attributes:nil error:nil];
     dTask.tempPath = [tmpDir stringByAppendingPathComponent:[NSString stringWithFormat:@"stream_%ld", (long)[[NSDate date] timeIntervalSince1970]]];
     [fm createFileAtPath:dTask.tempPath contents:nil attributes:nil];
@@ -226,4 +235,15 @@
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DownloadUpdated" object:nil];
 }
 
+
+- (void)clearInternalCache {
+    NSString *cacheDir = [[FileManagerCore effectiveHomeDirectory] stringByAppendingPathComponent:@"Library/Caches"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray *files = [fm contentsOfDirectoryAtPath:cacheDir error:nil];
+    for (NSString *file in files) {
+        if ([file isEqualToString:@".silent.wav"] || [file isEqualToString:@".download_tmp"]) continue;
+        [fm removeItemAtPath:[cacheDir stringByAppendingPathComponent:file] error:nil];
+    }
+    [[Logger sharedLogger] log:@"[SYSTEM] Cleared internal Library/Caches"];
+}
 @end
