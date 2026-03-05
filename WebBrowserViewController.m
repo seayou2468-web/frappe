@@ -242,9 +242,9 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)triggerDownloadWithURL:(NSURL *)url {
     if (!url) return;
-    NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    // Ensure we are using the virtualized Documents path if available
-    NSString *downloadsPath = [docs stringByAppendingPathComponent:@"Downloads"];
+    // Derive download path from the effective home to ensure it's within the virtual sandbox
+    NSString *home = [FileManagerCore effectiveHomeDirectory];
+    NSString *downloadsPath = [[home stringByAppendingPathComponent:@"Documents"] stringByAppendingPathComponent:@"Downloads"];
 
     // In virtualization environments, we must ensure the path passed to DownloadManager
     // is one that can be correctly relativized.
