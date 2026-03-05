@@ -1,5 +1,6 @@
 #import "CustomMenuView.h"
 #import "FileBrowserViewController.h"
+#import "SQLiteViewerViewController.h"
 #import "SettingsViewController.h"
 #import "PathBarView.h"
 #import "BottomMenuView.h"
@@ -209,9 +210,14 @@
     }
     FileItem *item = self.items[indexPath.row];
     cell.textLabel.text = item.name;
-    if (item.isDirectory) { cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"]; }
-    else { cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"]; }
-    cell.imageView.tintColor = [UIColor whiteColor];
+    if (item.isDirectory) {
+        cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"];
+        cell.imageView.tintColor = [ThemeEngine liquidColor];
+    } else {
+        NSString *ext = item.name.pathExtension;
+        cell.imageView.image = [UIImage systemImageNamed:[self iconNameForExtension:ext]];
+        cell.imageView.tintColor = [self iconColorForExtension:ext];
+    }
     cell.detailTextLabel.text = item.isSymbolicLink ? [NSString stringWithFormat:@" Alias ➜ %@", item.linkTarget] : nil;
     return cell;
 }
@@ -240,6 +246,8 @@
     else if ([@[@"png", @"jpg", @"jpeg", @"gif"] containsObject:ext]) vc = [[ImageViewerViewController alloc] initWithPath:targetPath];
     else if ([@[@"mp4", @"mov", @"mp3", @"wav"] containsObject:ext]) vc = [[MediaPlayerViewController alloc] initWithPath:targetPath];
     else if ([ext isEqualToString:@"pdf"]) vc = [[PDFViewerViewController alloc] initWithPath:targetPath];
+    else if ([@[@"db", @"sqlite"] containsObject:ext]) vc = [[SQLiteViewerViewController alloc] initWithPath:targetPath];
+    else if ([ext isEqualToString:@"sql"]) vc = [[TextEditorViewController alloc] initWithPath:targetPath];
     else if ([ZipManager formatForPath:targetPath] != ArchiveFormatUnknown) { [self showArchiveOptionsForItem:item]; return; }
     else vc = [[HexEditorViewController alloc] initWithPath:targetPath];
     if (vc) [self.navigationController pushViewController:vc animated:YES];
@@ -412,5 +420,30 @@
 }
 
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+
+
+- (NSString *)iconNameForExtension:(NSString *)ext {
+    ext = ext.lowercaseString;
+    if ([@[@"png", @"jpg", @"jpeg", @"gif", @"bmp", @"heic"] containsObject:ext]) return @"photo";
+    if ([@[@"mp4", @"mov", @"avi", @"mkv"] containsObject:ext]) return @"video";
+    if ([@[@"mp3", @"wav", @"m4a", @"flac"] containsObject:ext]) return @"music.note";
+    if ([@[@"zip", @"rar", @"7z", @"tar", @"gz"] containsObject:ext]) return @"archivebox";
+    if ([@[@"plist", @"xml", @"json", @"html", @"js", @"css"] containsObject:ext]) return @"doc.text";
+    if ([@[@"c", @"cpp", @"h", @"m", @"mm", @"py", @"sh"] containsObject:ext]) return @"doc.text.fill";
+    if ([ext isEqualToString:@"pdf"]) return @"doc.richtext";
+    if ([@[@"db", @"sqlite", @"sql"] containsObject:ext]) return @"terminal.fill";
+    return @"doc";
+}
+
+- (UIColor *)iconColorForExtension:(NSString *)ext {
+    ext = ext.lowercaseString;
+    if ([@[@"png", @"jpg", @"jpeg", @"gif", @"bmp", @"heic"] containsObject:ext]) return [UIColor systemOrangeColor];
+    if ([@[@"mp4", @"mov", @"avi", @"mkv"] containsObject:ext]) return [UIColor systemPurpleColor];
+    if ([@[@"mp3", @"wav", @"m4a", @"flac"] containsObject:ext]) return [UIColor systemPinkColor];
+    if ([@[@"zip", @"rar", @"7z", @"tar", @"gz"] containsObject:ext]) return [UIColor systemYellowColor];
+    if ([ext isEqualToString:@"pdf"]) return [UIColor systemRedColor];
+    if ([@[@"db", @"sqlite", @"sql"] containsObject:ext]) return [UIColor systemCyanColor];
+    return [UIColor whiteColor];
+}
 
 @end

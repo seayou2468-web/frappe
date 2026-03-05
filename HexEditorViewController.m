@@ -99,11 +99,55 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellId];
         cell.backgroundColor = [UIColor clearColor];
-        cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:10];
-        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.textLabel.font = [UIFont fontWithName:@"Menlo" size:11];
         cell.textLabel.numberOfLines = 0;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
+
+    NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
+    NSUInteger offset = indexPath.row * bytesPerRow;
+    NSUInteger length = MIN(bytesPerRow, _mutableData.length - offset);
+    const unsigned char *bytes = (const unsigned char *)[_mutableData bytes] + offset;
+
+    NSMutableAttributedString *mas = [[NSMutableAttributedString alloc] init];
+
+    // Offset
+    NSString *offsetStr = [NSString stringWithFormat:@"%08lX:  ", (unsigned long)offset];
+    [mas appendAttributedString:[[NSAttributedString alloc] initWithString:offsetStr attributes:@{NSForegroundColorAttributeName: [UIColor systemGrayColor]}]];
+
+    if (self.showASCIIOnly) {
+        NSMutableString *ascii = [NSMutableString string];
+        for (NSUInteger i = 0; i < length; i++) {
+            unsigned char b = bytes[i];
+            if (b >= 32 && b <= 126) [ascii appendFormat:@"%c", b];
+            else [ascii appendString:@"."];
+        }
+        [mas appendAttributedString:[[NSAttributedString alloc] initWithString:ascii attributes:@{NSForegroundColorAttributeName: [UIColor systemGreenColor]}]];
+    } else {
+        NSMutableString *hex = [NSMutableString string];
+        for (NSUInteger i = 0; i < 16; i++) {
+            if (i < length) {
+                [hex appendFormat:@"%02X ", bytes[i]];
+            } else {
+                [hex appendString:@"   "];
+            }
+            if (i == 7) [hex appendString:@" "];
+        }
+        [mas appendAttributedString:[[NSAttributedString alloc] initWithString:hex attributes:@{NSForegroundColorAttributeName: [UIColor cyanColor]}]];
+        [mas appendAttributedString:[[NSAttributedString alloc] initWithString:@" | " attributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]}]];
+
+        NSMutableString *ascii = [NSMutableString string];
+        for (NSUInteger i = 0; i < length; i++) {
+            unsigned char b = bytes[i];
+            if (b >= 32 && b <= 126) [ascii appendFormat:@"%c", b];
+            else [ascii appendString:@"."];
+        }
+        [mas appendAttributedString:[[NSAttributedString alloc] initWithString:ascii attributes:@{NSForegroundColorAttributeName: [UIColor systemGreenColor]}]];
+    }
+
+    cell.textLabel.attributedText = mas;
+    return cell;
+}
 
     NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
     NSUInteger offset = indexPath.row * bytesPerRow;
