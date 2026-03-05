@@ -336,6 +336,7 @@
 
 - (void)showOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規PDF作成" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self createNewPDF]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ [self selectFile]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"システムログ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showLogViewer]; }]];
     [menu showInView:self.view];
