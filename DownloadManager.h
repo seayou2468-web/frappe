@@ -1,9 +1,8 @@
 #import <Foundation/Foundation.h>
-
-@class NSURLSessionDownloadTask;
+#import <UIKit/UIKit.h>
 
 @interface DownloadTask : NSObject
-@property (strong, nonatomic) NSURLSessionDownloadTask *task;
+@property (strong, nonatomic) NSURLSessionTask *task;
 @property (copy, nonatomic) NSString *filename;
 @property (assign, nonatomic) float progress;
 @property (assign, nonatomic) int64_t totalBytes;
@@ -12,9 +11,12 @@
 @property (copy, nonatomic) NSString *destinationPath;
 @property (copy, nonatomic) NSString *relativeDestinationPath;
 @property (strong, nonatomic) NSData *resumeData;
+@property (assign, nonatomic) UIBackgroundTaskIdentifier backgroundTaskID;
+@property (strong, nonatomic) NSFileHandle *fileHandle;
+@property (copy, nonatomic) NSString *tempPath;
 @end
 
-@interface DownloadManager : NSObject <NSURLSessionDownloadDelegate>
+@interface DownloadManager : NSObject <NSURLSessionDataDelegate>
 @property (copy, nonatomic) void (^completionHandler)(void);
 + (instancetype)sharedManager;
 @property (strong, nonatomic, readonly) NSMutableArray<DownloadTask *> *tasks;
