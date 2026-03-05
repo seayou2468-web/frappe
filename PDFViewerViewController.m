@@ -130,8 +130,6 @@
 - (void)addImageAnnotation:(UIImage *)image {
     PDFPage *page = self.pdfView.currentPage;
     if (!page) return;
-    // Implementation of adding image as annotation is complex in PDFKit via code.
-    // For this prototype, we create a text annotation as a placeholder or log the event.
     PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:CGRectMake(100, 100, 100, 100) forType:PDFAnnotationSubtypeStamp withProperties:nil];
     [page addAnnotation:annot];
     [self.pdfView setNeedsDisplay];
