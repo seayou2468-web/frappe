@@ -300,6 +300,36 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+
+- (void)createNewPDF {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"新規PDF名" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = @"new_document.pdf"; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = alert.textFields[0].text;
+        if (![name hasSuffix:@".pdf"]) name = [name stringByAppendingPathExtension:@"pdf"];
+        NSString *newPath = [self.currentPath stringByAppendingPathComponent:name];
+        PDFViewerViewController *vc = [[PDFViewerViewController alloc] initWithPath:newPath];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)createNewSpreadsheet {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"新規ファイル名" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = @"new_sheet.csv"; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *name = alert.textFields[0].text;
+        if (![name hasSuffix:@".csv"] && ![name hasSuffix:@".tsv"]) name = [name stringByAppendingPathExtension:@"csv"];
+        NSString *newPath = [self.currentPath stringByAppendingPathComponent:name];
+        [@"\n" writeToFile:newPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        ExcelViewerViewController *vc = [[ExcelViewerViewController alloc] initWithPath:newPath];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)showCompressionOptionsForItem:(FileItem *)item {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Compress As..." message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     [alert addAction:[UIAlertAction actionWithTitle:@"ZIP" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [ZipManager compressFiles:@[item.fullPath] toPath:[item.fullPath stringByAppendingPathExtension:@"zip"] format:ArchiveFormatZip password:nil error:nil]; [self reloadData]; }]];

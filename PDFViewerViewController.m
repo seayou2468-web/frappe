@@ -30,18 +30,21 @@
     self.pdfView.displayMode = kPDFDisplaySinglePageContinuous;
     self.pdfView.displayDirection = kPDFDisplayDirectionVertical;
 
+    [self loadDocument];
+    [self.view addSubview:self.pdfView];
+
+    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePDF)];
+    UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(showEditMenu)];
+    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn];
+}
+
+- (void)loadDocument {
     if ([[NSFileManager defaultManager] fileExistsAtPath:_path]) {
         self.pdfView.document = [[PDFDocument alloc] initWithURL:[NSURL fileURLWithPath:_path]];
     } else {
         self.pdfView.document = [[PDFDocument alloc] init];
         [self.pdfView.document insertPage:[[PDFPage alloc] init] atIndex:0];
     }
-
-    [self.view addSubview:self.pdfView];
-
-    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePDF)];
-    UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(showEditMenu)];
-    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn];
 }
 
 - (void)showEditMenu {
@@ -56,26 +59,36 @@
         [self toggleDrawingMode];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを複製" systemImage:@"plus.square.on.square" style:CustomMenuActionStyleDefault handler:^{
-        PDFPage *current = self.pdfView.currentPage;
-        if (current) {
-            NSData *data = [current dataRepresentation];
-            PDFDocument *tempDoc = [[PDFDocument alloc] initWithData:data];
-            if (tempDoc.pageCount > 0) {
-                PDFPage *newP = [tempDoc pageAtIndex:0];
-                [self.pdfView.document insertPage:newP atIndex:[self.pdfView.document indexForPage:current] + 1];
-            }
-        }
+        [self duplicateCurrentPage];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを追加" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{
         [self.pdfView.document insertPage:[[PDFPage alloc] init] atIndex:self.pdfView.document.pageCount];
     }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを削除" systemImage:@"minus.circle" style:CustomMenuActionStyleDestructive handler:^{
-        if (self.pdfView.document.pageCount > 1) {
-            NSInteger idx = [self.pdfView.document indexForPage:self.pdfView.currentPage];
-            [self.pdfView.document removePageAtIndex:idx];
-        }
+        [self deleteCurrentPage];
     }]];
     [menu showInView:self.view];
+}
+
+- (void)duplicateCurrentPage {
+    PDFPage *current = self.pdfView.currentPage;
+    if (current) {
+        NSData *data = [current dataRepresentation];
+        PDFDocument *tempDoc = [[PDFDocument alloc] initWithData:data];
+        if (tempDoc.pageCount > 0) {
+            PDFPage *newP = [tempDoc pageAtIndex:0];
+            [self.pdfView.document insertPage:newP atIndex:[self.pdfView.document indexForPage:current] + 1];
+            [self.pdfView setNeedsDisplay];
+        }
+    }
+}
+
+- (void)deleteCurrentPage {
+    if (self.pdfView.document.pageCount > 1) {
+        NSInteger idx = [self.pdfView.document indexForPage:self.pdfView.currentPage];
+        [self.pdfView.document removePageAtIndex:idx];
+        [self.pdfView setNeedsDisplay];
+    }
 }
 
 - (void)promptForTextAnnotation {
@@ -92,15 +105,13 @@
 - (void)addTextAnnotation:(NSString *)text {
     PDFPage *page = self.pdfView.currentPage;
     if (!page) return;
-    CGRect bounds = CGRectMake(50, [page boundsForBox:kPDFDisplayBoxMediaBox].size.height - 100, 200, 50);
+    CGRect bounds = CGRectMake(100, 100, 200, 40);
     PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:PDFAnnotationSubtypeFreeText withProperties:nil];
     annot.contents = text;
     annot.font = [UIFont systemFontOfSize:18];
     annot.fontColor = [UIColor redColor];
     [page addAnnotation:annot];
-    // In a real implementation, we would set an appearance stream for the image.
-    // For this prototype, we record the action in the log.
-    NSLog(@"[PDF] Image annotation added to page");
+    [self.pdfView setNeedsDisplay];
 }
 
 - (void)selectImage {
@@ -119,20 +130,17 @@
 - (void)addImageAnnotation:(UIImage *)image {
     PDFPage *page = self.pdfView.currentPage;
     if (!page) return;
-    CGRect bounds = CGRectMake(100, 100, 200, 200);
-    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:bounds forType:PDFAnnotationSubtypeStamp withProperties:nil];
-    // In PDFKit, to add an image we can use the "stamp" annotation type.
-    // Some versions of PDFKit allow setting an appearance stream.
+    // Implementation of adding image as annotation is complex in PDFKit via code.
+    // For this prototype, we create a text annotation as a placeholder or log the event.
+    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:CGRectMake(100, 100, 100, 100) forType:PDFAnnotationSubtypeStamp withProperties:nil];
     [page addAnnotation:annot];
-    [[Logger sharedLogger] log:@"[PDF] Image annotation added to page"];
+    [self.pdfView setNeedsDisplay];
+    [[Logger sharedLogger] log:@"[PDF] Added image placeholder annotation"];
 }
 
 - (void)toggleDrawingMode {
-    if (self.canvasView) {
-        [self finishDrawing];
-    } else {
-        [self startDrawing];
-    }
+    if (self.canvasView) [self finishDrawing];
+    else [self startDrawing];
 }
 
 - (void)startDrawing {
@@ -142,16 +150,17 @@
     self.canvasView.opaque = NO;
     [self.view addSubview:self.canvasView];
 
-    self.toolPicker = [[PKToolPicker alloc] init];
-    [self.toolPicker setVisible:YES forFirstResponder:self.canvasView];
-    [self.toolPicker addObserver:self.canvasView];
-    [self.canvasView becomeFirstResponder];
+    if (@available(iOS 13.0, *)) {
+        self.toolPicker = [[PKToolPicker alloc] init];
+        [self.toolPicker setVisible:YES forFirstResponder:self.canvasView];
+        [self.toolPicker addObserver:self.canvasView];
+        [self.canvasView becomeFirstResponder];
+    }
 
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"完了" style:UIBarButtonItemStylePlain target:self action:@selector(finishDrawing)];
 }
 
 - (void)finishDrawing {
-    // Convert drawing to image and add as annotation
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:self.canvasView.bounds.size];
     UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext * context) {
         [self.canvasView drawViewHierarchyInRect:self.canvasView.bounds afterScreenUpdates:YES];
