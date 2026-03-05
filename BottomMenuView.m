@@ -5,8 +5,6 @@
 @property (strong, nonatomic) UIStackView *stackView;
 
 
-- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
-
 @end
 
 @implementation BottomMenuView
