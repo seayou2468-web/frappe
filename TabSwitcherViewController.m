@@ -93,12 +93,6 @@
     self.container.alpha = 1.0;
 }
 
-- (void)refreshUI {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-        // Add other UI components that need refreshing
-    });
-}
 
 @end
 
