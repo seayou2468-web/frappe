@@ -24,6 +24,7 @@
 - (NSArray<FileItem *> *)searchFilesWithQuery:(NSString *)query inPath:(NSString *)path recursive:(BOOL)recursive;
 - (NSString *)copyItemAtPath:(NSString *)srcPath toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error;
 - (NSString *)moveItemAtURL:(NSURL *)srcURL toDirectory:(NSString *)destDir uniqueName:(NSString *)preferredName error:(NSError **)error;
++ (NSString *)effectiveHomeDirectory;
 + (NSString *)relativeToHomePath:(NSString *)absolutePath;
 + (NSString *)absoluteFromHomeRelativePath:(NSString *)relativePath;
 
