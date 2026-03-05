@@ -5,8 +5,8 @@
 @end
 
 @interface DownloadManager ()
-@property (nonatomic, strong) NSURLSession *session;
-@property (nonatomic, strong) NSMutableDictionary<NSNumber *, DownloadTask *> *taskMap;
+@property (strong, nonatomic) NSURLSession *session;
+@property (strong, nonatomic) NSMutableDictionary<NSNumber *, DownloadTask *> *taskMap;
 @end
 
 @implementation DownloadManager
@@ -45,11 +45,9 @@
     dTask.filename = name;
     dTask.destinationPath = path;
     dTask.relativeDestinationPath = [FileManagerCore relativeToHomePath:path];
-
     dTask.isDownloading = YES;
-
-
     dTask.progress = 0;
+
     NSURLSessionDownloadTask *task = [self.session downloadTaskWithRequest:request];
     task.taskDescription = path;
     dTask.task = task;
@@ -104,7 +102,9 @@
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
     DownloadTask *dTask = self.taskMap[@(downloadTask.taskIdentifier)];
 
-    NSString *rawPath = dTask.relativeDestinationPath ?: dTask.destinationPath ?: downloadTask.taskDescription;
+    NSString *rawPath = dTask ? dTask.relativeDestinationPath : nil;
+    if (!rawPath) rawPath = dTask ? dTask.destinationPath : downloadTask.taskDescription;
+
     NSString *destPath = nil;
     if (rawPath) {
         NSString *rel = [FileManagerCore relativeToHomePath:rawPath];
@@ -116,14 +116,11 @@
         destPath = [docs stringByAppendingPathComponent:@"Downloads"];
     }
 
-
     NSString *filename = dTask ? dTask.filename : downloadTask.response.suggestedFilename;
-
     if (!filename) filename = @"downloaded_file";
 
     NSError *moveError = nil;
     NSString *finalName = [[FileManagerCore sharedManager] moveItemAtURL:location toDirectory:destPath uniqueName:filename error:&moveError];
-
 
     if (finalName) {
         if (dTask) {
