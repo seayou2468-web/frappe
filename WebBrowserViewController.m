@@ -36,6 +36,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 @property (nonatomic, strong) NSMutableArray<NSString *> *consoleLogs;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *networkLogs;
 @property (nonatomic, assign) BOOL isPrivateMode;
+@property (nonatomic, assign) BOOL isAdBlockEnabled;
 @end
 
 @implementation WebBrowserViewController
@@ -117,6 +118,10 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.webView.backgroundColor = [UIColor clearColor];
     self.webView.opaque = NO;
     [self.view addSubview:self.webView];
+
+    UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
+    [refreshControl addTarget:self action:@selector(handleRefresh:) forControlEvents:UIControlEventValueChanged];
+    self.webView.scrollView.refreshControl = refreshControl;
 
     self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 240, 36)];
     self.urlField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12];
@@ -317,10 +322,15 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)showUserAgentMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"User-Agent設定"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"モバイル (デフォルト)" systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{
+    BOOL isDesktop = (self.webView.customUserAgent != nil);
+
+    NSString *mobileTitle = isDesktop ? @"モバイル" : @"モバイル (有効)";
+    NSString *desktopTitle = isDesktop ? @"デスクトップ (有効)" : @"デスクトップ";
+
+    [menu addAction:[CustomMenuAction actionWithTitle:mobileTitle systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{
         [self applyUserAgent:NO];
     }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"デスクトップ" systemImage:@"desktopcomputer" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:desktopTitle systemImage:@"desktopcomputer" style:CustomMenuActionStyleDefault handler:^{
         [self applyUserAgent:YES];
     }]];
     [menu showInView:self.view];
@@ -383,14 +393,21 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)showBrowserOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ブラウザ操作"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"再読み込み" systemImage:@"arrow.clockwise" style:CustomMenuActionStyleDefault handler:^{ [self.webView reload]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"URLをコピー" systemImage:@"doc.on.doc" style:CustomMenuActionStyleDefault handler:^{ [[UIPasteboard generalPasteboard] setString:self.webView.URL.absoluteString]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"このページをブックマーク" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{ [self bookmarkCurrentPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"履歴" systemImage:@"clock" style:CustomMenuActionStyleDefault handler:^{ [self showHistory]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"User-Agent切替" systemImage:@"person.crop.circle.badge.questionmark" style:CustomMenuActionStyleDefault handler:^{ [self showUserAgentMenu]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"Cookieの管理" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [self showCookieEditor]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページ内検索" systemImage:@"magnifyingglass" style:CustomMenuActionStyleDefault handler:^{ [self promptFindOnPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{ [self handleMenuAction:BottomMenuActionWebShare]; }]];
+
     NSString *privateTitle = self.isPrivateMode ? @"プライベートモード: ON" : @"プライベートモード: OFF";
     [menu addAction:[CustomMenuAction actionWithTitle:privateTitle systemImage:@"eye.slash" style:CustomMenuActionStyleDefault handler:^{ [self togglePrivateMode]; }]];
+
+    NSString *adBlockTitle = self.isAdBlockEnabled ? @"広告ブロック: ON" : @"広告ブロック: OFF";
+    [menu addAction:[CustomMenuAction actionWithTitle:adBlockTitle systemImage:@"shield.fill" style:CustomMenuActionStyleDefault handler:^{ [self toggleAdBlock]; }]];
+
     [menu showInView:self.view];
 }
 
@@ -437,4 +454,43 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     }
 }
 
+
+- (void)toggleAdBlock {
+    self.isAdBlockEnabled = !self.isAdBlockEnabled;
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Ad-block: %@", self.isAdBlockEnabled ? @"ON" : @"OFF"]];
+
+    if (self.isAdBlockEnabled) {
+        [self applyAdBlockRules];
+    } else {
+        [self removeAdBlockRules];
+    }
+}
+
+- (void)applyAdBlockRules {
+    NSString *jsonRules = @"[ { \"trigger\": { \"url-filter\": \".*doubleclick.net.*\" }, \"action\": { \"type\": \"block\" } }, { \"trigger\": { \"url-filter\": \".*google-analytics.com.*\" }, \"action\": { \"type\": \"block\" } }, { \"trigger\": { \"url-filter\": \".*googlesyndication.com.*\" }, \"action\": { \"type\": \"block\" } } ]";
+
+    if (@available(iOS 11.0, *)) {
+        [[WKContentRuleListStore defaultStore] compileContentRuleListForIdentifier:@"AdBlockList" encodedContentRuleList:jsonRules completionHandler:^(WKContentRuleList *list, NSError *error) {
+            if (list) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self.webView.configuration.userContentController addContentRuleList:list];
+                    [self.webView reload];
+                });
+            }
+        }];
+    }
+}
+
+- (void)removeAdBlockRules {
+    if (@available(iOS 11.0, *)) {
+        [self.webView.configuration.userContentController removeAllContentRuleLists];
+        [self.webView reload];
+    }
+}
+
+
+- (void)handleRefresh:(UIRefreshControl *)sender {
+    [self.webView reload];
+    [sender endRefreshing];
+}
 @end
