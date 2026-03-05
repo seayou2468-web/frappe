@@ -1,6 +1,7 @@
 #import "WebStartPageView.h"
 #import "WebBookmarksManager.h"
 #import "ThemeEngine.h"
+#import "CustomMenuView.h"
 
 @interface WebStartPageView () <UICollectionViewDelegate, UICollectionViewDataSource, UISearchBarDelegate>
 @property (nonatomic, strong) UISearchBar *searchBar;
@@ -40,8 +41,23 @@
     self.collectionView.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.collectionView];
 
+    UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
+    [self.collectionView addGestureRecognizer:lp];
+
+    UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [addBtn setImage:[UIImage systemImageNamed:@"plus.circle.fill"] forState:UIControlStateNormal];
+    addBtn.tintColor = [ThemeEngine liquidColor];
+    addBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [addBtn addTarget:self action:@selector(promptAddBookmark) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:addBtn];
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.topAnchor constant:40],
+        [addBtn.topAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.topAnchor constant:10],
+        [addBtn.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-20],
+        [addBtn.widthAnchor constraintEqualToConstant:44],
+        [addBtn.heightAnchor constraintEqualToConstant:44],
+
+        [self.searchBar.topAnchor constraintEqualToAnchor:addBtn.bottomAnchor constant:10],
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:20],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-20],
 
@@ -103,6 +119,70 @@
     if (self.onBookmarkSelect) {
         self.onBookmarkSelect([WebBookmarksManager sharedManager].bookmarks[indexPath.item][@"url"]);
     }
+}
+
+#pragma mark - Editing
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
+    if (lp.state != UIGestureRecognizerStateBegan) return;
+    CGPoint p = [lp locationInView:self.collectionView];
+    NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:p];
+    if (indexPath) {
+        [self showEditMenuForBookmarkAtIndex:indexPath.item];
+    }
+}
+
+
+- (void)promptAddBookmark {
+    UIViewController *top = [self findViewController];
+    if (!top) return;
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ブックマーク追加" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"タイトル"; }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"URL"; }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[WebBookmarksManager sharedManager] addBookmarkWithTitle:alert.textFields[0].text url:alert.textFields[1].text];
+        [self reloadBookmarks];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [top presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showEditMenuForBookmarkAtIndex:(NSInteger)index {
+    NSDictionary *bookmark = [WebBookmarksManager sharedManager].bookmarks[index];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ブックマーク編集"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"編集" systemImage:@"pencil" style:CustomMenuActionStyleDefault handler:^{
+        [self promptEditBookmarkAtIndex:index];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        [[WebBookmarksManager sharedManager] removeBookmarkAtIndex:index];
+        [self reloadBookmarks];
+    }]];
+    [menu showInView:self];
+}
+
+- (void)promptEditBookmarkAtIndex:(NSInteger)index {
+    NSDictionary *bookmark = [WebBookmarksManager sharedManager].bookmarks[index];
+    UIViewController *top = [self findViewController];
+    if (!top) return;
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ブックマーク編集" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"タイトル"; tf.text = bookmark[@"title"]; }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"URL"; tf.text = bookmark[@"url"]; }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[WebBookmarksManager sharedManager] updateBookmarkAtIndex:index title:alert.textFields[0].text url:alert.textFields[1].text];
+        [self reloadBookmarks];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [top presentViewController:alert animated:YES completion:nil];
+}
+
+- (UIViewController *)findViewController {
+    UIResponder *responder = self;
+    while ([responder isKindOfClass:[UIView class]]) responder = [responder nextResponder];
+    return (UIViewController *)responder;
 }
 
 @end

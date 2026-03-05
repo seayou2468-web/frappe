@@ -5,4 +5,5 @@
 @property (nonatomic, strong, readonly) NSArray<NSDictionary *> *bookmarks;
 - (void)addBookmarkWithTitle:(NSString *)title url:(NSString *)url;
 - (void)removeBookmarkAtIndex:(NSInteger)index;
+- (void)updateBookmarkAtIndex:(NSInteger)index title:(NSString *)title url:(NSString *)url;
 @end

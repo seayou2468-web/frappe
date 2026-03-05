@@ -114,7 +114,7 @@
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
         case BottomMenuActionWeb: {
-            [[TabManager sharedManager] addNewTabWithType:TabTypeWebBrowser path:@"https://www.google.com"];
+            [[TabManager sharedManager] addNewTabWithType:TabTypeWebBrowser path:@"about:blank"];
             [self displayActiveTab];
             break;
         }
