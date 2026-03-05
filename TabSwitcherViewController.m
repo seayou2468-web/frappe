@@ -11,14 +11,6 @@
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, copy) void (^onClose)(void);
 @property (nonatomic, copy) void (^onLongPress)(void);
-
-- (void)refreshUI {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-        // Add other UI components that need refreshing
-    });
-}
-
 @end
 
 @implementation TabCell
