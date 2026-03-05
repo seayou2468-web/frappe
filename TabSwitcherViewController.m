@@ -1,7 +1,7 @@
-#import "TabSwitcherViewController.h"
-#import "TabManager.h"
-#import "ThemeEngine.h"
-#import "CustomMenuView.h"
+#import @\"TabSwitcherViewController.h\"
+#import @\"TabManager.h\"
+#import @\"ThemeEngine.h\"
+#import @\"CustomMenuView.h\"
 #import <LocalAuthentication/LocalAuthentication.h>
 
 @interface TabCell : UICollectionViewCell
@@ -44,7 +44,7 @@
         [header addSubview:_titleLabel];
 
         _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [_closeButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
+        [_closeButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill@\"] forState:UIControlStateNormal];
         _closeButton.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.45];
         _closeButton.frame = CGRectMake(frame.size.width-38, 0, 38, 38);
         [_closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -106,7 +106,7 @@
 - (void)authenticateWithTab:(TabInfo *)tab completion:(void (^)(BOOL success))completion {
     if (tab.useFaceID) {
         LAContext *context = [[LAContext alloc] init];
-        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
+        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@\"認証が必要です@\" reply:^(BOOL success, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
         }];
     } else if (tab.password) {
@@ -119,7 +119,7 @@
 - (void)authenticateWithGroup:(TabGroup *)group completion:(void (^)(BOOL success))completion {
     if (group.useFaceID) {
         LAContext *context = [[LAContext alloc] init];
-        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@"認証が必要です" reply:^(BOOL success, NSError *error) {
+        [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:@\"認証が必要です@\" reply:^(BOOL success, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
         }];
     } else if (group.password) {
@@ -131,12 +131,12 @@
 
 - (void)showPasswordPromptForItem:(id)item completion:(void (^)(BOOL success))completion {
     NSString *storedPw = [item isKindOfClass:[TabInfo class]] ? ((TabInfo *)item).password : ((TabGroup *)item).password;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード入力" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@\"パスワード入力@\" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.secureTextEntry = YES; }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@\"OK@\" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         completion([alert.textFields.firstObject.text isEqualToString:storedPw]);
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@\"キャンセル@\" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { completion(NO); }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -146,14 +146,53 @@
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self updateDisplayItems];
 
+    UIView *topBar = [[UIView alloc] init];
+    topBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [ThemeEngine applyGlassStyleToView:topBar cornerRadius:0];
+    [self.view addSubview:topBar];
+
+    UIButton *plusBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    plusBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [plusBtn setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
+    plusBtn.tintColor = [UIColor whiteColor];
+    [plusBtn addTarget:self action:@selector(newTabTapped) forControlEvents:UIControlEventTouchUpInside];
+    [topBar addSubview:plusBtn];
+
+    _groupButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _groupButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [_groupButton setTitle:@"メインタブ" forState:UIControlStateNormal];
+    _groupButton.tintColor = [UIColor whiteColor];
+    _groupButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    [_groupButton addTarget:self action:@selector(groupSwitcherTapped) forControlEvents:UIControlEventTouchUpInside];
+    [topBar addSubview:_groupButton];
+
+    UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    doneBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [doneBtn setTitle:@"完了" forState:UIControlStateNormal];
+    doneBtn.tintColor = [UIColor whiteColor];
+    doneBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17];
+    [doneBtn addTarget:self action:@selector(doneTapped) forControlEvents:UIControlEventTouchUpInside];
+    [topBar addSubview:doneBtn];
+
     UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
-    CGFloat w = (self.view.bounds.size.width - 48) / 2;
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    if (@available(iOS 13.0, *)) {
+        NSSet *scenes = [[UIApplication sharedApplication] connectedScenes];
+        for (UIScene *scene in scenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                screenWidth = ((UIWindowScene *)scene).screen.bounds.size.width;
+                break;
+            }
+        }
+    }
+    CGFloat w = (screenWidth - 48) / 2;
     layout.itemSize = CGSizeMake(w, w * 1.35);
-    layout.sectionInset = UIEdgeInsetsMake(20, 16, 120, 16);
+    layout.sectionInset = UIEdgeInsetsMake(20, 16, 20, 16);
     layout.minimumInteritemSpacing = 16;
     layout.minimumLineSpacing = 22;
 
-    _collectionView = [[UICollectionView alloc] initWithFrame:self.view.bounds collectionViewLayout:layout];
+    _collectionView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
+    _collectionView.translatesAutoresizingMaskIntoConstraints = NO;
     _collectionView.backgroundColor = [UIColor clearColor];
     _collectionView.delegate = self;
     _collectionView.dataSource = self;
@@ -161,45 +200,45 @@
     [_collectionView registerClass:[TabCell class] forCellWithReuseIdentifier:@"TabCell"];
     [self.view addSubview:_collectionView];
 
-    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height-90, self.view.bounds.size.width, 90)];
-    [ThemeEngine applyGlassStyleToView:bottomBar cornerRadius:0];
-    [self.view addSubview:bottomBar];
+    [NSLayoutConstraint activateConstraints:@[
+        [topBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [topBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [topBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [topBar.heightAnchor constraintEqualToConstant:60],
 
-    UIButton *plusBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [plusBtn setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
-    plusBtn.tintColor = [UIColor whiteColor];
-    plusBtn.frame = CGRectMake(15, 10, 50, 50);
-    [plusBtn addTarget:self action:@selector(newTabTapped) forControlEvents:UIControlEventTouchUpInside];
-    [bottomBar addSubview:plusBtn];
+        [plusBtn.leadingAnchor constraintEqualToAnchor:topBar.leadingAnchor constant:15],
+        [plusBtn.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [plusBtn.widthAnchor constraintEqualToConstant:50],
+        [plusBtn.heightAnchor constraintEqualToConstant:50],
 
-    _groupButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_groupButton setTitle:@"メインタブ" forState:UIControlStateNormal];
-    _groupButton.tintColor = [UIColor whiteColor];
-    _groupButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
-    _groupButton.frame = CGRectMake(self.view.bounds.size.width/2 - 80, 10, 160, 50);
-    [_groupButton addTarget:self action:@selector(groupSwitcherTapped) forControlEvents:UIControlEventTouchUpInside];
-    [bottomBar addSubview:_groupButton];
+        [_groupButton.centerXAnchor constraintEqualToAnchor:topBar.centerXAnchor],
+        [_groupButton.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [_groupButton.widthAnchor constraintEqualToConstant:160],
+        [_groupButton.heightAnchor constraintEqualToConstant:50],
 
-    UIButton *doneBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [doneBtn setTitle:@"完了" forState:UIControlStateNormal];
-    doneBtn.tintColor = [UIColor whiteColor];
-    doneBtn.titleLabel.font = [UIFont boldSystemFontOfSize:17];
-    doneBtn.frame = CGRectMake(self.view.bounds.size.width - 80, 10, 70, 50);
-    [doneBtn addTarget:self action:@selector(doneTapped) forControlEvents:UIControlEventTouchUpInside];
-    [bottomBar addSubview:doneBtn];
+        [doneBtn.trailingAnchor constraintEqualToAnchor:topBar.trailingAnchor constant:-15],
+        [doneBtn.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [doneBtn.widthAnchor constraintEqualToConstant:70],
+        [doneBtn.heightAnchor constraintEqualToConstant:50],
+
+        [_collectionView.topAnchor constraintEqualToAnchor:topBar.bottomAnchor],
+        [_collectionView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_collectionView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_collectionView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
 }
 
 - (void)doneTapped { [self dismissViewControllerAnimated:YES completion:nil]; }
 
 - (void)groupSwitcherTapped {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"タブグループ"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@\"タブグループ@\"];
 
-    [menu addAction:[CustomMenuAction actionWithTitle:@"メインタブ" systemImage:@"tray.full" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"メインタブ@\" systemImage:@\"tray.full@\" style:CustomMenuActionStyleDefault handler:^{
         [self animateToGroupScope:nil];
     }]];
 
     for (TabGroup *g in [TabManager sharedManager].groups) {
-        [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@\"folder@\" style:CustomMenuActionStyleDefault handler:^{
             [self authenticateWithGroup:g completion:^(BOOL success) {
                 if (success) [self animateToGroupScope:g];
             }];
@@ -207,19 +246,19 @@
     }
 
     if (_currentGroupScope) {
-        [menu addAction:[CustomMenuAction actionWithTitle:@"名前変更" systemImage:@"pencil" style:CustomMenuActionStyleDefault handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:@\"名前変更@\" systemImage:@\"pencil@\" style:CustomMenuActionStyleDefault handler:^{
             [self showRenameGroupMenu:self->_currentGroupScope];
         }]];
-        [menu addAction:[CustomMenuAction actionWithTitle:@"セキュリティ" systemImage:@"lock" style:CustomMenuActionStyleDefault handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:@\"セキュリティ@\" systemImage:@\"lock@\" style:CustomMenuActionStyleDefault handler:^{
             [self showSetSecurityMenu:self->_currentGroupScope];
         }]];
-        [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:@\"削除@\" systemImage:@\"trash@\" style:CustomMenuActionStyleDestructive handler:^{
             [[TabManager sharedManager] removeGroup:self->_currentGroupScope];
             [self animateToGroupScope:nil];
         }]];
     }
 
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新しいグループの作成" systemImage:@"plus.rectangle.on.folder" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"新しいグループの作成@\" systemImage:@\"plus.rectangle.on.folder@\" style:CustomMenuActionStyleDefault handler:^{
         [self showCreateGroupMenu:nil];
     }]];
 
@@ -237,7 +276,7 @@
     [_collectionView.layer addAnimation:transition forKey:kCATransition];
 
     _currentGroupScope = group;
-    [_groupButton setTitle:group ? group.title : @"メインタブ" forState:UIControlStateNormal];
+    [_groupButton setTitle:group ? group.title : @\"メインタブ@\" forState:UIControlStateNormal];
     [self updateDisplayItems];
     [_collectionView reloadData];
 }
@@ -271,7 +310,7 @@
 }
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
-    TabCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"TabCell" forIndexPath:indexPath];
+    TabCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@\"TabCell@\" forIndexPath:indexPath];
     TabInfo *info = _displayItems[indexPath.item];
     cell.titleLabel.text = info.title;
     cell.previewImage.image = info.screenshot;
@@ -306,20 +345,20 @@
 
 - (void)showTabMenu:(TabInfo *)tab {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:tab.title];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"グループに移動" systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"グループに移動@\" systemImage:@\"folder.badge.plus@\" style:CustomMenuActionStyleDefault handler:^{
         [self showAddToGroupMenu:tab];
     }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"セキュリティ" systemImage:@"lock" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"セキュリティ@\" systemImage:@\"lock@\" style:CustomMenuActionStyleDefault handler:^{
         [self showSetSecurityMenu:tab];
     }]];
     if (tab.group) {
-        [menu addAction:[CustomMenuAction actionWithTitle:@"グループ解除" systemImage:@"folder.badge.minus" style:CustomMenuActionStyleDefault handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:@\"グループ解除@\" systemImage:@\"folder.badge.minus@\" style:CustomMenuActionStyleDefault handler:^{
             [[TabManager sharedManager] addTab:tab toGroup:nil];
             [self updateDisplayItems];
             [self->_collectionView reloadData];
         }]];
     }
-    [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"削除@\" systemImage:@\"trash@\" style:CustomMenuActionStyleDestructive handler:^{
         [[TabManager sharedManager] removeTabAtIndex:[[TabManager sharedManager].tabs indexOfObject:tab]];
         [self updateDisplayItems];
         [self->_collectionView reloadData];
@@ -328,24 +367,24 @@
 }
 
 - (void)showAddToGroupMenu:(TabInfo *)tab {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"グループ選択"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@\"グループ選択@\"];
     for (TabGroup *g in [TabManager sharedManager].groups) {
         if (g == tab.group) continue;
-        [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@"folder" style:CustomMenuActionStyleDefault handler:^{
+        [menu addAction:[CustomMenuAction actionWithTitle:g.title systemImage:@\"folder@\" style:CustomMenuActionStyleDefault handler:^{
             [[TabManager sharedManager] addTab:tab toGroup:g];
             [self updateDisplayItems];
             [self->_collectionView reloadData];
         }]];
     }
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新規グループ作成" systemImage:@"plus.rectangle.on.folder" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"新規グループ作成@\" systemImage:@\"plus.rectangle.on.folder@\" style:CustomMenuActionStyleDefault handler:^{
         [self showCreateGroupMenu:tab];
     }]];
     [menu showInView:self.view];
 }
 
 - (void)showCreateGroupMenu:(TabInfo *)tab {
-    [self showInputMenuWithTitle:@"新規グループ名" completion:^(NSString *name) {
-        if (name.length == 0) name = @"無題";
+    [self showInputMenuWithTitle:@\"新規グループ名@\" completion:^(NSString *name) {
+        if (name.length == 0) name = @\"無題@\";
         TabGroup *g = [[TabManager sharedManager] createGroupWithTitle:name];
         if (tab) {
             [[TabManager sharedManager] addTab:tab toGroup:g];
@@ -360,24 +399,24 @@
 }
 
 - (void)showRenameGroupMenu:(TabGroup *)group {
-    [self showInputMenuWithTitle:@"新しい名前" completion:^(NSString *name) {
+    [self showInputMenuWithTitle:@\"新しい名前@\" completion:^(NSString *name) {
         if (name.length > 0) { group.title = name; [self->_groupButton setTitle:name forState:UIControlStateNormal]; }
     }];
 }
 
 - (void)showSetSecurityMenu:(id)item {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"セキュリティ設定"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"パスワードを設定" systemImage:@"key" style:CustomMenuActionStyleDefault handler:^{
-        [self showInputMenuWithTitle:@"パスワード" completion:^(NSString *pw) {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@\"セキュリティ設定@\"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"パスワードを設定@\" systemImage:@\"key@\" style:CustomMenuActionStyleDefault handler:^{
+        [self showInputMenuWithTitle:@\"パスワード@\" completion:^(NSString *pw) {
             if ([item isKindOfClass:[TabInfo class]]) { ((TabInfo *)item).password = (pw.length > 0) ? pw : nil; ((TabInfo *)item).useFaceID = NO; }
             else { ((TabGroup *)item).password = (pw.length > 0) ? pw : nil; ((TabGroup *)item).useFaceID = NO; }
         }];
     }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"FaceIDを使用" systemImage:@"faceid" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"FaceIDを使用@\" systemImage:@\"faceid@\" style:CustomMenuActionStyleDefault handler:^{
         if ([item isKindOfClass:[TabInfo class]]) { ((TabInfo *)item).useFaceID = YES; ((TabInfo *)item).password = nil; }
         else { ((TabGroup *)item).useFaceID = YES; ((TabGroup *)item).password = nil; }
     }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"ロック解除" systemImage:@"lock.open" style:CustomMenuActionStyleDefault handler:^{
+    [menu addAction:[CustomMenuAction actionWithTitle:@\"ロック解除@\" systemImage:@\"lock.open@\" style:CustomMenuActionStyleDefault handler:^{
         if ([item isKindOfClass:[TabInfo class]]) { ((TabInfo *)item).password = nil; ((TabInfo *)item).useFaceID = NO; }
         else { ((TabGroup *)item).password = nil; ((TabGroup *)item).useFaceID = NO; }
     }]];
@@ -387,8 +426,8 @@
 - (void)showInputMenuWithTitle:(NSString *)title completion:(void (^)(NSString *text))completion {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:nil];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { if (completion) completion(alert.textFields.firstObject.text); }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { if (completion) completion(nil); }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@\"OK@\" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { if (completion) completion(alert.textFields.firstObject.text); }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@\"キャンセル" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { if (completion) completion(nil); }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
