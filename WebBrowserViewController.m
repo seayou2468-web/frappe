@@ -8,6 +8,9 @@
 #import "DownloadsViewController.h"
 #import "PersistenceManager.h"
 #import "WebInspectorViewController.h"
+#import "WebStartPageView.h"
+#import "WebBookmarksManager.h"
+#import "CookieEditorViewController.h"
 #import "Logger.h"
 #import "FileManagerCore.h"
 
@@ -24,6 +27,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 @interface WebBrowserViewController () <WKUIDelegate, WKScriptMessageHandler>
 @property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, strong) WebStartPageView *startPage;
 @property (nonatomic, strong) UITextField *urlField;
 @property (nonatomic, strong) UIProgressView *progressView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
@@ -43,8 +47,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (instancetype)initWithURL:(NSString *)url {
     self = [super init];
     if (self) {
-        NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
-        _initialURL = ([url hasPrefix:@"http"] || [url containsString:@"."]) ? url : home;
+        _initialURL = ([url hasPrefix:@"http"] || [url containsString:@"."]) ? url : nil;
         _consoleLogs = [NSMutableArray array];
         _networkLogs = [NSMutableArray array];
     }
@@ -133,11 +136,24 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
 
+    self.startPage = [[WebStartPageView alloc] initWithFrame:self.view.bounds];
+    self.startPage.translatesAutoresizingMaskIntoConstraints = NO;
+    __weak typeof(self) weakSelf = self;
+    self.startPage.onBookmarkSelect = ^(NSString *url) { [weakSelf.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]]; };
+    self.startPage.onSearch = ^(NSString *query) {
+        UITextField *dummy = [[UITextField alloc] init];
+        dummy.text = query;
+        [weakSelf textFieldShouldReturn:dummy];
+    };
+    [self.view addSubview:self.startPage];
+
     [NSLayoutConstraint activateConstraints:@[
         [self.progressView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor], [self.progressView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.progressView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.progressView.heightAnchor constraintEqualToConstant:2],
         [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor], [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor], [self.bottomMenu.heightAnchor constraintEqualToConstant:80],
+        [self.startPage.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor], [self.startPage.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.startPage.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.startPage.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
     ]];
+    self.startPage.hidden = (self.initialURL != nil);
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -213,10 +229,22 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     return YES;
 }
 
+
+- (void)bookmarkCurrentPage {
+    NSString *url = self.webView.URL.absoluteString;
+    NSString *title = self.webView.title;
+    if (url) {
+        [[WebBookmarksManager sharedManager] addBookmarkWithTitle:title url:url];
+        [self.startPage reloadBookmarks];
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Bookmarked: %@", url]];
+    }
+}
+
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     TabInfo *active = [[TabManager sharedManager] activeTab];
     if (active && active.type == TabTypeWebBrowser) { active.currentPath = webView.URL.absoluteString; active.title = webView.title.length > 0 ? webView.title : @"Browser"; }
     self.urlField.text = webView.URL.absoluteString;
+    self.startPage.hidden = (webView.URL != nil && ![webView.URL.absoluteString isEqualToString:@"about:blank"]);
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
@@ -230,12 +258,28 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
+
+- (void)showBrowserOthersMenu {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ブラウザ操作"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"このページをブックマーク" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{ [self bookmarkCurrentPage]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"Cookieの管理" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [self showCookieEditor]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"ページを共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{ [self handleMenuAction:BottomMenuActionWebShare]; }]];
+    [menu showInView:self.view];
+}
+
+- (void)showCookieEditor {
+    CookieEditorViewController *vc = [[CookieEditorViewController alloc] init];
+    vc.cookieStore = self.webView.configuration.websiteDataStore.httpCookieStore;
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
         case BottomMenuActionWebShare: { if (self.webView.URL) { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; } break; }
-        case BottomMenuActionWebHome: { NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com"; [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:home]]]; break; }
+        case BottomMenuActionWebHome: { [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]]; break; }
+        case BottomMenuActionOthers: [self showBrowserOthersMenu]; break;
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         default: break;
