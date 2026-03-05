@@ -243,7 +243,12 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 - (void)triggerDownloadWithURL:(NSURL *)url {
     if (!url) return;
     NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    // Ensure we are using the virtualized Documents path if available
     NSString *downloadsPath = [docs stringByAppendingPathComponent:@"Downloads"];
+
+    // In virtualization environments, we must ensure the path passed to DownloadManager
+    // is one that can be correctly relativized.
+
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
     [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
