@@ -76,7 +76,7 @@
     NSDictionary *bookmark = [WebBookmarksManager sharedManager].bookmarks[indexPath.item];
 
     UIView *iconView = [[UIView alloc] initWithFrame:CGRectMake(10, 0, 60, 60)];
-    iconView.backgroundColor = [[ThemeEngine accentColor] colorWithAlphaComponent:0.8];
+    iconView.backgroundColor = [[ThemeEngine liquidColor] colorWithAlphaComponent:0.8];
     iconView.layer.cornerRadius = 14;
     [cell.contentView addSubview:iconView];
 
