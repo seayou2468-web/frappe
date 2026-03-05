@@ -28,7 +28,6 @@
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     self.title = [self.path lastPathComponent];
 
-    // Ensure navigation bar is correctly configured
     self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
     self.navigationController.navigationBar.translucent = YES;
 
@@ -36,17 +35,14 @@
 }
 
 - (void)setupUI {
-    // UI Layout with Auto Layout to prevent overlapping
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.placeholder = @"16進数または文字列を検索";
     self.searchBar.delegate = self;
-    self.searchBar.userInteractionEnabled = YES;
-    self.searchBar.backgroundImage = [[UIImage alloc] init]; // Remove shadow/background
+    self.searchBar.backgroundImage = [[UIImage alloc] init];
     self.searchBar.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self.view addSubview:self.searchBar];
-    [self.view bringSubviewToFront:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -57,13 +53,11 @@
     [self.view addSubview:self.tableView];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-
     [NSLayoutConstraint activateConstraints:@[
         [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.searchBar.heightAnchor constraintEqualToConstant:50],
-
         [self.tableView.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
@@ -90,6 +84,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
+    if (_mutableData.length == 0) return 0;
     return (_mutableData.length + (bytesPerRow - 1)) / bytesPerRow;
 }
 
@@ -110,8 +105,6 @@
     const unsigned char *bytes = (const unsigned char *)[_mutableData bytes] + offset;
 
     NSMutableAttributedString *mas = [[NSMutableAttributedString alloc] init];
-
-    // Offset
     NSString *offsetStr = [NSString stringWithFormat:@"%08lX:  ", (unsigned long)offset];
     [mas appendAttributedString:[[NSAttributedString alloc] initWithString:offsetStr attributes:@{NSForegroundColorAttributeName: [UIColor systemGrayColor]}]];
 
@@ -126,11 +119,8 @@
     } else {
         NSMutableString *hex = [NSMutableString string];
         for (NSUInteger i = 0; i < 16; i++) {
-            if (i < length) {
-                [hex appendFormat:@"%02X ", bytes[i]];
-            } else {
-                [hex appendString:@"   "];
-            }
+            if (i < length) [hex appendFormat:@"%02X ", bytes[i]];
+            else [hex appendString:@"   "];
             if (i == 7) [hex appendString:@" "];
         }
         [mas appendAttributedString:[[NSAttributedString alloc] initWithString:hex attributes:@{NSForegroundColorAttributeName: [UIColor cyanColor]}]];
@@ -144,42 +134,7 @@
         }
         [mas appendAttributedString:[[NSAttributedString alloc] initWithString:ascii attributes:@{NSForegroundColorAttributeName: [UIColor systemGreenColor]}]];
     }
-
     cell.textLabel.attributedText = mas;
-    return cell;
-}
-
-    NSUInteger bytesPerRow = self.showASCIIOnly ? 32 : 16;
-    NSUInteger offset = indexPath.row * bytesPerRow;
-    NSUInteger length = MIN(bytesPerRow, _mutableData.length - offset);
-    const unsigned char *bytes = (const unsigned char *)[_mutableData bytes] + offset;
-
-    if (self.showASCIIOnly) {
-        NSMutableString *asciiPart = [NSMutableString string];
-        [asciiPart appendFormat:@"%08lX: ", (unsigned long)offset];
-        for (NSUInteger i = 0; i < length; i++) {
-            unsigned char b = bytes[i];
-            if (b >= 32 && b <= 126) [asciiPart appendFormat:@"%c", b];
-            else [asciiPart appendString:@"."];
-        }
-        cell.textLabel.text = asciiPart;
-    } else {
-        NSMutableString *hexPart = [NSMutableString string];
-        NSMutableString *asciiPart = [NSMutableString string];
-
-        for (NSUInteger i = 0; i < 16; i++) {
-            if (i < length) {
-                unsigned char b = bytes[i];
-                [hexPart appendFormat:@"%02X ", b];
-                if (b >= 32 && b <= 126) [asciiPart appendFormat:@"%c", b];
-                else [asciiPart appendString:@"."];
-            } else {
-                [hexPart appendString:@"   "];
-            }
-        }
-                cell.textLabel.text = [NSString stringWithFormat:@"%08lX  %@| %@", (unsigned long)offset, hexPart, asciiPart];
-    }
-
     return cell;
 }
 
@@ -203,7 +158,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"適用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *hexText = alert.textFields[0].text;
         NSArray *parts = [hexText componentsSeparatedByString:@" "];
-        unsigned char *bytes = (unsigned char *)[self.mutableData mutableBytes] + (row * bytesPerRow);
+        unsigned char *mutBytes = (unsigned char *)[self.mutableData mutableBytes] + (row * bytesPerRow);
         NSUInteger offset = 0;
         for (NSString *p in parts) {
             if (p.length == 0) continue;
@@ -211,7 +166,7 @@
             NSScanner *scanner = [NSScanner scannerWithString:p];
             [scanner scanHexInt:&b];
             if (row * bytesPerRow + offset < self.mutableData.length) {
-                bytes[offset] = (unsigned char)b;
+                mutBytes[offset] = (unsigned char)b;
                 offset++;
             }
         }
@@ -254,5 +209,4 @@
         }
     }
 }
-
 @end
