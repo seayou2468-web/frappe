@@ -210,7 +210,15 @@
     NSString *effectivePath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!effectivePath) return;
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:effectivePath error:nil];
-    if ([[attrs fileType] isEqualToString:NSFileTypeDirectory]) { [self navigateToPath:effectivePath]; } else { [self openFile:item]; }
+    if ([[attrs fileType] isEqualToString:NSFileTypeDirectory]) {
+        [self navigateToPath:effectivePath];
+    } else {
+        if (self.isPickingFile && self.onFilePicked) {
+            self.onFilePicked(item.fullPath);
+        } else {
+            [self openFile:item];
+        }
+    }
 }
 
 - (void)openFile:(FileItem *)item {

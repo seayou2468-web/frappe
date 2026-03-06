@@ -2,6 +2,7 @@
 #import "IdeviceManager.h"
 #import "ThemeEngine.h"
 #import "FileBrowserViewController.h"
+#import "LogViewerViewController.h"
 
 @interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
@@ -72,13 +73,14 @@
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 4;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2; // Connection
     if (section == 1) return 1; // Pairing File
     if (section == 2) return 1; // Actions
+    if (section == 3) return 1; // Logs
     return 0;
 }
 
@@ -86,6 +88,7 @@
     if (section == 0) return @"Connection Settings";
     if (section == 1) return @"Pairing";
     if (section == 2) return @"Actions";
+    if (section == 3) return @"System";
     return nil;
 }
 
@@ -117,6 +120,10 @@
         cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"Disconnect" : @"Connect";
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
+    } else if (indexPath.section == 3) {
+        cell.textLabel.text = @"View System Logs";
+        cell.detailTextLabel.text = nil;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
 
     return cell;
@@ -142,6 +149,8 @@
         } else {
             [mgr connect];
         }
+    } else if (indexPath.section == 3) {
+        [self showLogs];
     }
 }
 
@@ -174,10 +183,19 @@
 
 - (void)selectPairingFile {
     FileBrowserViewController *fb = [[FileBrowserViewController alloc] initWithPath:@"/"];
-    // In a real app, we'd need a way to pick a file from FileBrowserViewController
-    // and return it. For now, let's assume we can navigate and select.
-    // This is a placeholder for the integration.
+    fb.isPickingFile = YES;
+    __weak typeof(self) weakSelf = self;
+    fb.onFilePicked = ^(NSString *path) {
+        [[IdeviceManager sharedManager] selectPairingFile:path];
+        [weakSelf.navigationController popViewControllerAnimated:YES];
+        [weakSelf statusChanged];
+    };
     [self.navigationController pushViewController:fb animated:YES];
+}
+
+- (void)showLogs {
+    LogViewerViewController *vc = [[LogViewerViewController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 @end
