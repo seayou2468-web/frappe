@@ -7,24 +7,18 @@
 #import "PersistenceManager.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 
-@interface SettingsViewController ()
+@interface SettingsViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
-
-- (void)selectLanguage {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"言語選択 / Select Language"];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"日本語" systemImage:@"character.japanese.kana" style:CustomMenuActionStyleDefault handler:^{
-        [[NSUserDefaults standardUserDefaults] setObject:@"日本語" forKey:@"AppLanguage"];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
-        [self.tableView reloadData];
-    }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"English" systemImage:@"character" style:CustomMenuActionStyleDefault handler:^{
-        [[NSUserDefaults standardUserDefaults] setObject:@"English" forKey:@"AppLanguage"];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
-        [self.tableView reloadData];
-    }]];
-    [menu showInView:self.view];
-}
-
+- (void)selectLanguage;
+- (void)editDefaultPath;
+- (void)selectSortMethod;
+- (void)selectGlassAlpha;
+- (void)selectAccentColor;
+- (void)selectSearchEngine;
+- (void)editHomepage;
+- (void)clearBrowserData;
+- (void)addNewPersistentDomain;
+- (void)confirmResetSettings;
 @end
 
 @implementation SettingsViewController
@@ -99,8 +93,7 @@
             sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
             [sw addTarget:self action:@selector(confirmDeleteToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
-        }
-            } else if (indexPath.row == 2) {
+        } else if (indexPath.row == 2) {
             cell.textLabel.text = @"言語 / Language";
             cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppLanguage"] ?: @"日本語";
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -180,6 +173,7 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == 0 && indexPath.row == 0) [self editDefaultPath];
+    else if (indexPath.section == 0 && indexPath.row == 2) [self selectLanguage];
     else if (indexPath.section == 2) [self selectSortMethod];
     else if (indexPath.section == 3) {
         if (indexPath.row == 0) [self selectGlassAlpha];
