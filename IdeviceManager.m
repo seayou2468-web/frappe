@@ -12,7 +12,6 @@
 @property (nonatomic, assign) struct HeartbeatClientHandle *heartbeatClient;
 @property (nonatomic, assign) struct IdevicePairingFile *pairingFile;
 @property (nonatomic, assign) BOOL heartbeatActive;
-@property (nonatomic, assign) BOOL ddiMounted;
 @property (nonatomic, strong) NSTimer *heartbeatTimer;
 @end
 
@@ -172,9 +171,6 @@
         idevice_error_free(err);
     }
 
-    [[Logger sharedLogger] log:@"[Idevice] Checking DDI status..."];
-    [self _checkAndMountDDI];
-
     dispatch_async(dispatch_get_main_queue(), ^{
         [_lock lock];
         self.status = IdeviceStatusConnected;
@@ -182,33 +178,6 @@
         [[Logger sharedLogger] log:@"[Idevice] Successfully connected"];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil];
     });
-}
-
-- (void)_checkAndMountDDI {
-    struct ImageMounterHandle *mounter = NULL;
-    struct IdeviceProviderHandle *currentProvider = NULL;
-    [_lock lock];
-    currentProvider = self.provider;
-    [_lock unlock];
-    if (!currentProvider) return;
-
-    struct IdeviceFfiError *err = image_mounter_connect(currentProvider, &mounter);
-    if (!err && mounter) {
-        plist_t *devices = NULL;
-        size_t count = 0;
-        err = image_mounter_copy_devices(mounter, &devices, &count);
-        if (!err) {
-            [_lock lock];
-            self.ddiMounted = (count > 0);
-            [_lock unlock];
-            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] DDI status checked: %@", (count > 0) ? @"Mounted" : @"Not Mounted"]];
-        } else {
-            idevice_error_free(err);
-        }
-        image_mounter_free(mounter);
-    } else if (err) {
-        idevice_error_free(err);
-    }
 }
 
 - (void)_startHeartbeatTimer {
@@ -243,9 +212,6 @@
 - (void)disconnect {
     [[Logger sharedLogger] log:@"[Idevice] Disconnecting and cleaning up handles..."];
 
-    // We invalidate the timer first, outside the lock to avoid timer-related deadlock
-    // Although NSTimer is safe to invalidate from any thread if correctly managed,
-    // the main loop might be involved.
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.heartbeatTimer invalidate];
         self.heartbeatTimer = nil;
@@ -271,7 +237,6 @@
 
     self.status = IdeviceStatusDisconnected;
     self.heartbeatActive = NO;
-    self.ddiMounted = NO;
     [_lock unlock];
 
     dispatch_async(dispatch_get_main_queue(), ^{

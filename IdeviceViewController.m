@@ -61,8 +61,7 @@
         NSMutableString *fullStatus = [NSMutableString stringWithFormat:@"Status: %@\n", statusStr];
         [fullStatus appendFormat:@"IP: %@:%d\n", mgr.ipAddress, mgr.port];
         if (mgr.status == IdeviceStatusConnected) {
-            [fullStatus appendFormat:@"Heartbeat: %@\n", mgr.heartbeatActive ? @"Active" : @"Inactive"];
-            [fullStatus appendFormat:@"DDI: %@", mgr.ddiMounted ? @"Mounted" : @"Not Mounted"];
+            [fullStatus appendFormat:@"Heartbeat: %@", mgr.heartbeatActive ? @"Active" : @"Inactive"];
         }
 
         self.statusLabel.text = fullStatus;

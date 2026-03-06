@@ -16,7 +16,6 @@ typedef NS_ENUM(NSInteger, IdeviceConnectionStatus) {
 @property (nonatomic, copy) NSString *pairingFilePath;
 @property (nonatomic, readonly) NSString *lastError;
 @property (nonatomic, readonly) BOOL heartbeatActive;
-@property (nonatomic, readonly) BOOL ddiMounted;
 
 + (instancetype)sharedManager;
 
