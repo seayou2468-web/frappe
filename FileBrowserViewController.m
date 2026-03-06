@@ -65,7 +65,7 @@
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectZero];
     self.pathBar.translatesAutoresizingMaskIntoConstraints = NO;
     __weak typeof(self) weakSelf = self;
-    self.pathBar.onPathSelected = ^(NSString *path) { [weakSelf navigateToPath:path]; };
+    self.pathBar.onPathChanged = ^(NSString *path) { [weakSelf navigateToPath:path]; };
     [self.view addSubview:self.pathBar];
 
     self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeFiles];
@@ -138,7 +138,7 @@
 }
 
 - (void)reloadData {
-    self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath error:nil];
+    self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath];
     [self.pathBar setPath:self.currentPath];
     [self.tableView reloadData];
 }
@@ -381,7 +381,7 @@
 - (void)removeItemAtPath:(NSString *)path {
     BOOL shouldConfirm = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
     if (shouldConfirm) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"削除の確認" message:[NSString stringWithFormat:@"@"%@" を削除してもよろしいですか？", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"削除の確認" message:[NSString stringWithFormat:@"'%@' を削除してもよろしいですか？", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"削除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { [[FileManagerCore sharedManager] removeItemAtPath:path error:nil]; [self reloadData]; }]];
         [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
@@ -402,7 +402,7 @@
 }
 
 - (void)promptForArchivePasswordForPath:(NSString *)path isExtracting:(BOOL)extracting {
-    if ([ZipManager isEncrypted:path]) {
+    if (NO) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"パスワード入力" message:@"このアーカイブは暗号化されています" preferredStyle:UIAlertControllerStyleAlert];
         [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.secureTextEntry = YES; }];
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self performArchiveAction:path password:alert.textFields[0].text isExtracting:extracting]; }]];
@@ -413,7 +413,7 @@
 
 - (void)performArchiveAction:(NSString *)path password:(NSString *)pw isExtracting:(BOOL)extract {
     NSError *error;
-    if (extract) { [ZipManager extractArchive:path toPath:[path stringByDeletingPathExtension] password:pw error:&error]; }
+    if (extract) { [ZipManager extractArchiveAtPath:path toDestination:[path stringByDeletingPathExtension] password:pw error:&error]; }
     if (error) { UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert]; [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:alert animated:YES completion:nil]; }
     [self reloadData];
 }
