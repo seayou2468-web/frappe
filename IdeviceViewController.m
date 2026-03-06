@@ -198,4 +198,6 @@
     [self.navigationController pushViewController:vc animated:YES];
 }
 
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+
 @end
