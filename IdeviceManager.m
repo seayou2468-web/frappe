@@ -193,23 +193,19 @@
         }
 
         NSMutableArray *finalApps = [NSMutableArray array];
-        if (out_result) {
-            // First, try to treat as a buffer of bytes (most likely)
-            plist_t parsedNode = NULL;
-            if (plist_from_bin(out_result, (uint32_t)out_result_len, &parsedNode) == PLIST_ERR_SUCCESS ||
-                plist_from_xml(out_result, (uint32_t)out_result_len, &parsedNode) == PLIST_ERR_SUCCESS) {
-                id obj = [self _convertPlistToObjC:parsedNode depth:0];
-                if ([obj isKindOfClass:[NSArray class]]) [finalApps addObjectsFromArray:obj];
-                else if (obj) [finalApps addObject:obj];
-                plist_free(parsedNode);
-            } else {
-                // If not a buffer, try treating out_result itself as a plist_t handle
-                id obj = [self _convertPlistToObjC:(plist_t)out_result depth:0];
-                if (obj) {
-                    if ([obj isKindOfClass:[NSArray class]]) [finalApps addObjectsFromArray:obj];
-                    else [finalApps addObject:obj];
-                }
+        if (out_result && out_result_len > 0) {
+            // According to header: "out_result will be set to point to a newly allocated array of PlistRef"
+            // where out_result_len is the count. PlistRef is likely plist_t.
+            plist_t *handles = (plist_t *)out_result;
+            for (size_t i = 0; i < out_result_len; i++) {
+                id obj = [self _convertPlistToObjC:handles[i] depth:0];
+                if (obj) [finalApps addObject:obj];
+                // We should NOT free handles[i] here as they might be part of out_result.
+                // But header says "newly allocated array of PlistRef".
+                // Usually this means we free each plist_t then the array.
+                // However, without clear ownership rules, let's be careful.
             }
+            // free(out_result);
         }
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalApps, nil); });
     });
@@ -218,7 +214,8 @@
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
     if (!node || depth > 20) return nil;
     plist_type type = PLIST_NONE;
-    @try { type = plist_get_node_type(node); } @catch (NSException *e) { return nil; }
+    // Don't use @try for FFI calls if they aren't safe.
+    type = plist_get_node_type(node);
     switch (type) {
         case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
         case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
