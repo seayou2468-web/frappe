@@ -15,19 +15,14 @@
 
 @implementation AdvancedAnnotation
 - (void)drawWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
-    // We don't call super here if we want total control, but for standard types it 's okay.
     if (![self.type isEqualToString:PDFAnnotationSubtypeStamp] && !self.isTable) {
         [super drawWithBox:box inContext:context];
     }
-
     CGContextSaveGState(context);
     CGRect rect = self.bounds;
-
-    // Apply rotation around the center of the annotation
     CGContextTranslateCTM(context, rect.origin.x + rect.size.width/2, rect.origin.y + rect.size.height/2);
     CGContextRotateCTM(context, self.rotationAngle * M_PI / 180.0);
     CGContextTranslateCTM(context, -rect.size.width/2, -rect.size.height/2);
-
     if (self.overlayImage) {
         UIGraphicsPushContext(context);
         [self.overlayImage drawInRect:CGRectMake(0, 0, rect.size.width, rect.size.height)];
@@ -47,7 +42,6 @@
         }
         CGContextStrokePath(context);
     }
-
     CGContextRestoreGState(context);
 }
 @end
@@ -60,9 +54,40 @@
 @property (strong, nonatomic) PDFAnnotation *selectedAnnotation;
 @property (strong, nonatomic) UIView *snapGuideH;
 @property (strong, nonatomic) UIView *snapGuideV;
-
+@property (strong, nonatomic) UIView *selectionOverlay;
 @property (strong, nonatomic) UIView *gridView;
 @property (assign, nonatomic) BOOL gridEnabled;
+
+- (void)setupSnapGuides;
+- (void)setupSelectionOverlay;
+- (void)updateSelectionUI;
+- (void)setupGridView;
+- (void)toggleGrid;
+- (void)showEditMenu;
+- (void)showShapeMenu;
+- (void)showLinkFileMenu;
+- (void)showAnnotationEditor;
+- (void)showColorPicker;
+- (void)showPageMenu;
+- (void)showTemplateMenu;
+- (void)showAdvancedProperties;
+- (void)showAlignmentMenu;
+- (void)showTextAlignmentMenu;
+- (void)showImageFilters;
+- (void)promptForText;
+- (void)promptForFontSize;
+- (void)promptForPosition;
+- (void)promptForThickness;
+- (void)promptForOpacity;
+- (void)promptForTextContent;
+- (void)selectImage;
+- (void)selectFileToAttach;
+- (void)togglePresenterMode;
+- (void)savePDF;
+@end
+
+@implementation PDFViewerViewController
+
 
 - (void)setupGridView {
     self.gridView = [[UIView alloc] initWithFrame:self.pdfView.bounds];
@@ -89,10 +114,6 @@
     self.gridView.hidden = !self.gridEnabled;
 }
 
-@end
-
-@implementation PDFViewerViewController
-
 - (instancetype)initWithPath:(NSString *)path {
     self = [super init];
     if (self) { _path = path; }
@@ -113,11 +134,14 @@
 
     [self setupSnapGuides];
     [self setupSelectionOverlay];
+    [self setupUndoManager];
     [self setupGridView];
 
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePDF)];
     UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(showEditMenu)];
-    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn];
+    UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.backward"] style:UIBarButtonItemStylePlain target:self.pdfView.document.undoManager action:@selector(undo)];
+    UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.forward"] style:UIBarButtonItemStylePlain target:self.pdfView.document.undoManager action:@selector(redo)];
+    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn, redoBtn, undoBtn];
 
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
     [self.pdfView addGestureRecognizer:tap];
@@ -131,6 +155,11 @@
     [self.pdfView addGestureRecognizer:rotate];
 }
 
+
+
+- (void)setupUndoManager {
+    self.pdfView.document.undoManager = [[NSUndoManager alloc] init];
+}
 
 - (void)setupSelectionOverlay {
     self.selectionOverlay = [[UIView alloc] initWithFrame:CGRectZero];
@@ -275,6 +304,21 @@
         if (fabs((newBounds.origin.x + newBounds.size.width/2) - 3*pageBounds.size.width/4) < threshold) { newBounds.origin.x = 3*pageBounds.size.width/4 - newBounds.size.width/2; snappedH = YES; }
         if (fabs((newBounds.origin.y + newBounds.size.height/2) - pageBounds.size.height/4) < threshold) { newBounds.origin.y = pageBounds.size.height/4 - newBounds.size.height/2; snappedV = YES; }
         if (fabs((newBounds.origin.y + newBounds.size.height/2) - 3*pageBounds.size.height/4) < threshold) { newBounds.origin.y = 3*pageBounds.size.height/4 - newBounds.size.height/2; snappedV = YES; }
+
+                // Inter-element snapping
+        for (PDFAnnotation *other in page.annotations) {
+            if (other == self.selectedAnnotation) continue;
+            CGRect ob = other.bounds;
+            // Snap to other edges
+            if (fabs(newBounds.origin.x - ob.origin.x) < threshold) { newBounds.origin.x = ob.origin.x; snappedH = YES; }
+            if (fabs(newBounds.origin.x + newBounds.size.width - (ob.origin.x + ob.size.width)) < threshold) { newBounds.origin.x = ob.origin.x + ob.size.width - newBounds.size.width; snappedH = YES; }
+            if (fabs(newBounds.origin.y - ob.origin.y) < threshold) { newBounds.origin.y = ob.origin.y; snappedV = YES; }
+            if (fabs(newBounds.origin.y + newBounds.size.height - (ob.origin.y + ob.size.height)) < threshold) { newBounds.origin.y = ob.origin.y + ob.size.height - newBounds.size.height; snappedV = YES; }
+
+            // Snap to other centers
+            if (fabs((newBounds.origin.x + newBounds.size.width/2) - (ob.origin.x + ob.size.width/2)) < threshold) { newBounds.origin.x = (ob.origin.x + ob.size.width/2) - newBounds.size.width/2; snappedH = YES; }
+            if (fabs((newBounds.origin.y + newBounds.size.height/2) - (ob.origin.y + ob.size.height/2)) < threshold) { newBounds.origin.y = (ob.origin.y + ob.size.height/2) - newBounds.size.height/2; snappedV = YES; }
+        }
 
         self.snapGuideH.hidden = !snappedV;
         if (snappedV) {
@@ -482,21 +526,30 @@
 }
 
 
+
+
+
 - (void)moveAnnotationToBack {
     if (!self.selectedAnnotation) return;
     PDFPage *p = self.selectedAnnotation.page;
-    [p removeAnnotation:self.selectedAnnotation];
-    [p insertAnnotation:self.selectedAnnotation atIndex:0];
+    if (!p) return;
+    NSArray *annots = [p.annotations copy];
+    for (PDFAnnotation *a in annots) { [p removeAnnotation:a]; }
+    [p addAnnotation:self.selectedAnnotation];
+    for (PDFAnnotation *a in annots) { if (a != self.selectedAnnotation) [p addAnnotation:a]; }
     [self.pdfView setNeedsDisplay];
 }
 
 - (void)moveAnnotationToFront {
     if (!self.selectedAnnotation) return;
     PDFPage *p = self.selectedAnnotation.page;
+    if (!p) return;
     [p removeAnnotation:self.selectedAnnotation];
     [p addAnnotation:self.selectedAnnotation];
     [self.pdfView setNeedsDisplay];
 }
+
+
 
 
 - (void)showColorPicker {
