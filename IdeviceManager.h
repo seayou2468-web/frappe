@@ -10,12 +10,13 @@ typedef NS_ENUM(NSInteger, IdeviceConnectionStatus) {
 
 @interface IdeviceManager : NSObject
 
-@property (nonatomic, readonly) IdeviceConnectionStatus status;
+@property (nonatomic, assign, readonly) IdeviceConnectionStatus status;
 @property (nonatomic, copy) NSString *ipAddress;
 @property (nonatomic, assign) uint16_t port;
 @property (nonatomic, copy) NSString *pairingFilePath;
-@property (nonatomic, readonly) NSString *lastError;
-@property (nonatomic, readonly) BOOL heartbeatActive;
+@property (nonatomic, copy, readonly) NSString *lastError;
+@property (nonatomic, assign, readonly) BOOL heartbeatActive;
+@property (nonatomic, assign, readonly) BOOL ddiMounted;
 
 + (instancetype)sharedManager;
 

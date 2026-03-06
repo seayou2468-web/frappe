@@ -18,6 +18,14 @@
 
 @implementation IdeviceManager
 
+@synthesize status = _status;
+@synthesize ipAddress = _ipAddress;
+@synthesize port = _port;
+@synthesize pairingFilePath = _pairingFilePath;
+@synthesize lastError = _lastError;
+@synthesize heartbeatActive = _heartbeatActive;
+@synthesize ddiMounted = _ddiMounted;
+
 + (instancetype)sharedManager {
     static IdeviceManager *shared = nil;
     static dispatch_once_t onceToken;
@@ -33,7 +41,7 @@
         _lock = [[NSRecursiveLock alloc] init];
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         _ipAddress = [defaults stringForKey:@"IdeviceIP"] ?: @"10.7.0.1";
-        _port = [defaults integerForKey:@"IdevicePort"] ?: 62078;
+        _port = (uint16_t)[defaults integerForKey:@"IdevicePort"] ?: 62078;
         _pairingFilePath = [defaults stringForKey:@"IdevicePairingPath"];
         _status = IdeviceStatusDisconnected;
 
