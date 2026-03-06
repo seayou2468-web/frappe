@@ -15,7 +15,7 @@
 
 @implementation AdvancedAnnotation
 - (void)drawWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
-    // We don t call super here if we want total control, but for standard types it s okay.
+    // We don't call super here if we want total control, but for standard types it 's okay.
     if (![self.type isEqualToString:PDFAnnotationSubtypeStamp] && !self.isTable) {
         [super drawWithBox:box inContext:context];
     }
