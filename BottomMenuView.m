@@ -3,8 +3,6 @@
 
 @interface BottomMenuView ()
 @property (strong, nonatomic) UIStackView *stackView;
-
-
 @end
 
 @implementation BottomMenuView
@@ -24,10 +22,8 @@
 }
 
 - (void)setupUI {
-    // Standardize background to Liquid Glass style
     [ThemeEngine applyGlassStyleToView:self cornerRadius:0];
 
-    // Remove existing subviews if any (for dynamic mode switching if needed)
     for (UIView *v in self.subviews) if (v != self.stackView) [v removeFromSuperview];
     [self.stackView removeFromSuperview];
 
@@ -55,6 +51,7 @@
     } else {
         [self addButtonWithSystemImage:@"square.on.square" action:BottomMenuActionTabs];
         [self addButtonWithSystemImage:@"globe" action:BottomMenuActionWeb];
+        [self addButtonWithSystemImage:@"iphone.badge.play" action:BottomMenuActionIdevice];
         [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
         [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
         [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
@@ -75,8 +72,6 @@
 - (void)btnTapped:(UIButton *)sender {
     if (self.onAction) self.onAction(sender.tag);
 }
-
-
 
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 

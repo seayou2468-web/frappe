@@ -1,11 +1,10 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
-
-
 typedef NS_ENUM(NSInteger, TabType) {
     TabTypeFileBrowser,
-    TabTypeWebBrowser
+    TabTypeWebBrowser,
+    TabTypeIdevice
 };
 
 @class TabGroup;
@@ -39,4 +38,3 @@ typedef NS_ENUM(NSInteger, TabType) {
 - (void)removeGroup:(TabGroup *)group;
 - (TabInfo * )activeTab;
 @end
-
