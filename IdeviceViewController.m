@@ -3,8 +3,9 @@
 #import "ThemeEngine.h"
 #import "FileBrowserViewController.h"
 #import "LogViewerViewController.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource>
+@interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UILabel *statusLabel;
 @end
@@ -77,7 +78,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2; // Connection
-    if (section == 1) return 1; // Pairing File
+    if (section == 1) return 2; // Pairing File Options
     if (section == 2) return 1; // Actions
     if (section == 3) return 1; // Logs
     return 0;
@@ -112,8 +113,13 @@
         }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 1) {
-        cell.textLabel.text = @"Pairing File";
-        cell.detailTextLabel.text = mgr.pairingFilePath ? [mgr.pairingFilePath lastPathComponent] : @"None";
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"File Picker (iOS Files)";
+            cell.detailTextLabel.text = mgr.pairingFilePath ? [mgr.pairingFilePath lastPathComponent] : @"None";
+        } else {
+            cell.textLabel.text = @"Internal File Browser";
+            cell.detailTextLabel.text = nil;
+        }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
         cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"Disconnect" : @"Connect";
@@ -135,19 +141,14 @@
     IdeviceManager *mgr = [IdeviceManager sharedManager];
 
     if (indexPath.section == 0) {
-        if (indexPath.row == 0) {
-            [self editIP];
-        } else {
-            [self editPort];
-        }
+        if (indexPath.row == 0) [self editIP];
+        else [self editPort];
     } else if (indexPath.section == 1) {
-        [self selectPairingFile];
+        if (indexPath.row == 0) [self openSystemFilePicker];
+        else [self openInternalFileBrowser];
     } else if (indexPath.section == 2) {
-        if (mgr.status == IdeviceStatusConnected) {
-            [mgr disconnect];
-        } else {
-            [mgr connect];
-        }
+        if (mgr.status == IdeviceStatusConnected) [mgr disconnect];
+        else [mgr connect];
     } else if (indexPath.section == 3) {
         [self showLogs];
     }
@@ -155,32 +156,35 @@
 
 - (void)editIP {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit IP" message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.text = [IdeviceManager sharedManager].ipAddress;
-    }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.text = [IdeviceManager sharedManager].ipAddress; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [IdeviceManager sharedManager].ipAddress = alert.textFields.firstObject.text;
-        [self statusChanged];
-    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].ipAddress = alert.textFields.firstObject.text; [self statusChanged]; }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)editPort {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Port" message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.text = [NSString stringWithFormat:@"%d", [IdeviceManager sharedManager].port];
-        textField.keyboardType = UIKeyboardTypeNumberPad;
-    }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) { textField.text = [NSString stringWithFormat:@"%d", [IdeviceManager sharedManager].port]; textField.keyboardType = UIKeyboardTypeNumberPad; }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [IdeviceManager sharedManager].port = (uint16_t)[alert.textFields.firstObject.text integerValue];
-        [self statusChanged];
-    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].port = (uint16_t)[alert.textFields.firstObject.text integerValue]; [self statusChanged]; }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)selectPairingFile {
+- (void)openSystemFilePicker {
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
+    picker.delegate = self;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *url = urls.firstObject;
+    if (url) {
+        [[IdeviceManager sharedManager] selectPairingFile:url.path];
+        [self statusChanged];
+    }
+}
+
+- (void)openInternalFileBrowser {
     FileBrowserViewController *fb = [[FileBrowserViewController alloc] initWithPath:@"/"];
     fb.isPickingFile = YES;
     __weak typeof(self) weakSelf = self;
