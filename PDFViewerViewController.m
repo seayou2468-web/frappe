@@ -134,14 +134,14 @@
 
     [self setupSnapGuides];
     [self setupSelectionOverlay];
-    [self setupUndoManager];
+
     [self setupGridView];
 
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePDF)];
     UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(showEditMenu)];
-    UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.backward"] style:UIBarButtonItemStylePlain target:self.pdfView.document.undoManager action:@selector(undo)];
-    UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.forward"] style:UIBarButtonItemStylePlain target:self.pdfView.document.undoManager action:@selector(redo)];
-    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn, redoBtn, undoBtn];
+
+
+    self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn];
 
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
     [self.pdfView addGestureRecognizer:tap];
@@ -157,9 +157,7 @@
 
 
 
-- (void)setupUndoManager {
-    self.pdfView.document.undoManager = [[NSUndoManager alloc] init];
-}
+
 
 - (void)setupSelectionOverlay {
     self.selectionOverlay = [[UIView alloc] initWithFrame:CGRectZero];
