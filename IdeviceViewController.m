@@ -8,6 +8,8 @@
 @interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UIView *statusIndicator;
+@property (nonatomic, strong) UIImageView *deviceImageView;
 @end
 
 @implementation IdeviceViewController
@@ -37,12 +39,29 @@
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 100)];
-    self.statusLabel = [[UILabel alloc] initWithFrame:header.bounds];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 180)];
+
+    // Status Indicator (Circle with border)
+    self.statusIndicator = [[UIView alloc] initWithFrame:CGRectMake((header.frame.size.width - 100) / 2, 20, 100, 100)];
+    self.statusIndicator.layer.cornerRadius = 50;
+    self.statusIndicator.layer.borderWidth = 4.0;
+    self.statusIndicator.layer.borderColor = [UIColor grayColor].CGColor;
+    self.statusIndicator.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+    [header addSubview:self.statusIndicator];
+
+    self.deviceImageView = [[UIImageView alloc] initWithFrame:CGRectMake(25, 25, 50, 50)];
+    self.deviceImageView.contentMode = UIViewContentModeScaleAspectFit;
+    self.deviceImageView.image = [UIImage systemImageNamed:@"iphone"];
+    self.deviceImageView.tintColor = [UIColor whiteColor];
+    [self.statusIndicator addSubview:self.deviceImageView];
+
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 130, header.frame.size.width, 50)];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
     self.statusLabel.numberOfLines = 0;
-    self.statusLabel.textColor = [ThemeEngine liquidColor];
+    self.statusLabel.textColor = [UIColor whiteColor];
+    self.statusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     [header addSubview:self.statusLabel];
+
     self.tableView.tableHeaderView = header;
 
     [self statusChanged];
@@ -51,21 +70,40 @@
 - (void)statusChanged {
     dispatch_async(dispatch_get_main_queue(), ^{
         IdeviceManager *mgr = [IdeviceManager sharedManager];
+        UIColor *statusColor = [UIColor grayColor];
         NSString *statusStr = @"Disconnected";
+
         switch (mgr.status) {
-            case IdeviceStatusConnecting: statusStr = @"Connecting..."; break;
-            case IdeviceStatusConnected: statusStr = @"Connected"; break;
-            case IdeviceStatusError: statusStr = [NSString stringWithFormat:@"Error: %@", mgr.lastError]; break;
-            default: break;
+            case IdeviceStatusConnecting:
+                statusStr = @"Connecting...";
+                statusColor = [UIColor orangeColor];
+                break;
+            case IdeviceStatusConnected:
+                statusStr = @"Connected";
+                statusColor = [UIColor greenColor];
+                break;
+            case IdeviceStatusError:
+                statusStr = [NSString stringWithFormat:@"Error: %@", mgr.lastError];
+                statusColor = [UIColor redColor];
+                break;
+            default:
+                break;
         }
 
-        NSMutableString *fullStatus = [NSMutableString stringWithFormat:@"Status: %@\n", statusStr];
-        [fullStatus appendFormat:@"IP: %@:%d\n", mgr.ipAddress, mgr.port];
-        if (mgr.status == IdeviceStatusConnected) {
-            [fullStatus appendFormat:@"Heartbeat: %@", mgr.heartbeatActive ? @"Active" : @"Inactive"];
-        }
+        [UIView animateWithDuration:0.3 animations:^{
+            self.statusIndicator.layer.borderColor = statusColor.CGColor;
+            self.deviceImageView.tintColor = statusColor;
+            // Glowing effect
+            self.statusIndicator.layer.shadowColor = statusColor.CGColor;
+            self.statusIndicator.layer.shadowOffset = CGSizeZero;
+            self.statusIndicator.layer.shadowRadius = (mgr.status == IdeviceStatusConnected) ? 10.0 : 0.0;
+            self.statusIndicator.layer.shadowOpacity = (mgr.status == IdeviceStatusConnected) ? 0.8 : 0.0;
+        }];
 
+        NSMutableString *fullStatus = [NSMutableString stringWithFormat:@"%@\n", statusStr];
+        [fullStatus appendFormat:@"IP: %@:%d", mgr.ipAddress, mgr.port];
         self.statusLabel.text = fullStatus;
+
         [self.tableView reloadData];
     });
 }
@@ -123,10 +161,12 @@
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
         cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"Disconnect" : @"Connect";
+        cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor redColor] : [ThemeEngine liquidColor];
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
     } else if (indexPath.section == 3) {
         cell.textLabel.text = @"View System Logs";
+        cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
