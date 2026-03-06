@@ -79,12 +79,15 @@
     self.searchBar.delegate = self;
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.hidden = YES;
+    self.searchBar.backgroundImage = [[UIImage alloc] init];
+    self.searchBar.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
     [self.view addSubview:self.searchBar];
 
     self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"名前", @"内容"]];
     self.searchScope.selectedSegmentIndex = 0;
     self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchScope.hidden = YES;
+    self.searchScope.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.searchScope];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
@@ -127,19 +130,34 @@
 
 - (void)toggleSearch {
     self.isSearchRevealed = !self.isSearchRevealed;
-    self.searchBar.hidden = NO;
-    self.searchScope.hidden = NO;
-    [UIView animateWithDuration:0.3 animations:^{
+    if (self.isSearchRevealed) {
+        self.searchBar.hidden = NO;
+        self.searchScope.hidden = NO;
+        self.searchBar.alpha = 0;
+        self.searchScope.alpha = 0;
+    }
+
+    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.searchBarTopConstraint.constant = self.isSearchRevealed ? 44 : -100;
+        self.searchBar.alpha = self.isSearchRevealed ? 1.0 : 0;
+        self.searchScope.alpha = self.isSearchRevealed ? 1.0 : 0;
         self.tableView.contentInset = UIEdgeInsetsMake(self.isSearchRevealed ? 88 : 0, 0, 0, 0);
         [self.view layoutIfNeeded];
+    } completion:^(BOOL finished) {
+        if (!self.isSearchRevealed) {
+            self.searchBar.hidden = YES;
+            self.searchScope.hidden = YES;
+            [self.searchBar resignFirstResponder];
+            [self reloadData];
+        } else {
+            [self.searchBar becomeFirstResponder];
+        }
     }];
-    if (!self.isSearchRevealed) { [self.searchBar resignFirstResponder]; [self reloadData]; }
 }
 
 - (void)reloadData {
     self.items = [[FileManagerCore sharedManager] contentsOfDirectoryAtPath:self.currentPath];
-    [self.pathBar setPath:self.currentPath];
+    [self.pathBar updatePath:self.currentPath];
     [self.tableView reloadData];
 }
 
