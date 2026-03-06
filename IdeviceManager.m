@@ -191,40 +191,45 @@
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
+
+        NSMutableArray *finalApps = [NSMutableArray array];
         if (out_result) {
-            // Treat out_result as plist_t instead of NSData directly
-            plist_t apps_plist = (plist_t)out_result;
-            id apps_objc = [self _convertPlistToObjC:apps_plist];
-            // FFI result from get_apps might be an array of dicts
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if ([apps_objc isKindOfClass:[NSArray class]]) completion(apps_objc, nil);
-                    else if (apps_objc) completion(@[apps_objc], nil);
-                    else completion(@[], nil);
-                });
+            // First, try to treat as a buffer of bytes (most likely)
+            plist_t parsedNode = NULL;
+            if (plist_from_bin(out_result, (uint32_t)out_result_len, &parsedNode) == PLIST_ERR_SUCCESS ||
+                plist_from_xml(out_result, (uint32_t)out_result_len, &parsedNode) == PLIST_ERR_SUCCESS) {
+                id obj = [self _convertPlistToObjC:parsedNode depth:0];
+                if ([obj isKindOfClass:[NSArray class]]) [finalApps addObjectsFromArray:obj];
+                else if (obj) [finalApps addObject:obj];
+                plist_free(parsedNode);
+            } else {
+                // If not a buffer, try treating out_result itself as a plist_t handle
+                id obj = [self _convertPlistToObjC:(plist_t)out_result depth:0];
+                if (obj) {
+                    if ([obj isKindOfClass:[NSArray class]]) [finalApps addObjectsFromArray:obj];
+                    else [finalApps addObject:obj];
+                }
             }
-            // Ideally we'd free apps_plist but we don't know the ownership of out_result from FFI.
-            // If it's a pointer to an internal buffer, we don't free. If it's allocated, we do.
-            // Given the signature void**, it's likely allocated.
-        } else {
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[], nil); });
         }
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalApps, nil); });
     });
 }
 
-- (id)_convertPlistToObjC:(plist_t)node {
-    if (!node) return nil;
-    plist_type type = plist_get_node_type(node);
+- (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
+    if (!node || depth > 20) return nil;
+    plist_type type = PLIST_NONE;
+    @try { type = plist_get_node_type(node); } @catch (NSException *e) { return nil; }
     switch (type) {
         case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
         case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
         case PLIST_REAL: { double val = 0; plist_get_real_val(node, &val); return @(val); }
-        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = [NSString stringWithUTF8String:val ?: ""]; if (val) free(val); return s; }
+        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
+        case PLIST_KEY: { char *val = NULL; plist_get_key_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
         case PLIST_ARRAY: {
             uint32_t size = plist_array_get_size(node);
             NSMutableArray *arr = [NSMutableArray arrayWithCapacity:size];
             for (uint32_t i = 0; i < size; i++) {
-                id obj = [self _convertPlistToObjC:plist_array_get_item(node, i)];
+                id obj = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth + 1];
                 if (obj) [arr addObject:obj];
             }
             return arr;
@@ -232,22 +237,23 @@
         case PLIST_DICT: {
             uint32_t size = plist_dict_get_size(node);
             NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:size];
-            plist_dict_iter iter = NULL;
-            plist_dict_new_iter(node, &iter);
-            char *key = NULL; plist_t subnode = NULL;
-            for (uint32_t i = 0; i < size; i++) {
-                plist_dict_next_item(node, iter, &key, &subnode);
-                if (key) {
-                    NSString *nsKey = [NSString stringWithUTF8String:key];
-                    id obj = [self _convertPlistToObjC:subnode];
-                    if (obj) dict[nsKey] = obj;
-                    free(key);
+            plist_dict_iter iter = NULL; plist_dict_new_iter(node, &iter);
+            if (iter) {
+                char *key = NULL; plist_t subnode = NULL;
+                for (uint32_t i = 0; i < size; i++) {
+                    plist_dict_next_item(node, iter, &key, &subnode);
+                    if (key) {
+                        NSString *nsKey = [NSString stringWithUTF8String:key];
+                        id obj = [self _convertPlistToObjC:subnode depth:depth + 1];
+                        if (nsKey && obj) dict[nsKey] = obj;
+                        plist_mem_free(key);
+                    }
                 }
+                free(iter);
             }
-            if (iter) free(iter);
             return dict;
         }
-        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return [NSData dataWithBytes:ptr length:len]; }
+        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
         default: return nil;
     }
 }
