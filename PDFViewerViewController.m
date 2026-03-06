@@ -246,7 +246,7 @@
 
 - (void)addFileAttachment:(NSURL *)fileURL {
     PDFPage *page = self.pdfView.currentPage; if (!page) return;
-    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:CGRectMake(150, 150, 32, 32) forType:PDFAnnotationSubtypeFileAttachment withProperties:nil];
+    PDFAnnotation *annot = [[PDFAnnotation alloc] initWithBounds:CGRectMake(150, 150, 32, 32) forType:PDFAnnotationSubtypeStamp withProperties:nil];
     annot.contents = [fileURL lastPathComponent]; [page addAnnotation:annot]; [self.pdfView setNeedsDisplay];
 }
 

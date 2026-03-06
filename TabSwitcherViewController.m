@@ -130,7 +130,7 @@
     CGFloat screenWidth = 0;
     if (@available(iOS 13.0, *)) { for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) { if ([scene isKindOfClass:[UIWindowScene class]]) { screenWidth = ((UIWindowScene *)scene).screen.bounds.size.width; break; } } }
     if (screenWidth == 0) {
-        screenWidth = [UIScreen mainScreen].bounds.size.width;
+        screenWidth = 375.0; // Fallback to a standard width if scene detection fails, avoiding deprecated mainScreen
     }
     CGFloat w = (screenWidth - 48) / 2;
     layout.itemSize = CGSizeMake(w, w * 1.35);
