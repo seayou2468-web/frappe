@@ -228,6 +228,15 @@
     if (!self.selectedAnnotation || ![self.selectedAnnotation isKindOfClass:[AdvancedAnnotation class]]) return;
     static CGFloat startRotation;
     if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
+        // Find selected annotation if none selected yet
+        if (!self.selectedAnnotation) {
+            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
+            [self updateSelectionUI];
+        }
+        if (self.selectedAnnotation) {
+            for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
+        }
         startRotation = ((AdvancedAnnotation *)self.selectedAnnotation).rotationAngle;
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
         ((AdvancedAnnotation *)self.selectedAnnotation).rotationAngle = startRotation + (gesture.rotation * 180.0 / M_PI);
@@ -239,6 +248,15 @@
     if (!self.selectedAnnotation) return;
     static CGRect startBounds;
     if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
+        // Find selected annotation if none selected yet
+        if (!self.selectedAnnotation) {
+            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
+            [self updateSelectionUI];
+        }
+        if (self.selectedAnnotation) {
+            for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
+        }
         startBounds = self.selectedAnnotation.bounds;
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
         CGFloat scale = gesture.scale;
@@ -264,6 +282,15 @@
     CGPoint pagePoint = [self.pdfView convertPoint:point toPage:page];
     static CGPoint startPagePoint; static CGRect startBounds;
     if (gesture.state == UIGestureRecognizerStateBegan) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
+        // Find selected annotation if none selected yet
+        if (!self.selectedAnnotation) {
+            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
+            [self updateSelectionUI];
+        }
+        if (self.selectedAnnotation) {
+            for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
+        }
         self.selectedAnnotation = [page annotationAtPoint:pagePoint];
     [self updateSelectionUI];
         if (self.selectedAnnotation) { startPagePoint = pagePoint; startBounds = self.selectedAnnotation.bounds; }
@@ -333,7 +360,9 @@
         }
 
         self.selectedAnnotation.bounds = newBounds; [self.pdfView setNeedsDisplay]; [self updateSelectionUI];
-    } else if (gesture.state == UIGestureRecognizerStateEnded) {
+    self.selectionOverlay.layer.borderColor = [UIColor systemBlueColor].CGColor;
+    } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+        for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = YES; } }
         self.snapGuideH.hidden = YES; self.snapGuideV.hidden = YES;
     }
 }
