@@ -250,7 +250,7 @@
 - (void)showOthersMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"その他"];
     [menu addAction:[CustomMenuAction actionWithTitle:@"新規PDF作成" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self createNewPDF]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新規スプレッドシート作成" systemImage:@"tablecells.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self createNewSpreadsheet]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規スプレッドシート作成" systemImage:@"tablecells.fill.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self createNewSpreadsheet]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ [self selectFile]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"システムログ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showLogViewer]; }]];
     [menu showInView:self.view];
@@ -442,7 +442,7 @@
     if ([@[@"mp4", @"mov", @"avi", @"mkv"] containsObject:ext]) return @"video";
     if ([@[@"mp3", @"wav", @"m4a", @"flac"] containsObject:ext]) return @"music.note";
     if ([@[@"zip", @"rar", @"7z", @"tar", @"gz"] containsObject:ext]) return @"archivebox";
-    if ([@[@"plist", @"xml", @"json", @"html", @"js", @"css", @"csv", @"tsv", @"xlsx"] containsObject:ext]) return @"tablecells";
+    if ([@[@"plist", @"xml", @"json", @"html", @"js", @"css", @"csv", @"tsv", @"xlsx"] containsObject:ext]) return @"tablecells.fill";
     if ([@[@"c", @"cpp", @"h", @"m", @"mm", @"py", @"sh"] containsObject:ext]) return @"doc.text.fill";
     if ([ext isEqualToString:@"pdf"]) return @"doc.richtext";
     if ([@[@"db", @"sqlite", @"sql"] containsObject:ext]) return @"terminal.fill";
