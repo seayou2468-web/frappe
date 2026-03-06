@@ -1,6 +1,7 @@
 #import "IdeviceAppListViewController.h"
 #import "IdeviceManager.h"
 #import "ThemeEngine.h"
+#import "IdeviceAppDetailViewController.h"
 
 @interface IdeviceAppListViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
@@ -61,6 +62,7 @@
         cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.05];
         cell.textLabel.textColor = [UIColor whiteColor];
         cell.detailTextLabel.textColor = [UIColor lightGrayColor];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     id item = (indexPath.row < self.apps.count) ? self.apps[indexPath.row] : nil;
     NSString *name = @"Unknown App";
@@ -76,4 +78,14 @@
     cell.detailTextLabel.text = bid;
     return cell;
 }
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    id item = self.apps[indexPath.row];
+    if ([item isKindOfClass:[NSDictionary class]]) {
+        IdeviceAppDetailViewController *vc = [[IdeviceAppDetailViewController alloc] initWithAppInfo:(NSDictionary *)item];
+        [self.navigationController pushViewController:vc animated:YES];
+    }
+}
+
 @end
