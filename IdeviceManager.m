@@ -247,5 +247,59 @@
     [self disconnect];
 }
 
+
+- (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion {
+    [_lock lock];
+    if (self.status != IdeviceStatusConnected || !self.provider) {
+        [_lock unlock];
+        if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Not connected"}]);
+        return;
+    }
+    struct IdeviceProviderHandle *p = self.provider;
+    [_lock unlock];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        struct InstallationProxyClientHandle *client = NULL;
+        struct IdeviceFfiError *err = installation_proxy_connect(p, &client);
+        if (err || !client) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Failed to connect to InstProxy"] : @"Failed to connect to InstProxy";
+            if (err) idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:2 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+            return;
+        }
+
+        void *out_result = NULL;
+        size_t out_result_len = 0;
+        // application_type: "Any", "User", "System"
+        err = installation_proxy_get_apps(client, "Any", NULL, 0, &out_result, &out_result_len);
+        installation_proxy_client_free(client);
+
+        if (err) {
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "Failed to get apps"];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+            return;
+        }
+
+        if (out_result && out_result_len > 0) {
+            // Assume out_result is a binary plist or XML plist bytes
+            NSData *data = [NSData dataWithBytes:out_result length:out_result_len];
+            // The library might need us to free out_result. Assuming it's a raw buffer.
+            // If idevice.h had a specific free for this, we'd use it.
+
+            NSError *plistErr = nil;
+            id plist = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:&plistErr];
+
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (plistErr) completion(nil, plistErr);
+                    else completion([plist isKindOfClass:[NSArray class]] ? plist : @[plist], nil);
+                });
+            }
+        } else {
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[], nil); });
+        }
+    });
+}
 - (void)dealloc { [self disconnect]; }
 @end

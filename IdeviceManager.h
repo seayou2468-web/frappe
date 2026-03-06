@@ -24,4 +24,7 @@ typedef NS_ENUM(NSInteger, IdeviceConnectionStatus) {
 - (void)disconnect;
 - (void)selectPairingFile:(NSString *)path;
 
+// Fetch app list
+- (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion;
+
 @end

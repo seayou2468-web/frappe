@@ -3,6 +3,7 @@
 #import "ThemeEngine.h"
 #import "FileBrowserViewController.h"
 #import "LogViewerViewController.h"
+#import "IdeviceAppListViewController.h"
 #import "BottomMenuView.h"
 #import "MainContainerViewController.h"
 #import "TabManager.h"
@@ -23,12 +24,10 @@
     self.title = @"iDevice Tools";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
-    // Left button to return to FileManager (File Browser)
     UIBarButtonItem *backToFmBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
     self.navigationItem.leftBarButtonItem = backToFmBtn;
 
     [self setupUI];
-
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusChanged) name:@"IdeviceStatusChanged" object:nil];
 }
 
@@ -46,13 +45,11 @@
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
 
-    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
-
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -103,9 +100,7 @@
             self.statusIndicator.layer.shadowRadius = (mgr.status == IdeviceStatusConnected) ? 10.0 : 0.0;
             self.statusIndicator.layer.shadowOpacity = (mgr.status == IdeviceStatusConnected) ? 0.8 : 0.0;
         }];
-        NSMutableString *fullStatus = [NSMutableString stringWithFormat:@"%@\n", statusStr];
-        [fullStatus appendFormat:@"IP: %@:%d", mgr.ipAddress, mgr.port];
-        self.statusLabel.text = fullStatus;
+        self.statusLabel.text = [NSString stringWithFormat:@"%@\nIP: %@:%d", statusStr, mgr.ipAddress, mgr.port];
         [self.tableView reloadData];
     });
 }
@@ -115,51 +110,31 @@
 - (void)closeTapped {
     [TabManager sharedManager].activeTabIndex = 0;
     MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
-    if ([container isKindOfClass:[MainContainerViewController class]]) {
-        [container displayActiveTab];
-    }
+    if ([container isKindOfClass:[MainContainerViewController class]]) [container displayActiveTab];
 }
 
 - (void)handleMenuAction:(BottomMenuAction)action {
-    switch (action) {
-        case BottomMenuActionWeb:
-        case BottomMenuActionTabs:
-        case BottomMenuActionIdevice: {
-            MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
-            if ([container isKindOfClass:[MainContainerViewController class]]) {
-                [container handleMenuAction:action];
-            }
-            break;
-        }
-        case BottomMenuActionSettings:
-        case BottomMenuActionFavorites:
-        case BottomMenuActionOthers: {
-            [TabManager sharedManager].activeTabIndex = 0;
-            MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
-            if ([container isKindOfClass:[MainContainerViewController class]]) {
-                [container displayActiveTab];
-            }
-            break;
-        }
-        default: break;
-    }
+    MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
+    if ([container isKindOfClass:[MainContainerViewController class]]) [container handleMenuAction:action];
 }
 
 #pragma mark - UITableViewDataSource
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 2;
-    if (section == 1) return 2;
-    if (section == 2) return 1;
-    if (section == 3) return 1;
+    if (section == 0) return 2; // Connection Settings
+    if (section == 1) return 2; // Pairing
+    if (section == 2) return 1; // Features (Apps)
+    if (section == 3) return 1; // Actions
+    if (section == 4) return 1; // System (Logs)
     return 0;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 0) return @"Connection Settings";
     if (section == 1) return @"Pairing";
-    if (section == 2) return @"Actions";
-    if (section == 3) return @"System";
+    if (section == 2) return @"Features";
+    if (section == 3) return @"Actions";
+    if (section == 4) return @"System";
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -180,10 +155,15 @@
         else { cell.textLabel.text = @"Internal File Browser"; cell.detailTextLabel.text = nil; }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
+        cell.textLabel.text = @"Installed Applications";
+        cell.detailTextLabel.text = nil;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor whiteColor] : [UIColor grayColor];
+    } else if (indexPath.section == 3) {
         cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"Disconnect" : @"Connect";
         cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor redColor] : [ThemeEngine liquidColor];
         cell.accessoryType = UITableViewCellAccessoryNone;
-    } else if (indexPath.section == 3) {
+    } else if (indexPath.section == 4) {
         cell.textLabel.text = @"View System Logs"; cell.textLabel.textColor = [UIColor whiteColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
@@ -197,8 +177,9 @@
     IdeviceManager *mgr = [IdeviceManager sharedManager];
     if (indexPath.section == 0) { if (indexPath.row == 0) [self editIP]; else [self editPort]; }
     else if (indexPath.section == 1) { if (indexPath.row == 0) [self openSystemFilePicker]; else [self openInternalFileBrowser]; }
-    else if (indexPath.section == 2) { if (mgr.status == IdeviceStatusConnected) [mgr disconnect]; else [mgr connect]; }
-    else if (indexPath.section == 3) [self showLogs];
+    else if (indexPath.section == 2) { if (mgr.status == IdeviceStatusConnected) [self.navigationController pushViewController:[[IdeviceAppListViewController alloc] init] animated:YES]; }
+    else if (indexPath.section == 3) { if (mgr.status == IdeviceStatusConnected) [mgr disconnect]; else [mgr connect]; }
+    else if (indexPath.section == 4) [self.navigationController pushViewController:[[LogViewerViewController alloc] init] animated:YES];
 }
 
 - (void)editIP {
@@ -228,6 +209,5 @@
     fb.onFilePicked = ^(NSString *path) { [[IdeviceManager sharedManager] selectPairingFile:path]; [weakSelf.navigationController popViewControllerAnimated:YES]; [weakSelf statusChanged]; };
     [self.navigationController pushViewController:fb animated:YES];
 }
-- (void)showLogs { [self.navigationController pushViewController:[[LogViewerViewController alloc] init] animated:YES]; }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 @end
