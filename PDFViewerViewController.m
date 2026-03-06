@@ -224,57 +224,54 @@
 
 
 
+
 - (void)handleRotate:(UIRotationGestureRecognizer *)gesture {
+    CGPoint point = [gesture locationInView:self.pdfView];
+    PDFPage *page = [self.pdfView pageForPoint:point nearest:YES];
+    CGPoint pagePoint = [self.pdfView convertPoint:point toPage:page];
+    if (!self.selectedAnnotation) { self.selectedAnnotation = [page annotationAtPoint:pagePoint]; [self updateSelectionUI]; }
     if (!self.selectedAnnotation || ![self.selectedAnnotation isKindOfClass:[AdvancedAnnotation class]]) return;
     static CGFloat startRotation;
     if (gesture.state == UIGestureRecognizerStateBegan) {
         self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
-        // Find selected annotation if none selected yet
-        if (!self.selectedAnnotation) {
-            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
-            [self updateSelectionUI];
-        }
-        if (self.selectedAnnotation) {
-            for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
-        }
         startRotation = ((AdvancedAnnotation *)self.selectedAnnotation).rotationAngle;
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
         ((AdvancedAnnotation *)self.selectedAnnotation).rotationAngle = startRotation + (gesture.rotation * 180.0 / M_PI);
         [self.pdfView setNeedsDisplay]; [self updateSelectionUI];
+    } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemBlueColor].CGColor;
     }
 }
 
 - (void)handlePinch:(UIPinchGestureRecognizer *)gesture {
+    CGPoint point = [gesture locationInView:self.pdfView];
+    PDFPage *page = [self.pdfView pageForPoint:point nearest:YES];
+    CGPoint pagePoint = [self.pdfView convertPoint:point toPage:page];
+    if (!self.selectedAnnotation) { self.selectedAnnotation = [page annotationAtPoint:pagePoint]; [self updateSelectionUI]; }
     if (!self.selectedAnnotation) return;
     static CGRect startBounds;
     if (gesture.state == UIGestureRecognizerStateBegan) {
         self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
-        // Find selected annotation if none selected yet
-        if (!self.selectedAnnotation) {
-            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
-            [self updateSelectionUI];
-        }
-        if (self.selectedAnnotation) {
-            for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
-        }
         startBounds = self.selectedAnnotation.bounds;
     } else if (gesture.state == UIGestureRecognizerStateChanged) {
         CGFloat scale = gesture.scale;
         CGRect newBounds = startBounds;
         CGFloat newW = startBounds.size.width * scale;
         CGFloat newH = startBounds.size.height * scale;
-        // Keep center point while scaling
         newBounds.origin.x = startBounds.origin.x + (startBounds.size.width - newW) / 2;
         newBounds.origin.y = startBounds.origin.y + (startBounds.size.height - newH) / 2;
         newBounds.size = CGSizeMake(newW, newH);
         self.selectedAnnotation.bounds = newBounds;
-        [self.pdfView setNeedsDisplay];
+        [self.pdfView setNeedsDisplay]; [self updateSelectionUI];
+    } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemBlueColor].CGColor;
     }
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
     return YES;
 }
+
 
 - (void)handlePan:(UIPanGestureRecognizer *)gesture {
     CGPoint point = [gesture locationInView:self.pdfView];
@@ -283,85 +280,44 @@
     static CGPoint startPagePoint; static CGRect startBounds;
     if (gesture.state == UIGestureRecognizerStateBegan) {
         self.selectionOverlay.layer.borderColor = [UIColor systemOrangeColor].CGColor;
-        // Find selected annotation if none selected yet
-        if (!self.selectedAnnotation) {
-            self.selectedAnnotation = [page annotationAtPoint:pagePoint];
-            [self updateSelectionUI];
-        }
+        if (!self.selectedAnnotation) { self.selectedAnnotation = [page annotationAtPoint:pagePoint]; [self updateSelectionUI]; }
         if (self.selectedAnnotation) {
             for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = NO; } }
+            startPagePoint = pagePoint; startBounds = self.selectedAnnotation.bounds;
         }
-        self.selectedAnnotation = [page annotationAtPoint:pagePoint];
-    [self updateSelectionUI];
-        if (self.selectedAnnotation) { startPagePoint = pagePoint; startBounds = self.selectedAnnotation.bounds; }
     } else if (gesture.state == UIGestureRecognizerStateChanged && self.selectedAnnotation) {
         CGFloat dx = pagePoint.x - startPagePoint.x; CGFloat dy = pagePoint.y - startPagePoint.y;
         CGRect newBounds = startBounds; newBounds.origin.x += dx; newBounds.origin.y += dy;
-
         CGRect pageBounds = [page boundsForBox:kPDFDisplayBoxMediaBox]; CGFloat threshold = 12.0;
         BOOL snappedH = NO; BOOL snappedV = NO;
-
-        // Horizontal Center Snap
-        if (fabs((newBounds.origin.x + newBounds.size.width/2) - pageBounds.size.width/2) < threshold) {
-            newBounds.origin.x = pageBounds.size.width/2 - newBounds.size.width/2; snappedH = YES;
-        }
-        // Vertical Center Snap
-        if (fabs((newBounds.origin.y + newBounds.size.height/2) - pageBounds.size.height/2) < threshold) {
-            newBounds.origin.y = pageBounds.size.height/2 - newBounds.size.height/2; snappedV = YES;
-        }
-        // Horizontal Edge Snapping
+        if (fabs((newBounds.origin.x + newBounds.size.width/2) - pageBounds.size.width/2) < threshold) { newBounds.origin.x = pageBounds.size.width/2 - newBounds.size.width/2; snappedH = YES; }
+        if (fabs((newBounds.origin.y + newBounds.size.height/2) - pageBounds.size.height/2) < threshold) { newBounds.origin.y = pageBounds.size.height/2 - newBounds.size.height/2; snappedV = YES; }
         if (fabs(newBounds.origin.x - 20) < threshold) { newBounds.origin.x = 20; snappedH = YES; }
         if (fabs(newBounds.origin.x + newBounds.size.width - (pageBounds.size.width - 20)) < threshold) { newBounds.origin.x = pageBounds.size.width - newBounds.size.width - 20; snappedH = YES; }
-
-        // Vertical Edge Snapping
         if (fabs(newBounds.origin.y - 20) < threshold) { newBounds.origin.y = 20; snappedV = YES; }
         if (fabs(newBounds.origin.y + newBounds.size.height - (pageBounds.size.height - 20)) < threshold) { newBounds.origin.y = pageBounds.size.height - newBounds.size.height - 20; snappedV = YES; }
-
-
         self.snapGuideV.hidden = !snappedH;
-        if (snappedH) {
-            CGPoint viewCenter = [self.pdfView convertPoint:CGPointMake(pageBounds.size.width/2, pageBounds.size.height/2) fromPage:page];
-            self.snapGuideV.frame = CGRectMake(viewCenter.x, 0, 1, self.view.bounds.size.height);
-        }
-
-        // Quarter point snapping
+        if (snappedH) { CGPoint viewCenter = [self.pdfView convertPoint:CGPointMake(pageBounds.size.width/2, pageBounds.size.height/2) fromPage:page]; self.snapGuideV.frame = CGRectMake(viewCenter.x, 0, 1, self.view.bounds.size.height); }
         if (fabs((newBounds.origin.x + newBounds.size.width/2) - pageBounds.size.width/4) < threshold) { newBounds.origin.x = pageBounds.size.width/4 - newBounds.size.width/2; snappedH = YES; }
         if (fabs((newBounds.origin.x + newBounds.size.width/2) - 3*pageBounds.size.width/4) < threshold) { newBounds.origin.x = 3*pageBounds.size.width/4 - newBounds.size.width/2; snappedH = YES; }
         if (fabs((newBounds.origin.y + newBounds.size.height/2) - pageBounds.size.height/4) < threshold) { newBounds.origin.y = pageBounds.size.height/4 - newBounds.size.height/2; snappedV = YES; }
         if (fabs((newBounds.origin.y + newBounds.size.height/2) - 3*pageBounds.size.height/4) < threshold) { newBounds.origin.y = 3*pageBounds.size.height/4 - newBounds.size.height/2; snappedV = YES; }
-
-                // Inter-element snapping
         for (PDFAnnotation *other in page.annotations) {
             if (other == self.selectedAnnotation) continue;
             CGRect ob = other.bounds;
-            // Snap to other edges
             if (fabs(newBounds.origin.x - ob.origin.x) < threshold) { newBounds.origin.x = ob.origin.x; snappedH = YES; }
             if (fabs(newBounds.origin.x + newBounds.size.width - (ob.origin.x + ob.size.width)) < threshold) { newBounds.origin.x = ob.origin.x + ob.size.width - newBounds.size.width; snappedH = YES; }
             if (fabs(newBounds.origin.y - ob.origin.y) < threshold) { newBounds.origin.y = ob.origin.y; snappedV = YES; }
             if (fabs(newBounds.origin.y + newBounds.size.height - (ob.origin.y + ob.size.height)) < threshold) { newBounds.origin.y = ob.origin.y + ob.size.height - newBounds.size.height; snappedV = YES; }
-
-            // Snap to other centers
             if (fabs((newBounds.origin.x + newBounds.size.width/2) - (ob.origin.x + ob.size.width/2)) < threshold) { newBounds.origin.x = (ob.origin.x + ob.size.width/2) - newBounds.size.width/2; snappedH = YES; }
             if (fabs((newBounds.origin.y + newBounds.size.height/2) - (ob.origin.y + ob.size.height/2)) < threshold) { newBounds.origin.y = (ob.origin.y + ob.size.height/2) - newBounds.size.height/2; snappedV = YES; }
         }
-
         self.snapGuideH.hidden = !snappedV;
-        if (snappedV) {
-            CGPoint viewCenter = [self.pdfView convertPoint:CGPointMake(pageBounds.size.width/2, pageBounds.size.height/2) fromPage:page];
-            self.snapGuideH.frame = CGRectMake(0, viewCenter.y, self.view.bounds.size.width, 1);
-        }
-
-                // Snap to grid
-        if (self.gridEnabled) {
-            CGFloat gridX = round(newBounds.origin.x / 40.0) * 40.0;
-            CGFloat gridY = round(newBounds.origin.y / 40.0) * 40.0;
-            if (fabs(newBounds.origin.x - gridX) < threshold) newBounds.origin.x = gridX;
-            if (fabs(newBounds.origin.y - gridY) < threshold) newBounds.origin.y = gridY;
-        }
-
+        if (snappedV) { CGPoint viewCenter = [self.pdfView convertPoint:CGPointMake(pageBounds.size.width/2, pageBounds.size.height/2) fromPage:page]; self.snapGuideH.frame = CGRectMake(0, viewCenter.y, self.view.bounds.size.width, 1); }
+        if (self.gridEnabled) { CGFloat gridX = round(newBounds.origin.x / 40.0) * 40.0; CGFloat gridY = round(newBounds.origin.y / 40.0) * 40.0; if (fabs(newBounds.origin.x - gridX) < threshold) newBounds.origin.x = gridX; if (fabs(newBounds.origin.y - gridY) < threshold) newBounds.origin.y = gridY; }
         self.selectedAnnotation.bounds = newBounds; [self.pdfView setNeedsDisplay]; [self updateSelectionUI];
-    self.selectionOverlay.layer.borderColor = [UIColor systemBlueColor].CGColor;
     } else if (gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled) {
+        self.selectionOverlay.layer.borderColor = [UIColor systemBlueColor].CGColor;
         for (UIView *v in self.pdfView.subviews) { if ([v isKindOfClass:[UIScrollView class]]) { ((UIScrollView *)v).scrollEnabled = YES; } }
         self.snapGuideH.hidden = YES; self.snapGuideV.hidden = YES;
     }
