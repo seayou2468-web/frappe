@@ -34,7 +34,6 @@
         _pairingFilePath = [defaults stringForKey:@"IdevicePairingPath"];
         _status = IdeviceStatusDisconnected;
 
-        // Initialize logger
         idevice_init_logger(Debug, Disabled, NULL);
     }
     return self;
@@ -96,6 +95,11 @@
         return;
     }
 
+    if (!pairingFile) {
+        [self _handleError:@"Failed to load pairing file (null handle)"];
+        return;
+    }
+
     @synchronized(self) {
         self.pairingFile = pairingFile;
     }
@@ -104,6 +108,11 @@
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingFile, "frappe-idevice", &provider);
     if (err) {
         [self _handleFfiError:err];
+        return;
+    }
+
+    if (!provider) {
+        [self _handleError:@"Failed to create provider (null handle)"];
         return;
     }
 
@@ -116,6 +125,11 @@
     err = lockdownd_connect(provider, &lockdown);
     if (err) {
         [self _handleFfiError:err];
+        return;
+    }
+
+    if (!lockdown) {
+        [self _handleError:@"Failed to connect to lockdown (null handle)"];
         return;
     }
 
@@ -133,7 +147,7 @@
     [[Logger sharedLogger] log:@"[Idevice] Connecting heartbeat..."];
     struct HeartbeatClientHandle *hb = NULL;
     err = heartbeat_connect(provider, &hb);
-    if (!err) {
+    if (!err && hb) {
         @synchronized(self) {
             self.heartbeatClient = hb;
             self.heartbeatActive = YES;
@@ -141,7 +155,7 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [self _startHeartbeatTimer];
         });
-    } else {
+    } else if (err) {
         idevice_error_free(err);
     }
 
@@ -164,7 +178,7 @@
     if (!currentProvider) return;
 
     struct IdeviceFfiError *err = image_mounter_connect(currentProvider, &mounter);
-    if (!err) {
+    if (!err && mounter) {
         plist_t *devices = NULL;
         size_t count = 0;
         err = image_mounter_copy_devices(mounter, &devices, &count);
@@ -176,7 +190,7 @@
             idevice_error_free(err);
         }
         image_mounter_free(mounter);
-    } else {
+    } else if (err) {
         idevice_error_free(err);
     }
 }
@@ -206,7 +220,7 @@
 }
 
 - (void)disconnect {
-    [[Logger sharedLogger] log:@"[Idevice] Disconnecting..."];
+    [[Logger sharedLogger] log:@"[Idevice] Disconnecting and cleaning up handles..."];
     [self.heartbeatTimer invalidate];
     self.heartbeatTimer = nil;
 
