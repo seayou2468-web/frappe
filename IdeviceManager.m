@@ -194,17 +194,22 @@
 
         NSMutableArray *finalApps = [NSMutableArray array];
         if (out_result && out_result_len > 0) {
-            // According to header: "out_result will be set to point to a newly allocated array of PlistRef"
-            // where out_result_len is the count. PlistRef is likely plist_t.
+            // Hypothesis: out_result is an array of PlistRef pointers.
+            // PlistRef is likely a handle to a plist_t object.
+            // However, out_result_len might be large or incorrect if it's bytes.
+            // Let's try to safely iterate but with a small cap just in case.
+            size_t count = out_result_len;
+            if (count > 1000) count = 1000;
+
             plist_t *handles = (plist_t *)out_result;
-            for (size_t i = 0; i < out_result_len; i++) {
-                id obj = [self _convertPlistToObjC:handles[i] depth:0];
-                if (obj) [finalApps addObject:obj];
-                // We should NOT free handles[i] here as they might be part of out_result.
-                // But header says "newly allocated array of PlistRef".
-                // Usually this means we free each plist_t then the array.
-                // However, without clear ownership rules, let's be careful.
+            for (size_t i = 0; i < count; i++) {
+                // Safety: check if handle is non-null
+                if (handles[i]) {
+                    id obj = [self _convertPlistToObjC:handles[i] depth:0];
+                    if (obj) [finalApps addObject:obj];
+                }
             }
+            // Ownership of out_result? Usually FFI requires explicit free.
             // free(out_result);
         }
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalApps, nil); });
@@ -214,8 +219,12 @@
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
     if (!node || depth > 20) return nil;
     plist_type type = PLIST_NONE;
-    // Don't use @try for FFI calls if they aren't safe.
-    type = plist_get_node_type(node);
+    @try {
+        type = plist_get_node_type(node);
+    } @catch (NSException *e) {
+        return nil;
+    }
+
     switch (type) {
         case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
         case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
@@ -223,34 +232,47 @@
         case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
         case PLIST_KEY: { char *val = NULL; plist_get_key_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
         case PLIST_ARRAY: {
-            uint32_t size = plist_array_get_size(node);
+            uint32_t size = 0;
+            @try { size = plist_array_get_size(node); } @catch (NSException *e) { return nil; }
+            if (size > 1000) size = 1000;
             NSMutableArray *arr = [NSMutableArray arrayWithCapacity:size];
             for (uint32_t i = 0; i < size; i++) {
-                id obj = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth + 1];
+                plist_t item = NULL;
+                @try { item = plist_array_get_item(node, i); } @catch (NSException *e) { break; }
+                id obj = [self _convertPlistToObjC:item depth:depth + 1];
                 if (obj) [arr addObject:obj];
             }
             return arr;
         }
         case PLIST_DICT: {
-            uint32_t size = plist_dict_get_size(node);
+            uint32_t size = 0;
+            @try { size = plist_dict_get_size(node); } @catch (NSException *e) { return nil; }
+            if (size > 1000) size = 1000;
             NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:size];
-            plist_dict_iter iter = NULL; plist_dict_new_iter(node, &iter);
+            plist_dict_iter iter = NULL;
+            @try { plist_dict_new_iter(node, &iter); } @catch (NSException *e) { return nil; }
             if (iter) {
                 char *key = NULL; plist_t subnode = NULL;
                 for (uint32_t i = 0; i < size; i++) {
-                    plist_dict_next_item(node, iter, &key, &subnode);
+                    @try {
+                        plist_dict_next_item(node, iter, &key, &subnode);
+                    } @catch (NSException *e) {
+                        break;
+                    }
                     if (key) {
                         NSString *nsKey = [NSString stringWithUTF8String:key];
                         id obj = [self _convertPlistToObjC:subnode depth:depth + 1];
                         if (nsKey && obj) dict[nsKey] = obj;
                         plist_mem_free(key);
+                    } else {
+                        break;
                     }
                 }
                 free(iter);
             }
             return dict;
         }
-        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
+        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0 && len < 10*1024*1024) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
         default: return nil;
     }
 }
