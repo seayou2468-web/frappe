@@ -23,8 +23,9 @@
     self.title = @"iDevice Tools";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
-    UIBarButtonItem *closeBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"xmark"] style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
-    self.navigationItem.leftBarButtonItem = closeBtn;
+    // Left button to return to FileManager (File Browser)
+    UIBarButtonItem *backToFmBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
+    self.navigationItem.leftBarButtonItem = backToFmBtn;
 
     [self setupUI];
 
@@ -133,13 +134,10 @@
         case BottomMenuActionSettings:
         case BottomMenuActionFavorites:
         case BottomMenuActionOthers: {
-            // Forward these to the first tab (File Browser) if necessary, or show here
-            // For now, let's just ignore or switch to tab 0 and forward.
             [TabManager sharedManager].activeTabIndex = 0;
             MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController;
             if ([container isKindOfClass:[MainContainerViewController class]]) {
                 [container displayActiveTab];
-                // Need a way to trigger the menu on the newly displayed FileBrowser
             }
             break;
         }
