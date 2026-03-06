@@ -49,6 +49,7 @@
         _pairingFilePath = [[defaults stringForKey:@"IdevicePairingPath"] copy];
         _status = IdeviceStatusDisconnected;
         idevice_init_logger(Debug, Disabled, NULL);
+        [[Logger sharedLogger] log:@"[IdeviceManager] Initialized"];
     }
     return self;
 }
@@ -78,63 +79,124 @@
 
 #pragma mark - Actions
 
-- (void)selectPairingFile:(NSString *)path { self.pairingFilePath = path; }
+- (void)selectPairingFile:(NSString *)path {
+    self.pairingFilePath = path;
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Selected pairing file: %@", [path lastPathComponent]]];
+}
 
 - (void)connect {
     [_lock lock];
-    if (self.status == IdeviceStatusConnected || self.status == IdeviceStatusConnecting) { [_lock unlock]; return; }
+    if (self.status == IdeviceStatusConnected || self.status == IdeviceStatusConnecting) {
+        [[Logger sharedLogger] log:@"[Idevice] Connection attempt ignored (already connecting/connected)"];
+        [_lock unlock];
+        return;
+    }
     self.status = IdeviceStatusConnecting; self.lastError = nil;
     [_lock unlock];
+
+    [[Logger sharedLogger] log:@"[Idevice] Starting background connection thread"];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ [self _performConnect]; });
 }
 
 - (void)_performConnect {
     NSString *ip = self.ipAddress; uint16_t port = self.port; NSString *pairingPath = self.pairingFilePath;
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Connecting to %@:%d", ip, port]];
+
     struct sockaddr_in sa; memset(&sa, 0, sizeof(sa)); sa.sin_family = AF_INET; sa.sin_port = htons(port);
-    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"Invalid IP address format"]; return; }
+    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) {
+        [[Logger sharedLogger] log:@"[Idevice] Error: Invalid IP address format"];
+        [self _handleError:@"Invalid IP address format"];
+        return;
+    }
 
     struct IdeviceFfiError *err = NULL; struct IdeviceProviderHandle *localProvider = NULL;
     struct LockdowndClientHandle *localLockdown = NULL; struct HeartbeatClientHandle *localHb = NULL;
     struct IdevicePairingFile *pairingForProvider = NULL; struct IdevicePairingFile *pairingForSession = NULL;
 
     if (pairingPath) {
+        [[Logger sharedLogger] log:@"[Idevice] Reading pairing records from file..."];
         err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
         if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
         if (err || !pairingForProvider || !pairingForSession) {
+            [[Logger sharedLogger] log:@"[Idevice] Error: Failed to load pairing records"];
             [self _handleFfiError:err fallback:@"Failed to load pairing file handles"];
             if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
             if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
-    } else { [self _handleError:@"Pairing file not selected"]; return; }
+    } else {
+        [[Logger sharedLogger] log:@"[Idevice] Error: No pairing file selected"];
+        [self _handleError:@"Pairing file not selected"];
+        return;
+    }
 
+    [[Logger sharedLogger] log:@"[Idevice] Creating TCP provider (consuming handle)..."];
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
-    if (err || !localProvider) { [self _handleFfiError:err fallback:@"Failed to create provider"]; idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localProvider) {
+        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to create TCP provider"];
+        [self _handleFfiError:err fallback:@"Failed to create provider"];
+        idevice_pairing_file_free(pairingForSession);
+        return;
+    }
 
+    [[Logger sharedLogger] log:@"[Idevice] Connecting to Lockdown service..."];
     err = lockdownd_connect(localProvider, &localLockdown);
-    if (err || !localLockdown) { [self _handleFfiError:err fallback:@"Failed to connect lockdown"]; idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localLockdown) {
+        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to connect to Lockdown"];
+        [self _handleFfiError:err fallback:@"Failed to connect lockdown"];
+        idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession);
+        return;
+    }
 
+    [[Logger sharedLogger] log:@"[Idevice] Starting Lockdown session..."];
     err = lockdownd_start_session(localLockdown, pairingForSession);
-    if (err) { [self _handleFfiError:err fallback:@"Failed to start session"]; idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); return; }
+    if (err) {
+        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to start Lockdown session"];
+        [self _handleFfiError:err fallback:@"Failed to start session"];
+        idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider);
+        return;
+    }
+    [[Logger sharedLogger] log:@"[Idevice] Lockdown session established"];
 
-    err = heartbeat_connect(localProvider, &localHb); if (err) idevice_error_free(err);
+    [[Logger sharedLogger] log:@"[Idevice] Initializing Heartbeat..."];
+    err = heartbeat_connect(localProvider, &localHb);
+    if (err) {
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Warning: Heartbeat connection failed: %s", err->message]];
+        idevice_error_free(err);
+    } else {
+        [[Logger sharedLogger] log:@"[Idevice] Heartbeat connected"];
+    }
 
+    [[Logger sharedLogger] log:@"[Idevice] Verifying Developer Disk Image (DDI) status..."];
     BOOL ddi = NO; struct ImageMounterHandle *mounter = NULL;
     err = image_mounter_connect(localProvider, &mounter);
     if (!err && mounter) {
         plist_t devices = NULL; size_t count = 0;
         err = image_mounter_copy_devices(mounter, &devices, &count);
-        if (!err) ddi = (count > 0); else idevice_error_free(err);
+        if (!err) {
+            ddi = (count > 0);
+            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] DDI check complete. Mounted: %@", ddi ? @"YES" : @"NO"]];
+        } else {
+            [[Logger sharedLogger] log:@"[Idevice] Warning: Failed to query DDI devices"];
+            idevice_error_free(err);
+        }
         image_mounter_free(mounter);
-    } else if (err) idevice_error_free(err);
+    } else {
+        if (err) {
+            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Warning: Image Mounter connection failed: %s", err->message]];
+            idevice_error_free(err);
+        }
+    }
 
     [_lock lock];
     if (self.status == IdeviceStatusConnecting) {
         _pairingFile = pairingForSession; _provider = localProvider; _lockdownClient = localLockdown;
         _heartbeatClient = localHb; _heartbeatActive = (localHb != NULL); _ddiMounted = ddi; _status = IdeviceStatusConnected;
         if (localHb) { dispatch_async(dispatch_get_main_queue(), ^{ [self _startHeartbeatTimer]; }); }
+        [[Logger sharedLogger] log:@"[Idevice] Connection fully established"];
         dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
     } else {
+        [[Logger sharedLogger] log:@"[Idevice] Connection cancelled by user, cleaning up local handles"];
         if (localHb) heartbeat_client_free(localHb);
         lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession);
     }
@@ -142,6 +204,7 @@
 }
 
 - (void)_startHeartbeatTimer {
+    [[Logger sharedLogger] log:@"[Idevice] Starting heartbeat timer (10s interval)"];
     [self.heartbeatTimer invalidate];
     self.heartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:10.0 target:self selector:@selector(_sendHeartbeat) userInfo:nil repeats:YES];
 }
@@ -152,11 +215,15 @@
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         struct IdeviceFfiError *err = NULL;
         [strongSelf->_lock lock]; if (strongSelf.heartbeatClient) err = heartbeat_send_polo(strongSelf.heartbeatClient); [strongSelf->_lock unlock];
-        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"Heartbeat lost"; }
+        if (err) {
+            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Heartbeat lost: %s", err->message]];
+            idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"Heartbeat lost";
+        }
     });
 }
 
 - (void)disconnect {
+    [[Logger sharedLogger] log:@"[Idevice] Disconnecting..."];
     dispatch_async(dispatch_get_main_queue(), ^{ [self.heartbeatTimer invalidate]; self.heartbeatTimer = nil; });
     [_lock lock];
     if (self.heartbeatClient) { heartbeat_client_free(self.heartbeatClient); _heartbeatClient = NULL; }
@@ -165,11 +232,13 @@
     if (self.pairingFile) { idevice_pairing_file_free(self.pairingFile); _pairingFile = NULL; }
     _status = IdeviceStatusDisconnected; _heartbeatActive = NO; _ddiMounted = NO;
     [_lock unlock];
+    [[Logger sharedLogger] log:@"[Idevice] Disconnected and cleaned up all handles"];
     dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
 }
 
 - (void)_handleFfiError:(struct IdeviceFfiError *)err fallback:(NSString *)fallback {
     NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: [fallback UTF8String]] : fallback;
+    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] FFI Error: %@", msg]];
     if (err) idevice_error_free(err); [self _handleError:msg];
 }
 
