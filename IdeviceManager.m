@@ -49,7 +49,6 @@
         _pairingFilePath = [[defaults stringForKey:@"IdevicePairingPath"] copy];
         _status = IdeviceStatusDisconnected;
         idevice_init_logger(Debug, Disabled, NULL);
-        [[Logger sharedLogger] log:@"[IdeviceManager] Initialized"];
     }
     return self;
 }
@@ -58,145 +57,70 @@
 
 - (IdeviceConnectionStatus)status { [_lock lock]; IdeviceConnectionStatus s = _status; [_lock unlock]; return s; }
 - (void)setStatus:(IdeviceConnectionStatus)status { [_lock lock]; _status = status; [_lock unlock]; }
-
 - (NSString *)ipAddress { [_lock lock]; NSString *ip = [_ipAddress copy]; [_lock unlock]; return ip; }
 - (void)setIpAddress:(NSString *)ipAddress { [_lock lock]; _ipAddress = [ipAddress copy]; [[NSUserDefaults standardUserDefaults] setObject:_ipAddress forKey:@"IdeviceIP"]; [_lock unlock]; }
-
 - (uint16_t)port { [_lock lock]; uint16_t p = _port; [_lock unlock]; return p; }
 - (void)setPort:(uint16_t)port { [_lock lock]; _port = port; [[NSUserDefaults standardUserDefaults] setInteger:(NSInteger)_port forKey:@"IdevicePort"]; [_lock unlock]; }
-
 - (NSString *)pairingFilePath { [_lock lock]; NSString *path = [_pairingFilePath copy]; [_lock unlock]; return path; }
 - (void)setPairingFilePath:(NSString *)pairingFilePath { [_lock lock]; _pairingFilePath = [pairingFilePath copy]; [[NSUserDefaults standardUserDefaults] setObject:_pairingFilePath forKey:@"IdevicePairingPath"]; [_lock unlock]; }
-
 - (NSString *)lastError { [_lock lock]; NSString *err = [_lastError copy]; [_lock unlock]; return err; }
 - (void)setLastError:(NSString *)lastError { [_lock lock]; _lastError = [lastError copy]; [_lock unlock]; }
-
 - (BOOL)heartbeatActive { [_lock lock]; BOOL active = _heartbeatActive; [_lock unlock]; return active; }
 - (void)setHeartbeatActive:(BOOL)heartbeatActive { [_lock lock]; _heartbeatActive = heartbeatActive; [_lock unlock]; }
-
 - (BOOL)ddiMounted { [_lock lock]; BOOL mounted = _ddiMounted; [_lock unlock]; return mounted; }
 - (void)setDdiMounted:(BOOL)ddiMounted { [_lock lock]; _ddiMounted = ddiMounted; [_lock unlock]; }
 
 #pragma mark - Actions
 
-- (void)selectPairingFile:(NSString *)path {
-    self.pairingFilePath = path;
-    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Selected pairing file: %@", [path lastPathComponent]]];
-}
+- (void)selectPairingFile:(NSString *)path { self.pairingFilePath = path; }
 
 - (void)connect {
     [_lock lock];
-    if (self.status == IdeviceStatusConnected || self.status == IdeviceStatusConnecting) {
-        [[Logger sharedLogger] log:@"[Idevice] Connection attempt ignored (already connecting/connected)"];
-        [_lock unlock];
-        return;
-    }
+    if (self.status == IdeviceStatusConnected || self.status == IdeviceStatusConnecting) { [_lock unlock]; return; }
     self.status = IdeviceStatusConnecting; self.lastError = nil;
     [_lock unlock];
-
-    [[Logger sharedLogger] log:@"[Idevice] Starting background connection thread"];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ [self _performConnect]; });
 }
 
 - (void)_performConnect {
     NSString *ip = self.ipAddress; uint16_t port = self.port; NSString *pairingPath = self.pairingFilePath;
-    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Connecting to %@:%d", ip, port]];
-
     struct sockaddr_in sa; memset(&sa, 0, sizeof(sa)); sa.sin_family = AF_INET; sa.sin_port = htons(port);
-    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) {
-        [[Logger sharedLogger] log:@"[Idevice] Error: Invalid IP address format"];
-        [self _handleError:@"Invalid IP address format"];
-        return;
-    }
-
+    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"Invalid IP address format"]; return; }
     struct IdeviceFfiError *err = NULL; struct IdeviceProviderHandle *localProvider = NULL;
     struct LockdowndClientHandle *localLockdown = NULL; struct HeartbeatClientHandle *localHb = NULL;
     struct IdevicePairingFile *pairingForProvider = NULL; struct IdevicePairingFile *pairingForSession = NULL;
-
     if (pairingPath) {
-        [[Logger sharedLogger] log:@"[Idevice] Reading pairing records from file..."];
         err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
         if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
         if (err || !pairingForProvider || !pairingForSession) {
-            [[Logger sharedLogger] log:@"[Idevice] Error: Failed to load pairing records"];
             [self _handleFfiError:err fallback:@"Failed to load pairing file handles"];
             if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
             if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
-    } else {
-        [[Logger sharedLogger] log:@"[Idevice] Error: No pairing file selected"];
-        [self _handleError:@"Pairing file not selected"];
-        return;
-    }
-
-    [[Logger sharedLogger] log:@"[Idevice] Creating TCP provider (consuming handle)..."];
+    } else { [self _handleError:@"Pairing file not selected"]; return; }
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
-    if (err || !localProvider) {
-        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to create TCP provider"];
-        [self _handleFfiError:err fallback:@"Failed to create provider"];
-        idevice_pairing_file_free(pairingForSession);
-        return;
-    }
-
-    [[Logger sharedLogger] log:@"[Idevice] Connecting to Lockdown service..."];
+    if (err || !localProvider) { [self _handleFfiError:err fallback:@"Failed to create provider"]; idevice_pairing_file_free(pairingForSession); return; }
     err = lockdownd_connect(localProvider, &localLockdown);
-    if (err || !localLockdown) {
-        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to connect to Lockdown"];
-        [self _handleFfiError:err fallback:@"Failed to connect lockdown"];
-        idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession);
-        return;
-    }
-
-    [[Logger sharedLogger] log:@"[Idevice] Starting Lockdown session..."];
+    if (err || !localLockdown) { [self _handleFfiError:err fallback:@"Failed to connect lockdown"]; idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession); return; }
     err = lockdownd_start_session(localLockdown, pairingForSession);
-    if (err) {
-        [[Logger sharedLogger] log:@"[Idevice] Error: Failed to start Lockdown session"];
-        [self _handleFfiError:err fallback:@"Failed to start session"];
-        idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider);
-        return;
-    }
-    [[Logger sharedLogger] log:@"[Idevice] Lockdown session established"];
-
-    [[Logger sharedLogger] log:@"[Idevice] Initializing Heartbeat..."];
-    err = heartbeat_connect(localProvider, &localHb);
-    if (err) {
-        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Warning: Heartbeat connection failed: %s", err->message]];
-        idevice_error_free(err);
-    } else {
-        [[Logger sharedLogger] log:@"[Idevice] Heartbeat connected"];
-    }
-
-    [[Logger sharedLogger] log:@"[Idevice] Verifying Developer Disk Image (DDI) status..."];
+    if (err) { [self _handleFfiError:err fallback:@"Failed to start session"]; idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); return; }
+    err = heartbeat_connect(localProvider, &localHb); if (err) idevice_error_free(err);
     BOOL ddi = NO; struct ImageMounterHandle *mounter = NULL;
     err = image_mounter_connect(localProvider, &mounter);
     if (!err && mounter) {
         plist_t devices = NULL; size_t count = 0;
         err = image_mounter_copy_devices(mounter, &devices, &count);
-        if (!err) {
-            ddi = (count > 0);
-            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] DDI check complete. Mounted: %@", ddi ? @"YES" : @"NO"]];
-        } else {
-            [[Logger sharedLogger] log:@"[Idevice] Warning: Failed to query DDI devices"];
-            idevice_error_free(err);
-        }
+        if (!err) ddi = (count > 0); else idevice_error_free(err);
         image_mounter_free(mounter);
-    } else {
-        if (err) {
-            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Warning: Image Mounter connection failed: %s", err->message]];
-            idevice_error_free(err);
-        }
-    }
-
+    } else if (err) idevice_error_free(err);
     [_lock lock];
     if (self.status == IdeviceStatusConnecting) {
         _pairingFile = pairingForSession; _provider = localProvider; _lockdownClient = localLockdown;
         _heartbeatClient = localHb; _heartbeatActive = (localHb != NULL); _ddiMounted = ddi; _status = IdeviceStatusConnected;
         if (localHb) { dispatch_async(dispatch_get_main_queue(), ^{ [self _startHeartbeatTimer]; }); }
-        [[Logger sharedLogger] log:@"[Idevice] Connection fully established"];
         dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
     } else {
-        [[Logger sharedLogger] log:@"[Idevice] Connection cancelled by user, cleaning up local handles"];
         if (localHb) heartbeat_client_free(localHb);
         lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession);
     }
@@ -204,7 +128,6 @@
 }
 
 - (void)_startHeartbeatTimer {
-    [[Logger sharedLogger] log:@"[Idevice] Starting heartbeat timer (10s interval)"];
     [self.heartbeatTimer invalidate];
     self.heartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:10.0 target:self selector:@selector(_sendHeartbeat) userInfo:nil repeats:YES];
 }
@@ -215,15 +138,11 @@
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         struct IdeviceFfiError *err = NULL;
         [strongSelf->_lock lock]; if (strongSelf.heartbeatClient) err = heartbeat_send_polo(strongSelf.heartbeatClient); [strongSelf->_lock unlock];
-        if (err) {
-            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Heartbeat lost: %s", err->message]];
-            idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"Heartbeat lost";
-        }
+        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"Heartbeat lost"; }
     });
 }
 
 - (void)disconnect {
-    [[Logger sharedLogger] log:@"[Idevice] Disconnecting..."];
     dispatch_async(dispatch_get_main_queue(), ^{ [self.heartbeatTimer invalidate]; self.heartbeatTimer = nil; });
     [_lock lock];
     if (self.heartbeatClient) { heartbeat_client_free(self.heartbeatClient); _heartbeatClient = NULL; }
@@ -232,13 +151,11 @@
     if (self.pairingFile) { idevice_pairing_file_free(self.pairingFile); _pairingFile = NULL; }
     _status = IdeviceStatusDisconnected; _heartbeatActive = NO; _ddiMounted = NO;
     [_lock unlock];
-    [[Logger sharedLogger] log:@"[Idevice] Disconnected and cleaned up all handles"];
     dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
 }
 
 - (void)_handleFfiError:(struct IdeviceFfiError *)err fallback:(NSString *)fallback {
     NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: [fallback UTF8String]] : fallback;
-    [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] FFI Error: %@", msg]];
     if (err) idevice_error_free(err); [self _handleError:msg];
 }
 
@@ -246,7 +163,6 @@
     [_lock lock]; self.lastError = msg; self.status = IdeviceStatusError; [_lock unlock];
     [self disconnect];
 }
-
 
 - (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion {
     [_lock lock];
@@ -257,7 +173,6 @@
     }
     struct IdeviceProviderHandle *p = self.provider;
     [_lock unlock];
-
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct InstallationProxyClientHandle *client = NULL;
         struct IdeviceFfiError *err = installation_proxy_connect(p, &client);
@@ -267,39 +182,75 @@
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:2 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
-
-        void *out_result = NULL;
-        size_t out_result_len = 0;
-        // application_type: "Any", "User", "System"
+        void *out_result = NULL; size_t out_result_len = 0;
         err = installation_proxy_get_apps(client, "Any", NULL, 0, &out_result, &out_result_len);
         installation_proxy_client_free(client);
-
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "Failed to get apps"];
             idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
-
-        if (out_result && out_result_len > 0) {
-            // Assume out_result is a binary plist or XML plist bytes
-            NSData *data = [NSData dataWithBytes:out_result length:out_result_len];
-            // The library might need us to free out_result. Assuming it's a raw buffer.
-            // If idevice.h had a specific free for this, we'd use it.
-
-            NSError *plistErr = nil;
-            id plist = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:&plistErr];
-
+        if (out_result) {
+            // Treat out_result as plist_t instead of NSData directly
+            plist_t apps_plist = (plist_t)out_result;
+            id apps_objc = [self _convertPlistToObjC:apps_plist];
+            // FFI result from get_apps might be an array of dicts
             if (completion) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (plistErr) completion(nil, plistErr);
-                    else completion([plist isKindOfClass:[NSArray class]] ? plist : @[plist], nil);
+                    if ([apps_objc isKindOfClass:[NSArray class]]) completion(apps_objc, nil);
+                    else if (apps_objc) completion(@[apps_objc], nil);
+                    else completion(@[], nil);
                 });
             }
+            // Ideally we'd free apps_plist but we don't know the ownership of out_result from FFI.
+            // If it's a pointer to an internal buffer, we don't free. If it's allocated, we do.
+            // Given the signature void**, it's likely allocated.
         } else {
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[], nil); });
         }
     });
 }
+
+- (id)_convertPlistToObjC:(plist_t)node {
+    if (!node) return nil;
+    plist_type type = plist_get_node_type(node);
+    switch (type) {
+        case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
+        case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
+        case PLIST_REAL: { double val = 0; plist_get_real_val(node, &val); return @(val); }
+        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = [NSString stringWithUTF8String:val ?: ""]; if (val) free(val); return s; }
+        case PLIST_ARRAY: {
+            uint32_t size = plist_array_get_size(node);
+            NSMutableArray *arr = [NSMutableArray arrayWithCapacity:size];
+            for (uint32_t i = 0; i < size; i++) {
+                id obj = [self _convertPlistToObjC:plist_array_get_item(node, i)];
+                if (obj) [arr addObject:obj];
+            }
+            return arr;
+        }
+        case PLIST_DICT: {
+            uint32_t size = plist_dict_get_size(node);
+            NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:size];
+            plist_dict_iter iter = NULL;
+            plist_dict_new_iter(node, &iter);
+            char *key = NULL; plist_t subnode = NULL;
+            for (uint32_t i = 0; i < size; i++) {
+                plist_dict_next_item(node, iter, &key, &subnode);
+                if (key) {
+                    NSString *nsKey = [NSString stringWithUTF8String:key];
+                    id obj = [self _convertPlistToObjC:subnode];
+                    if (obj) dict[nsKey] = obj;
+                    free(key);
+                }
+            }
+            if (iter) free(iter);
+            return dict;
+        }
+        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return [NSData dataWithBytes:ptr length:len]; }
+        default: return nil;
+    }
+}
+
 - (void)dealloc { [self disconnect]; }
 @end
