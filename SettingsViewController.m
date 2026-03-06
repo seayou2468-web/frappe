@@ -1,3 +1,4 @@
+#import "L.h"
 #import "SettingsViewController.h"
 #import "ThemeEngine.h"
 #import "BookmarksManager.h"
@@ -8,13 +9,29 @@
 
 @interface SettingsViewController ()
 @property (nonatomic, strong) UITableView *tableView;
+
+- (void)selectLanguage {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"言語選択 / Select Language"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"日本語" systemImage:@"character.japanese.kana" style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"日本語" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"English" systemImage:@"character" style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"English" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu showInView:self.view];
+}
+
 @end
 
 @implementation SettingsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"設定";
+    self.title = [L s:@"設定" en:@"Settings"];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
@@ -32,7 +49,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
-        case 0: return 2; // General
+        case 0: return 3; // General (Path, Delete, Language)
         case 1: return 3; // Display
         case 2: return 1; // Sort
         case 3: return 2; // Appearance
@@ -46,14 +63,14 @@
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"全般";
-        case 1: return @"表示設定";
-        case 2: return @"並び替え";
-        case 3: return @"外観カスタマイズ";
-        case 4: return @"ウェブブラウザ";
+        case 0: return [L s:@"全般" en:@"General"];
+        case 1: return [L s:@"表示設定" en:@"Display"];
+        case 2: return [L s:@"並び替え" en:@"Sort"];
+        case 3: return [L s:@"外観カスタマイズ" en:@"Appearance"];
+        case 4: return [L s:@"ウェブブラウザ" en:@"Web Browser"];
         case 5: return @"データを常に保持するサイト";
-        case 6: return @"詳細";
-        case 7: return @"お気に入り";
+        case 6: return [L s:@"詳細" en:@"Advanced"];
+        case 7: return [L s:@"お気に入り" en:@"Favorites"];
         default: return nil;
     }
 }
@@ -82,6 +99,11 @@
             sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
             [sw addTarget:self action:@selector(confirmDeleteToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
+        }
+            } else if (indexPath.row == 2) {
+            cell.textLabel.text = @"言語 / Language";
+            cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppLanguage"] ?: @"日本語";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 1) {
         if (indexPath.row == 0) {
@@ -251,7 +273,7 @@
 }
 
 - (void)selectSortMethod {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"並び替え"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"並び替え" en:@"Sort"]];
     NSArray *modes = @[@"名前", @"日付", @"サイズ"];
     for (NSInteger i = 0; i < modes.count; i++) {
         [menu addAction:[CustomMenuAction actionWithTitle:modes[i] systemImage:nil style:CustomMenuActionStyleDefault handler:^{
@@ -323,5 +345,21 @@
 - (void)hiddenSwitchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ShowHiddenFiles"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
 - (void)foldersFirstToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
 - (void)alwaysShowSearchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
+
+
+- (void)selectLanguage {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"言語選択 / Select Language"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"日本語" systemImage:@"character.japanese.kana" style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"日本語" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"English" systemImage:@"character" style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"English" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu showInView:self.view];
+}
 
 @end

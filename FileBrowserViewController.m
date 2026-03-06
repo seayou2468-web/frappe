@@ -1,3 +1,4 @@
+#import "L.h"
 #import "CustomMenuView.h"
 #import "FileBrowserViewController.h"
 #import "SQLiteViewerViewController.h"
@@ -59,6 +60,10 @@
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
+    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    [refresh addTarget:self action:@selector(handleRefresh:) forControlEvents:UIControlEventValueChanged];
+    refresh.tintColor = [UIColor whiteColor];
+    self.tableView.refreshControl = refresh;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     [self.view addSubview:self.tableView];
 
@@ -75,7 +80,7 @@
 
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.searchBar.placeholder = @"検索...";
+    self.searchBar.placeholder = [L s:@"検索..." en:@"Search..."];
     self.searchBar.delegate = self;
     self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.hidden = YES;
@@ -83,7 +88,7 @@
     self.searchBar.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
     [self.view addSubview:self.searchBar];
 
-    self.searchScope = [[UISegmentedControl alloc] initWithItems:@[@"名前", @"内容"]];
+    self.searchScope = [[UISegmentedControl alloc] initWithItems:@[[L s:@"名前" en:@"Name"], [L s:@"内容" en:@"Content"]]];
     self.searchScope.selectedSegmentIndex = 0;
     self.searchScope.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchScope.hidden = YES;
@@ -153,6 +158,12 @@
             [self.searchBar becomeFirstResponder];
         }
     }];
+}
+
+
+- (void)handleRefresh:(UIRefreshControl *)refresh {
+    [self reloadData];
+    [refresh endRefreshing];
 }
 
 - (void)reloadData {
@@ -352,8 +363,8 @@
 - (void)showMoreMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"操作"];
     if ([FileManagerCore sharedManager].clipboardPaths.count > 0) { NSString *title = [FileManagerCore sharedManager].isMoveOperation ? @"ここに移動" : @"ここに貼り付け"; [menu addAction:[CustomMenuAction actionWithTitle:title systemImage:@"doc.on.clipboard.fill" style:CustomMenuActionStyleDefault handler:^{ [self performPaste]; }]]; }
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新規フォルダ" systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:YES]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新規ファイル" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:NO]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:[L s:@"新規フォルダ" en:@"New Folder"] systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:YES]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:[L s:@"新規ファイル" en:@"New File"] systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:NO]; }]];
     [menu showInView:self.view];
 }
 
@@ -363,7 +374,7 @@
 }
 
 - (void)promptForNewItem:(BOOL)isDir {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isDir ? @"新規フォルダ" : @"新規ファイル" message:@"名前を入力してください" preferredStyle:UIAlertControllerStyleAlert]; [alert addTextFieldWithConfigurationHandler:nil];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isDir ? [L s:@"新規フォルダ" en:@"New Folder"] : [L s:@"新規ファイル" en:@"New File"] message:@"名前を入力してください" preferredStyle:UIAlertControllerStyleAlert]; [alert addTextFieldWithConfigurationHandler:nil];
     [alert addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { NSString *name = alert.textFields[0].text; if (name.length == 0) return; NSString *path = [self.currentPath stringByAppendingPathComponent:name]; if (isDir) { [[NSFileManager defaultManager] createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; } else { [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil]; } [self reloadData]; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:alert animated:YES completion:nil];
 }
