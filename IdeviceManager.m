@@ -74,9 +74,22 @@
 
     struct IdeviceFfiError *err = NULL;
     struct IdeviceProviderHandle *provider = NULL;
+    struct IdevicePairingFile *pairingFile = NULL;
 
-    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, sizeof(sa), &provider);
+    if (self.pairingFilePath) {
+        err = idevice_pairing_file_read([self.pairingFilePath UTF8String], &pairingFile);
+        if (err) {
+            [self _handleFfiError:err];
+            return;
+        }
+    } else {
+        [self _handleError:@"Pairing file not selected"];
+        return;
+    }
+
+    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingFile, "frappe-idevice", &provider);
     if (err) {
+        if (pairingFile) idevice_pairing_file_free(pairingFile);
         [self _handleFfiError:err];
         return;
     }
@@ -85,27 +98,16 @@
     struct LockdowndClientHandle *lockdown = NULL;
     err = lockdownd_connect(provider, &lockdown);
     if (err) {
+        if (pairingFile) idevice_pairing_file_free(pairingFile);
         [self _handleFfiError:err];
         return;
     }
     self.lockdownClient = lockdown;
 
-    if (self.pairingFilePath) {
-        struct IdevicePairingFile *pairingFile = NULL;
-        err = idevice_pairing_file_read([self.pairingFilePath UTF8String], &pairingFile);
-        if (err) {
-            [self _handleFfiError:err];
-            return;
-        }
-
-        err = lockdownd_start_session(lockdown, pairingFile);
-        idevice_pairing_file_free(pairingFile);
-        if (err) {
-            [self _handleFfiError:err];
-            return;
-        }
-    } else {
-        [self _handleError:@"Pairing file not selected"];
+    err = lockdownd_start_session(lockdown, pairingFile);
+    if (pairingFile) idevice_pairing_file_free(pairingFile);
+    if (err) {
+        [self _handleFfiError:err];
         return;
     }
 
@@ -139,10 +141,7 @@
         err = image_mounter_copy_devices(mounter, &devices, &count);
         if (!err && count > 0) {
             self.ddiMounted = YES;
-            // Free devices plist if we had a way, but idevice.h is opaque here.
-            // Assuming it needs to be freed via some libplist call if it was real libplist.
         } else {
-            // Attempt to mount if we had the image paths, but for now just status check
             self.ddiMounted = NO;
         }
         image_mounter_free(mounter);
