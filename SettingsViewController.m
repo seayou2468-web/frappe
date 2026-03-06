@@ -87,7 +87,7 @@
             cell.textLabel.text = @"起動時のパス";
             cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: NSHomeDirectory();
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        } else {
+        } else if (indexPath.row == 1) {
             cell.textLabel.text = @"削除時に確認する";
             UISwitch *sw = [[UISwitch alloc] init];
             sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
