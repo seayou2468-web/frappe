@@ -2,10 +2,14 @@
 #import <arpa/inet.h>
 #import "Logger.h"
 
+struct RsdSession {
+    struct AdapterHandle *adapter;
+    struct RsdHandshakeHandle *handshake;
+    struct ReadWriteOpaque *stream;
+};
+typedef struct RsdSession RsdSession;
+
 @interface IdeviceManager ()
-{
-    NSRecursiveLock *_lock;
-}
 @property (nonatomic, assign) IdeviceConnectionStatus status;
 @property (nonatomic, copy) NSString *lastError;
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
@@ -24,14 +28,31 @@
 - (void)_startHeartbeatTimer;
 - (void)_sendHeartbeat;
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth;
-struct RsdSession {
-    struct AdapterHandle *adapter;
-    struct RsdHandshakeHandle *handshake;
-    struct ReadWriteOpaque *stream;
-};
+- (struct IdeviceFfiError *)_establishRsdSession:(RsdSession *)session;
+- (void)_freeRsdSession:(RsdSession *)session;
+@end
 
-- (struct IdeviceFfiError *)_establishRsdSession:(struct RsdSession *)session {
-    memset(session, 0, sizeof(struct RsdSession));
+@implementation IdeviceManager {
+    NSRecursiveLock *_lock;
+}
+
+@synthesize status = _status;
+@synthesize ipAddress = _ipAddress;
+@synthesize port = _port;
+@synthesize pairingFilePath = _pairingFilePath;
+@synthesize lastError = _lastError;
+@synthesize provider = _provider;
+@synthesize lockdownClient = _lockdownClient;
+@synthesize heartbeatClient = _heartbeatClient;
+@synthesize pairingFile = _pairingFile;
+@synthesize heartbeatActive = _heartbeatActive;
+@synthesize ddiMounted = _ddiMounted;
+@synthesize syslogClient = _syslogClient;
+@synthesize syslogActive = _syslogActive;
+
+
+- (struct IdeviceFfiError *)_establishRsdSession:(RsdSession *)session {
+    memset(session, 0, sizeof(RsdSession));
     struct LockdowndClientHandle *lockdown = self.lockdownClient;
     struct IdeviceProviderHandle *provider = self.provider;
     NSString *ipStr = self.ipAddress;
@@ -124,11 +145,11 @@ struct RsdSession {
     return err;
 }
 
-- (void)_freeRsdSession:(struct RsdSession *)session {
+- (void)_freeRsdSession:(RsdSession *)session {
     if (session->handshake) rsd_handshake_free(session->handshake);
     if (session->stream) idevice_stream_free(session->stream);
     if (session->adapter) adapter_free(session->adapter);
-    memset(session, 0, sizeof(struct RsdSession));
+    memset(session, 0, sizeof(RsdSession));
 }
 
 
@@ -401,7 +422,7 @@ struct RsdSession {
     }
     [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct RsdSession rsd;
+        RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
@@ -442,7 +463,7 @@ struct RsdSession {
     }
     [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct RsdSession rsd;
+        RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
@@ -511,7 +532,7 @@ struct RsdSession {
     }
     [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct RsdSession rsd;
+        RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
@@ -562,7 +583,7 @@ struct RsdSession {
     struct IdeviceProviderHandle *p = self.provider;
     [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct RsdSession rsd;
+        RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
         if (!err) {
             struct ScreenshotClientHandle *client = NULL;
