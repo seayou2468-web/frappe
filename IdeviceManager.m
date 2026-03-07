@@ -38,6 +38,7 @@ typedef struct RsdSession RsdSession;
 
 @implementation IdeviceManager {
     NSRecursiveLock *_lock;
+    NSRecursiveLock *_rsdLock;
 }
 
 @synthesize status = _status;
@@ -67,6 +68,7 @@ typedef struct RsdSession RsdSession;
     self = [super init];
     if (self) {
         _lock = [[NSRecursiveLock alloc] init];
+        _rsdLock = [[NSRecursiveLock alloc] init];
         _status = IdeviceStatusDisconnected;
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         _ipAddress = [defaults stringForKey:@"IdeviceIP"] ?: @"10.7.0.1";
@@ -221,43 +223,80 @@ typedef struct RsdSession RsdSession;
     memset(session, 0, sizeof(RsdSession));
     [_lock lock]; struct IdeviceProviderHandle *provider = self.provider; [_lock unlock];
     if (!provider) return NULL;
-    struct IdeviceFfiError *err = NULL; struct CoreDeviceProxyHandle *proxy = NULL;
 
-    // Modern iOS 17+ / iOS 26 Path ONLY
+    [_rsdLock lock];
+    struct IdeviceFfiError *err = NULL;
+    struct CoreDeviceProxyHandle *proxy = NULL;
+
     err = core_device_proxy_connect(provider, &proxy);
-    if (!err && proxy) {
-        session->proxy = proxy; uint16_t rsd_port = 0;
-        err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
-        if (!err && rsd_port > 0) {
-            struct AdapterHandle *adapter = NULL;
-            err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
-            if (!err && adapter) {
-                session->adapter = adapter; session->proxy = NULL; // Consumed
-                struct ReadWriteOpaque *stream = NULL;
-                err = adapter_connect(adapter, rsd_port, &stream);
-                if (!err && stream) {
-                    session->stream = stream; struct RsdHandshakeHandle *handshake = NULL;
-                    err = rsd_handshake_new(stream, &handshake);
-                    if (!err && handshake) { session->handshake = handshake; session->stream = NULL; return NULL; }
-                }
-            }
-        }
+    if (err || !proxy) {
+        [_rsdLock unlock];
+        return err;
     }
-    if (err) { [self _freeRsdSession:session]; return err; }
-    [self _freeRsdSession:session]; return NULL;
+    session->proxy = proxy;
+
+    uint16_t rsd_port = 0;
+    err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
+    if (err || rsd_port == 0) {
+        [self _freeRsdSession:session];
+        [_rsdLock unlock];
+        return err;
+    }
+
+    struct AdapterHandle *adapter = NULL;
+    err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+    session->proxy = NULL; // Consumed
+    if (err || !adapter) {
+        [self _freeRsdSession:session];
+        [_rsdLock unlock];
+        return err;
+    }
+    session->adapter = adapter;
+
+    struct ReadWriteOpaque *stream = NULL;
+    err = adapter_connect(adapter, rsd_port, &stream);
+    if (err || !stream) {
+        [self _freeRsdSession:session];
+        [_rsdLock unlock];
+        return err;
+    }
+    session->stream = stream;
+
+    struct RsdHandshakeHandle *handshake = NULL;
+    err = rsd_handshake_new(stream, &handshake);
+    session->stream = NULL; // Consumed
+    if (err || !handshake) {
+        [self _freeRsdSession:session];
+        [_rsdLock unlock];
+        return err;
+    }
+    session->handshake = handshake;
+
+    [_rsdLock unlock];
+    return NULL;
 }
 
 - (void)_freeRsdSession:(RsdSession *)session {
-    if (session->handshake) { rsd_handshake_free(session->handshake); session->handshake = NULL; }
-    if (session->stream) { idevice_stream_free(session->stream); session->stream = NULL; }
+    [_rsdLock lock];
+    if (session->handshake) {
+        rsd_handshake_free(session->handshake);
+        session->handshake = NULL;
+    }
+    if (session->stream) {
+        idevice_stream_free(session->stream);
+        session->stream = NULL;
+    }
     if (session->adapter) {
         struct IdeviceFfiError *e = adapter_close(session->adapter);
         if (e) idevice_error_free(e);
         adapter_free(session->adapter);
         session->adapter = NULL;
     }
-    if (session->proxy) { core_device_proxy_free(session->proxy); session->proxy = NULL; }
-    memset(session, 0, sizeof(RsdSession));
+    if (session->proxy) {
+        core_device_proxy_free(session->proxy);
+        session->proxy = NULL;
+    }
+    [_rsdLock unlock];
 }
 
 #pragma mark - App Management
