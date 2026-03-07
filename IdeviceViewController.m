@@ -1,4 +1,5 @@
 #import "IdeviceViewController.h"
+#import <objc/runtime.h>
 #import "IdeviceManager.h"
 #import "ThemeEngine.h"
 #import "FileBrowserViewController.h"
@@ -74,7 +75,7 @@
         [self.bottomMenu.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.bottomMenu.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [self.bottomMenu.heightAnchor constraintEqualToConstant:60 + [UIApplication sharedApplication].keyWindow.safeAreaInsets.bottom]
+        [self.bottomMenu.heightAnchor constraintEqualToConstant:60 + self.view.window.safeAreaInsets.bottom]
     ]];
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 180)];
     self.statusIndicator = [[UIView alloc] initWithFrame:CGRectMake((header.frame.size.width - 100) / 2, 20, 100, 100)];
