@@ -12,7 +12,6 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate>
-@end
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIView *statusIndicator;
@@ -31,6 +30,8 @@
 - (void)setupUI;
 
 
+
+@end
 
 @implementation IdeviceViewController
 
