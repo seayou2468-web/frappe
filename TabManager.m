@@ -64,6 +64,7 @@
     switch (type) {
         case TabTypeFileBrowser: tab.title = [path lastPathComponent] ?: @"Files"; break;
         case TabTypeWebBrowser: tab.title = @"Browser"; break;
+        case TabTypeIdevice: tab.title = @"iDevice"; break;
     }
 
     [_tabs addObject:tab];

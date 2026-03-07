@@ -1,5 +1,6 @@
 #import "CustomMenuView.h"
 #import "FileBrowserViewController.h"
+#import "IdeviceManager.h"
 #import "SQLiteViewerViewController.h"
 #import "ExcelViewerViewController.h"
 #import "SettingsViewController.h"
@@ -209,7 +210,15 @@
     NSString *effectivePath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!effectivePath) return;
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:effectivePath error:nil];
-    if ([[attrs fileType] isEqualToString:NSFileTypeDirectory]) { [self navigateToPath:effectivePath]; } else { [self openFile:item]; }
+    if ([[attrs fileType] isEqualToString:NSFileTypeDirectory]) {
+        [self navigateToPath:effectivePath];
+    } else {
+        if (self.isPickingFile && self.onFilePicked) {
+            self.onFilePicked(item.fullPath);
+        } else {
+            [self openFile:item];
+        }
+    }
 }
 
 - (void)openFile:(FileItem *)item {
@@ -233,6 +242,7 @@
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
         case BottomMenuActionWeb: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) { [container handleMenuAction:action]; } break; }
+        case BottomMenuActionIdevice: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) { [container handleMenuAction:action]; } break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
         case BottomMenuActionFavorites: [self showFavoritesMenu]; break;
         case BottomMenuActionOthers: [self showOthersMenu]; break;
@@ -377,6 +387,10 @@
 - (void)showContextMenuForItem:(FileItem *)item {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:item.name];
     [menu addAction:[CustomMenuAction actionWithTitle:@"お気に入りに追加" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{ [[BookmarksManager sharedManager] addBookmark:item.fullPath]; }]];
+    NSString *ext = [item.fullPath pathExtension].lowercaseString;
+    if ([@[@"plist", @"xml", @"mobiledevicepairing"] containsObject:ext]) {
+        [menu addAction:[CustomMenuAction actionWithTitle:@"ペアリングファイルに設定" systemImage:@"iphone.badge.play" style:CustomMenuActionStyleDefault handler:^{ [[IdeviceManager sharedManager] selectPairingFile:item.fullPath]; UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"設定完了" message:@"ペアリングファイルを読み込みました。" preferredStyle:UIAlertControllerStyleAlert]; [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]]; [self presentViewController:alert animated:YES completion:nil]; }]];
+    }
     [menu addAction:[CustomMenuAction actionWithTitle:@"詳細情報" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{ [self showInfoForItem:item]; }]];
     if (item.isSymbolicLink) { [menu addAction:[CustomMenuAction actionWithTitle:@"リンクを編集" systemImage:@"link" style:CustomMenuActionStyleDefault handler:^{ [self showEditLinkForItem:item]; }]]; }
     [menu addAction:[CustomMenuAction actionWithTitle:@"圧縮" systemImage:@"archivebox" style:CustomMenuActionStyleDefault handler:^{ [self showCompressionOptionsForItem:item]; }]];

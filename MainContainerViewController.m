@@ -3,10 +3,9 @@
 #import "TabSwitcherViewController.h"
 #import "FileBrowserViewController.h"
 #import "WebBrowserViewController.h"
+#import "IdeviceViewController.h"
 #import "ThemeEngine.h"
 #import "BottomMenuView.h"
-
-
 
 @interface MainContainerViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIViewController *currentContentController;
@@ -19,7 +18,7 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshUI) name:@"SettingsChanged" object:nil];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
-        if ([TabManager sharedManager].tabs.count == 0) {
+    if ([TabManager sharedManager].tabs.count == 0) {
         NSString *startPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: NSHomeDirectory();
         [[TabManager sharedManager] addNewTabWithType:TabTypeFileBrowser path:startPath];
     }
@@ -51,6 +50,8 @@
             }
         } else if (active.type == TabTypeWebBrowser) {
             [vcs addObject:[[WebBrowserViewController alloc] initWithURL:active.currentPath]];
+        } else if (active.type == TabTypeIdevice) {
+            [vcs addObject:[[IdeviceViewController alloc] init]];
         } else {
             [vcs addObject:[[FileBrowserViewController alloc] initWithPath:@"/"]];
         }
@@ -100,7 +101,6 @@
     [self presentViewController:switcher animated:YES completion:nil];
 }
 
-
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
     if ([self.currentContentController isKindOfClass:[UINavigationController class]]) {
         UINavigationController *nav = (UINavigationController *)self.currentContentController;
@@ -108,7 +108,6 @@
     }
     return NO;
 }
-
 
 - (void)handleMenuAction:(BottomMenuAction)action {
     switch (action) {
@@ -121,17 +120,35 @@
             [self showTabSwitcher];
             break;
         }
+        case BottomMenuActionIdevice: {
+            // Check if Idevice tab already exists
+            NSInteger idx = -1;
+            NSArray *tabs = [TabManager sharedManager].tabs;
+            for (NSInteger i = 0; i < tabs.count; i++) {
+                TabInfo *t = tabs[i];
+                if (t.type == TabTypeIdevice) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx != -1) {
+                [TabManager sharedManager].activeTabIndex = idx;
+            } else {
+                [[TabManager sharedManager] addNewTabWithType:TabTypeIdevice path:nil];
+            }
+            [self displayActiveTab];
+            break;
+        }
         default: break;
     }
 }
 
-
 - (void)refreshUI {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-        // Add other UI components that need refreshing
     });
 }
 
-@end
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
+@end

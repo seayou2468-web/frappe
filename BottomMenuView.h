@@ -6,6 +6,7 @@ typedef NS_ENUM(NSInteger, BottomMenuAction) {
     BottomMenuActionSettings,
     BottomMenuActionOthers,
     BottomMenuActionWeb,
+    BottomMenuActionIdevice,
     // Web specific actions
     BottomMenuActionWebBack,
     BottomMenuActionWebForward,
