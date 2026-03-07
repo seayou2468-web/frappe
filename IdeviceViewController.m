@@ -5,6 +5,7 @@
 #import "LogViewerViewController.h"
 #import "IdeviceAppListViewController.h"
 #import "IdeviceRsdViewController.h"
+#import "IdeviceSyslogViewController.h"
 #import "BottomMenuView.h"
 #import "MainContainerViewController.h"
 #import "TabManager.h"
@@ -27,6 +28,49 @@
 - (void)closeTapped;
 - (void)statusChanged;
 - (void)setupUI;
+
+
+- (void)takeScreenshot {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] takeScreenshotWithCompletion:^(UIImage *image, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                UIViewController *vc = [[UIViewController alloc] init];
+                vc.title = @"Screenshot";
+                UIImageView *iv = [[UIImageView alloc] initWithFrame:vc.view.bounds];
+                iv.contentMode = UIViewContentModeScaleAspectFit;
+                iv.image = image;
+                iv.backgroundColor = [UIColor blackColor];
+                iv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                [vc.view addSubview:iv];
+                UIBarButtonItem *shareBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareImage:)];
+                objc_set_associated_object(shareBtn, "img", image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                vc.navigationItem.rightBarButtonItem = shareBtn;
+                [self.navigationController pushViewController:vc animated:YES];
+            }
+        });
+    }];
+}
+
+- (void)shareImage:(UIBarButtonItem *)sender {
+    UIImage *img = objc_get_associated_object(sender, "img");
+    if (!img) return;
+    UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[img] applicationActivities:nil];
+    [self presentViewController:avc animated:YES completion:nil];
+}
 
 @end
 
@@ -147,7 +191,7 @@
     if (section == 2) return 2;
     if (section == 3) return 1;
     if (section == 4) return 1;
-    if (section == 5) return 2;
+    if (section == 5) return 4;
     return 0;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -197,8 +241,14 @@
         if (indexPath.row == 0) {
             cell.textLabel.text = @"Sysdiagnoseを取得";
             cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
-        } else {
+        } else if (indexPath.row == 1) {
             cell.textLabel.text = @"実行中プロセスを表示";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = @"スクリーンショットを撮る";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        } else {
+            cell.textLabel.text = @"ライブシステムログを表示";
             cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
         }
         cell.accessoryType = UITableViewCellAccessoryNone;
@@ -221,7 +271,7 @@
     }
     else if (indexPath.section == 3) { if (mgr.status == IdeviceStatusConnected) [mgr disconnect]; else [mgr connect]; }
     else if (indexPath.section == 4) [self.navigationController pushViewController:[[LogViewerViewController alloc] init] animated:YES];
-    else if (indexPath.section == 5) { if (mgr.status == IdeviceStatusConnected) { if (indexPath.row == 0) [self captureSysdiagnose]; else [self showProcessList]; } }
+    else if (indexPath.section == 5) { if (mgr.status == IdeviceStatusConnected) { if (indexPath.row == 0) [self captureSysdiagnose]; else if (indexPath.row == 1) [self showProcessList]; else if (indexPath.row == 2) [self takeScreenshot]; else [self.navigationController pushViewController:[[IdeviceSyslogViewController alloc] init] animated:YES]; } }
 }
 
 - (void)editIP {
@@ -311,6 +361,49 @@
             }
         });
     }];
+}
+
+
+- (void)takeScreenshot {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] takeScreenshotWithCompletion:^(UIImage *image, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                UIViewController *vc = [[UIViewController alloc] init];
+                vc.title = @"Screenshot";
+                UIImageView *iv = [[UIImageView alloc] initWithFrame:vc.view.bounds];
+                iv.contentMode = UIViewContentModeScaleAspectFit;
+                iv.image = image;
+                iv.backgroundColor = [UIColor blackColor];
+                iv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                [vc.view addSubview:iv];
+                UIBarButtonItem *shareBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareImage:)];
+                objc_set_associated_object(shareBtn, "img", image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                vc.navigationItem.rightBarButtonItem = shareBtn;
+                [self.navigationController pushViewController:vc animated:YES];
+            }
+        });
+    }];
+}
+
+- (void)shareImage:(UIBarButtonItem *)sender {
+    UIImage *img = objc_get_associated_object(sender, "img");
+    if (!img) return;
+    UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[img] applicationActivities:nil];
+    [self presentViewController:avc animated:YES completion:nil];
 }
 
 @end
