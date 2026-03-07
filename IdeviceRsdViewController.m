@@ -64,7 +64,8 @@
     }
     NSDictionary *svc = self.services[indexPath.row];
     cell.textLabel.text = svc[@"name"] ?: @"Unknown Service";
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"Port: %@ | XPC: %@", svc[@"port"], svc[@"uses_remote_xpc"]];
+    NSString *ent = svc[@"entitlement"];
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"Port: %@%@", svc[@"port"], ent ? [NSString stringWithFormat:@" | %@", ent] : @""];
     return cell;
 }
 

@@ -324,14 +324,14 @@
         if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]);
         return;
     }
-    struct IdeviceProviderHandle *p = self.provider;
+    struct LockdowndClientHandle *lockdown = self.lockdownClient;
+    NSString *ipStr = self.ipAddress;
     [_lock unlock];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        // Step 1: Connect to RSD via lockdown
-        uint16_t port = 0;
+        uint16_t rsd_port = 0;
         bool ssl = false;
-        struct IdeviceFfiError *err = lockdownd_start_service(self.lockdownClient, "com.apple.mobile.restored", &port, &ssl);
+        struct IdeviceFfiError *err = lockdownd_start_service(lockdown, "com.apple.mobile.restored", &rsd_port, &ssl);
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDサービスの開始に失敗しました"];
             if (err) idevice_error_free(err);
@@ -339,42 +339,61 @@
             return;
         }
 
-        // We need a socket connection to create RsdHandshake
-        // Since the current provider is TCP, we might be able to create a new IdeviceHandle
-        struct IdeviceHandle *socket = NULL;
-        struct sockaddr_in sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_port = htons(port);
-        inet_pton(AF_INET, [self.ipAddress UTF8String], &sa.sin_addr);
-
-        err = idevice_new_tcp_socket((const idevice_sockaddr *)&sa, sizeof(sa), "frappe-rsd", &socket);
-        if (err || !socket) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDソケット接続に失敗しました"] : @"RSDソケット接続に失敗しました";
+        struct TcpFeedObject *feeder = NULL;
+        struct TcpEatObject *eater = NULL;
+        struct AdapterHandle *adapter = NULL;
+        err = idevice_tcp_stack_into_sync_objects("0.0.0.0", [ipStr UTF8String], &feeder, &eater, &adapter);
+        if (err || !adapter) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "TCPスタックの初期化に失敗しました"] : @"TCPスタックの初期化に失敗しました";
             if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:7 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
 
-        // RSD handshake requires ReadWriteOpaque which usually comes from adapter or direct socket
-        // In this library, idevice_rsd_checkin(socket) is provided.
-        err = idevice_rsd_checkin(socket);
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDチェックインに失敗しました"];
+        struct ReadWriteOpaque *stream = NULL;
+        err = adapter_connect(adapter, rsd_port, &stream);
+        if (err || !stream) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDストリームの接続に失敗しました"] : @"RSDストリーム de 接続に失敗しました";
             if (err) idevice_error_free(err);
-            idevice_free(socket);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:8 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
 
-        // Now we can try to get services
-        // But the rsd_get_services needs RsdHandshakeHandle.
-        // For now, let's return a simulated response or a placeholder if the chain is too complex
-        // to complete without full adapter management.
+        struct RsdHandshakeHandle *handshake = NULL;
+        err = rsd_handshake_new(stream, &handshake);
+        if (err || !handshake) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDハンドシェイクに失敗しました"] : @"RSDハンドシェイクに失敗しました";
+            if (err) idevice_error_free(err);
+            idevice_stream_free(stream);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:9 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+            return;
+        }
 
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[], nil); });
-        idevice_free(socket);
+        struct CRsdServiceArray *rawServices = NULL;
+        err = rsd_get_services(handshake, &rawServices);
+        if (err || !rawServices) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDサービスの取得に失敗しました"] : @"RSDサービスの取得に失敗しました";
+            if (err) idevice_error_free(err);
+            rsd_handshake_free(handshake);
+            idevice_stream_free(stream);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+            return;
+        }
+
+        NSMutableArray *results = [NSMutableArray array];
+        for (size_t i = 0; i < rawServices->count; i++) {
+            struct CRsdService *s = &rawServices->services[i];
+            NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+            if (s->name) dict[@"name"] = [NSString stringWithUTF8String:s->name];
+            if (s->entitlement) dict[@"entitlement"] = [NSString stringWithUTF8String:s->entitlement];
+            dict[@"port"] = @(s->port);
+            [results addObject:dict];
+        }
+
+        rsd_free_services(rawServices);
+        rsd_handshake_free(handshake);
+        idevice_stream_free(stream);
+
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(results, nil); });
     });
 }
-- (void)dealloc { [self disconnect]; }
-@end
