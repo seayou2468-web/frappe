@@ -85,7 +85,7 @@
 - (void)_performConnect {
     NSString *ip = self.ipAddress; uint16_t port = self.port; NSString *pairingPath = self.pairingFilePath;
     struct sockaddr_in sa; memset(&sa, 0, sizeof(sa)); sa.sin_family = AF_INET; sa.sin_port = htons(port);
-    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"Invalid IP address format"]; return; }
+    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"IPアドレスの形式が正しくありません"]; return; }
     struct IdeviceFfiError *err = NULL; struct IdeviceProviderHandle *localProvider = NULL;
     struct LockdowndClientHandle *localLockdown = NULL; struct HeartbeatClientHandle *localHb = NULL;
     struct IdevicePairingFile *pairingForProvider = NULL; struct IdevicePairingFile *pairingForSession = NULL;
@@ -93,18 +93,18 @@
         err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
         if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
         if (err || !pairingForProvider || !pairingForSession) {
-            [self _handleFfiError:err fallback:@"Failed to load pairing file handles"];
+            [self _handleFfiError:err fallback:@"ペアリングファイルの読み込みに失敗しました"];
             if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
             if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
-    } else { [self _handleError:@"Pairing file not selected"]; return; }
+    } else { [self _handleError:@"ペアリングファイルが選択されていません"]; return; }
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
-    if (err || !localProvider) { [self _handleFfiError:err fallback:@"Failed to create provider"]; idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localProvider) { [self _handleFfiError:err fallback:@"プロバイダーの作成に失敗しました"]; idevice_pairing_file_free(pairingForSession); return; }
     err = lockdownd_connect(localProvider, &localLockdown);
-    if (err || !localLockdown) { [self _handleFfiError:err fallback:@"Failed to connect lockdown"]; idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localLockdown) { [self _handleFfiError:err fallback:@"Lockdownサービスへの接続に失敗しました"]; idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession); return; }
     err = lockdownd_start_session(localLockdown, pairingForSession);
-    if (err) { [self _handleFfiError:err fallback:@"Failed to start session"]; idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); return; }
+    if (err) { [self _handleFfiError:err fallback:@"セッションの開始に失敗しました"]; idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); return; }
     err = heartbeat_connect(localProvider, &localHb); if (err) idevice_error_free(err);
     BOOL ddi = NO; struct ImageMounterHandle *mounter = NULL;
     err = image_mounter_connect(localProvider, &mounter);
@@ -138,7 +138,7 @@
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         struct IdeviceFfiError *err = NULL;
         [strongSelf->_lock lock]; if (strongSelf.heartbeatClient) err = heartbeat_send_polo(strongSelf.heartbeatClient); [strongSelf->_lock unlock];
-        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"Heartbeat lost"; }
+        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"ハートビートが途切れました"; }
     });
 }
 
@@ -168,7 +168,7 @@
     [_lock lock];
     if (self.status != IdeviceStatusConnected || !self.provider) {
         [_lock unlock];
-        if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Not connected"}]);
+        if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]);
         return;
     }
     struct IdeviceProviderHandle *p = self.provider;
@@ -177,7 +177,7 @@
         struct InstallationProxyClientHandle *client = NULL;
         struct IdeviceFfiError *err = installation_proxy_connect(p, &client);
         if (err || !client) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Failed to connect to InstProxy"] : @"Failed to connect to InstProxy";
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "InstProxyへの接続に失敗しました"] : @"InstProxyへの接続に失敗しました";
             if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:2 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
@@ -186,12 +186,11 @@
         err = installation_proxy_get_apps(client, "Any", NULL, 0, &out_result, &out_result_len);
         installation_proxy_client_free(client);
         if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "Failed to get apps"];
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリ一覧の取得に失敗しました"];
             idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
-
         NSMutableArray *finalApps = [NSMutableArray array];
         if (out_result && out_result_len > 0) {
             plist_t *handles = (plist_t *)out_result;
@@ -215,20 +214,8 @@
         case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
         case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
         case PLIST_REAL: { double val = 0; plist_get_real_val(node, &val); return @(val); }
-        case PLIST_STRING: {
-            char *val = NULL; plist_get_string_val(node, &val);
-            if (!val) return @"";
-            NSString *s = [NSString stringWithUTF8String:val];
-            plist_mem_free(val);
-            return s ?: @"";
-        }
-        case PLIST_KEY: {
-            char *val = NULL; plist_get_key_val(node, &val);
-            if (!val) return @"";
-            NSString *s = [NSString stringWithUTF8String:val];
-            plist_mem_free(val);
-            return s ?: @"";
-        }
+        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
+        case PLIST_KEY: { char *val = NULL; plist_get_key_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
         case PLIST_ARRAY: {
             uint32_t size = plist_array_get_size(node);
             if (size > 1000) size = 1000;
@@ -281,11 +268,9 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         uint16_t service_port = 0;
         bool ssl = false;
-        // com.apple.instruments.server.services.deviceinfo is a good candidate for newer devices
         struct IdeviceFfiError *err = lockdownd_start_service(l, "com.apple.instruments.server.services.deviceinfo", &service_port, &ssl);
         if (err) {
             idevice_error_free(err);
-            // Fallback to installation proxy which is always present
             err = lockdownd_start_service(l, "com.apple.mobile.installation_proxy", &service_port, &ssl);
         }
 

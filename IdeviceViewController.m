@@ -15,6 +15,7 @@
 @property (nonatomic, strong) UIView *statusIndicator;
 @property (nonatomic, strong) UIImageView *deviceImageView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
+@property (nonatomic, assign) IdeviceConnectionStatus lastReportedStatus;
 @end
 
 @implementation IdeviceViewController
@@ -23,6 +24,7 @@
     [super viewDidLoad];
     self.title = @"iDevice Tools";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.lastReportedStatus = IdeviceStatusDisconnected;
 
     UIBarButtonItem *backToFmBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
     self.navigationItem.leftBarButtonItem = backToFmBtn;
@@ -85,13 +87,23 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         IdeviceManager *mgr = [IdeviceManager sharedManager];
         UIColor *statusColor = [UIColor grayColor];
-        NSString *statusStr = @"Disconnected";
+        NSString *statusStr = @"切断済み";
+
         switch (mgr.status) {
-            case IdeviceStatusConnecting: statusStr = @"Connecting..."; statusColor = [UIColor orangeColor]; break;
-            case IdeviceStatusConnected: statusStr = @"Connected"; statusColor = [UIColor greenColor]; break;
-            case IdeviceStatusError: statusStr = [NSString stringWithFormat:@"Error: %@", mgr.lastError]; statusColor = [UIColor redColor]; break;
+            case IdeviceStatusConnecting: statusStr = @"接続中..."; statusColor = [UIColor orangeColor]; break;
+            case IdeviceStatusConnected: statusStr = @"接続完了"; statusColor = [UIColor greenColor]; break;
+            case IdeviceStatusError: statusStr = [NSString stringWithFormat:@"エラー: %@", mgr.lastError]; statusColor = [UIColor redColor]; break;
             default: break;
         }
+
+        // Alert if error state is newly reached
+        if (mgr.status == IdeviceStatusError && self.lastReportedStatus != IdeviceStatusError) {
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"接続失敗" message:mgr.lastError preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+        }
+        self.lastReportedStatus = mgr.status;
+
         [UIView animateWithDuration:0.3 animations:^{
             self.statusIndicator.layer.borderColor = statusColor.CGColor;
             self.deviceImageView.tintColor = statusColor;
@@ -100,7 +112,8 @@
             self.statusIndicator.layer.shadowRadius = (mgr.status == IdeviceStatusConnected) ? 10.0 : 0.0;
             self.statusIndicator.layer.shadowOpacity = (mgr.status == IdeviceStatusConnected) ? 0.8 : 0.0;
         }];
-        self.statusLabel.text = [NSString stringWithFormat:@"%@\nIP: %@:%d", statusStr, mgr.ipAddress, mgr.port];
+
+        self.statusLabel.text = [NSString stringWithFormat:@"%@\nIP: %@:%d", statusStr, mgr.ipAddress, (int)mgr.port];
         [self.tableView reloadData];
     });
 }
@@ -122,19 +135,19 @@
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 2; // Connection Settings
-    if (section == 1) return 2; // Pairing
-    if (section == 2) return 1; // Features (Apps)
-    if (section == 3) return 1; // Actions
-    if (section == 4) return 1; // System (Logs)
+    if (section == 0) return 2;
+    if (section == 1) return 2;
+    if (section == 2) return 1;
+    if (section == 3) return 1;
+    if (section == 4) return 1;
     return 0;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) return @"Connection Settings";
-    if (section == 1) return @"Pairing";
-    if (section == 2) return @"Features";
-    if (section == 3) return @"Actions";
-    if (section == 4) return @"System";
+    if (section == 0) return @"接続設定";
+    if (section == 1) return @"ペアリング";
+    if (section == 2) return @"機能";
+    if (section == 3) return @"アクション";
+    if (section == 4) return @"システム";
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -147,24 +160,24 @@
     }
     IdeviceManager *mgr = [IdeviceManager sharedManager];
     if (indexPath.section == 0) {
-        if (indexPath.row == 0) { cell.textLabel.text = @"IP Address"; cell.detailTextLabel.text = mgr.ipAddress; }
-        else { cell.textLabel.text = @"Port"; cell.detailTextLabel.text = [NSString stringWithFormat:@"%d", mgr.port]; }
+        if (indexPath.row == 0) { cell.textLabel.text = @"IPアドレス"; cell.detailTextLabel.text = mgr.ipAddress; }
+        else { cell.textLabel.text = @"ポート"; cell.detailTextLabel.text = [NSString stringWithFormat:@"%d", (int)mgr.port]; }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 1) {
-        if (indexPath.row == 0) { cell.textLabel.text = @"File Picker (iOS Files)"; cell.detailTextLabel.text = mgr.pairingFilePath ? [mgr.pairingFilePath lastPathComponent] : @"None"; }
-        else { cell.textLabel.text = @"Internal File Browser"; cell.detailTextLabel.text = nil; }
+        if (indexPath.row == 0) { cell.textLabel.text = @"ファイルピッカー (iOS Files)"; cell.detailTextLabel.text = mgr.pairingFilePath ? [mgr.pairingFilePath lastPathComponent] : @"未選択"; }
+        else { cell.textLabel.text = @"内部ブラウザで選択"; cell.detailTextLabel.text = nil; }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
-        cell.textLabel.text = @"Installed Applications";
+        cell.textLabel.text = @"インストール済みアプリ";
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor whiteColor] : [UIColor grayColor];
     } else if (indexPath.section == 3) {
-        cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"Disconnect" : @"Connect";
+        cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"切断" : @"接続";
         cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor redColor] : [ThemeEngine liquidColor];
         cell.accessoryType = UITableViewCellAccessoryNone;
     } else if (indexPath.section == 4) {
-        cell.textLabel.text = @"View System Logs"; cell.textLabel.textColor = [UIColor whiteColor];
+        cell.textLabel.text = @"システムログを表示"; cell.textLabel.textColor = [UIColor whiteColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     return cell;
@@ -183,17 +196,17 @@
 }
 
 - (void)editIP {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit IP" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"IPアドレス編集" message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [IdeviceManager sharedManager].ipAddress; }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].ipAddress = alert.textFields.firstObject.text; [self statusChanged]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].ipAddress = alert.textFields.firstObject.text; [self statusChanged]; }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)editPort {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Edit Port" message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%d", [IdeviceManager sharedManager].port]; tf.keyboardType = UIKeyboardTypeNumberPad; }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].port = (uint16_t)[alert.textFields.firstObject.text integerValue]; [self statusChanged]; }]];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ポート編集" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [NSString stringWithFormat:@"%d", (int)[IdeviceManager sharedManager].port]; tf.keyboardType = UIKeyboardTypeNumberPad; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [IdeviceManager sharedManager].port = (uint16_t)[alert.textFields.firstObject.text integerValue]; [self statusChanged]; }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)openSystemFilePicker {
