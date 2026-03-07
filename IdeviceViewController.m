@@ -12,6 +12,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface IdeviceViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate>
+@end
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIView *statusIndicator;
@@ -30,49 +31,6 @@
 - (void)setupUI;
 
 
-- (void)takeScreenshot {
-    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    spinner.center = self.view.center;
-    [self.view addSubview:spinner];
-    [spinner startAnimating];
-    self.view.userInteractionEnabled = NO;
-
-    [[IdeviceManager sharedManager] takeScreenshotWithCompletion:^(UIImage *image, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [spinner stopAnimating];
-            [spinner removeFromSuperview];
-            self.view.userInteractionEnabled = YES;
-
-            if (error) {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            } else {
-                UIViewController *vc = [[UIViewController alloc] init];
-                vc.title = @"Screenshot";
-                UIImageView *iv = [[UIImageView alloc] initWithFrame:vc.view.bounds];
-                iv.contentMode = UIViewContentModeScaleAspectFit;
-                iv.image = image;
-                iv.backgroundColor = [UIColor blackColor];
-                iv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                [vc.view addSubview:iv];
-                UIBarButtonItem *shareBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareImage:)];
-                objc_set_associated_object(shareBtn, "img", image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                vc.navigationItem.rightBarButtonItem = shareBtn;
-                [self.navigationController pushViewController:vc animated:YES];
-            }
-        });
-    }];
-}
-
-- (void)shareImage:(UIBarButtonItem *)sender {
-    UIImage *img = objc_get_associated_object(sender, "img");
-    if (!img) return;
-    UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[img] applicationActivities:nil];
-    [self presentViewController:avc animated:YES completion:nil];
-}
-
-@end
 
 @implementation IdeviceViewController
 
