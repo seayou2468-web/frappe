@@ -35,6 +35,29 @@ typedef struct RsdSession RsdSession;
 @implementation IdeviceManager {
     NSRecursiveLock *_lock;
 }
++ (instancetype)sharedManager {
+    static IdeviceManager *shared = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        shared = [[IdeviceManager alloc] init];
+    });
+    return shared;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _lock = [[NSRecursiveLock alloc] init];
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        _ipAddress = [[defaults stringForKey:@"IdeviceIP"] copy] ?: @"10.7.0.1";
+        _port = (uint16_t)([defaults integerForKey:@"IdevicePort"] ?: 62078);
+        _pairingFilePath = [[defaults stringForKey:@"IdevicePairingPath"] copy];
+        _status = IdeviceStatusDisconnected;
+        idevice_init_logger(Debug, Disabled, NULL);
+    }
+    return self;
+}
+
 
 @synthesize status = _status;
 @synthesize ipAddress = _ipAddress;
@@ -583,30 +606,39 @@ typedef struct RsdSession RsdSession;
     struct IdeviceProviderHandle *p = self.provider;
     [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        // Try Method 1: RSD (Modern)
         RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
         if (!err) {
-            struct ScreenshotClientHandle *client = NULL;
-            err = screenshot_client_connect(rsd.adapter, rsd.handshake, &client);
-            if (!err && client) {
-                uint8_t *data = NULL; uintptr_t len = 0;
-                err = screenshot_client_take_screenshot(client, &data, &len);
-                screenshot_client_free(client);
-                if (!err && data && len > 0) {
-                    NSData *pngData = [NSData dataWithBytes:data length:len];
-                    UIImage *img = [UIImage imageWithData:pngData];
-                    idevice_data_free(data, (uintptr_t)len);
-                    [self _freeRsdSession:&rsd];
-                    if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); });
-                    return;
+            struct RemoteServerHandle *remote_server = NULL;
+            err = remote_server_connect_rsd(rsd.adapter, rsd.handshake, &remote_server);
+            if (!err && remote_server) {
+                struct ScreenshotClientHandle *client = NULL;
+                err = screenshot_client_new(remote_server, &client);
+                if (!err && client) {
+                    uint8_t *data = NULL; uintptr_t len = 0;
+                    err = screenshot_client_take_screenshot(client, &data, &len);
+                    screenshot_client_free(client);
+                    if (!err && data && len > 0) {
+                        NSData *pngData = [NSData dataWithBytes:data length:len];
+                        UIImage *img = [UIImage imageWithData:pngData];
+                        idevice_data_free(data, (uintptr_t)len);
+                        remote_server_free(remote_server);
+                        [self _freeRsdSession:&rsd];
+                        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); });
+                        return;
+                    }
+                    if (data) idevice_data_free(data, (uintptr_t)len);
                 }
-                if (data) idevice_data_free(data, (uintptr_t)len);
+                if (remote_server) remote_server_free(remote_server);
             }
             if (err) idevice_error_free(err);
             [self _freeRsdSession:&rsd];
         } else {
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
         }
+
+        // Method 2: Legacy Screenshotr
         struct ScreenshotrClientHandle *client = NULL;
         err = screenshotr_connect(p, &client);
         if (err || !client) {
@@ -615,15 +647,18 @@ typedef struct RsdSession RsdSession;
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:17 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
+
         struct ScreenshotData data; memset(&data, 0, sizeof(data));
         err = screenshotr_take_screenshot(client, &data);
         screenshotr_client_free(client);
+
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "スクリーンショットの取得に失敗しました"];
             if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:18 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
+
         if (data.data && data.length > 0) {
             NSData *pngData = [NSData dataWithBytes:data.data length:data.length];
             UIImage *img = [UIImage imageWithData:pngData];
