@@ -17,6 +17,69 @@
 @property (nonatomic, strong) UIImageView *deviceImageView;
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
 @property (nonatomic, assign) IdeviceConnectionStatus lastReportedStatus;
+
+- (void)captureSysdiagnose {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] captureSysdiagnoseWithCompletion:^(NSString *path, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"完了" message:[NSString stringWithFormat:@"Sysdiagnoseを保存しました:\n%@", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    }];
+}
+
+
+- (void)showProcessList {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] getProcessListWithCompletion:^(NSArray *processes, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                NSMutableString *msg = [NSMutableString string];
+                // Limit to first 20 processes for display in alert
+                NSInteger count = MIN(processes.count, 20);
+                for (NSInteger i = 0; i < count; i++) {
+                    NSDictionary *p = processes[i];
+                    [msg appendFormat:@"PID: %@ - %@\n", p[@"pid"], [p[@"path"] lastPathComponent] ?: @"Unknown"];
+                }
+                if (processes.count > 20) [msg appendString:@"... 他多数"];
+
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"実行中プロセス" message:msg preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    }];
+}
+
 @end
 
 @implementation IdeviceViewController
@@ -129,13 +192,13 @@
 
 #pragma mark - UITableViewDataSource
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 6; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
     if (section == 1) return 2;
     if (section == 2) return 2; // Features (Apps, RSD)
     if (section == 3) return 1;
-    if (section == 4) return 1;
+    if (section == 4) return 1; if (section == 5) return 2;
     return 0;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -143,7 +206,7 @@
     if (section == 1) return @"ペアリング";
     if (section == 2) return @"機能";
     if (section == 3) return @"アクション";
-    if (section == 4) return @"システム";
+    if (section == 4) return @"システム"; if (section == 5) return @"RSDサービス利用";
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -180,6 +243,15 @@
     } else if (indexPath.section == 4) {
         cell.textLabel.text = @"システムログを表示"; cell.textLabel.textColor = [UIColor whiteColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else if (indexPath.section == 5) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"Sysdiagnoseを取得";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        } else {
+            cell.textLabel.text = @"実行中プロセスを表示";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        }
+        cell.accessoryType = UITableViewCellAccessoryNone;
     }
     return cell;
 }
@@ -199,6 +271,7 @@
     }
     else if (indexPath.section == 3) { if (mgr.status == IdeviceStatusConnected) [mgr disconnect]; else [mgr connect]; }
     else if (indexPath.section == 4) [self.navigationController pushViewController:[[LogViewerViewController alloc] init] animated:YES];
+    else if (indexPath.section == 5) { if (mgr.status == IdeviceStatusConnected) { if (indexPath.row == 0) [self captureSysdiagnose]; else [self showProcessList]; } }
 }
 
 - (void)editIP {
@@ -229,4 +302,67 @@
     [self.navigationController pushViewController:fb animated:YES];
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+
+- (void)captureSysdiagnose {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] captureSysdiagnoseWithCompletion:^(NSString *path, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"完了" message:[NSString stringWithFormat:@"Sysdiagnoseを保存しました:\n%@", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    }];
+}
+
+
+- (void)showProcessList {
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+    self.view.userInteractionEnabled = NO;
+
+    [[IdeviceManager sharedManager] getProcessListWithCompletion:^(NSArray *processes, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [spinner stopAnimating];
+            [spinner removeFromSuperview];
+            self.view.userInteractionEnabled = YES;
+
+            if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                NSMutableString *msg = [NSMutableString string];
+                // Limit to first 20 processes for display in alert
+                NSInteger count = MIN(processes.count, 20);
+                for (NSInteger i = 0; i < count; i++) {
+                    NSDictionary *p = processes[i];
+                    [msg appendFormat:@"PID: %@ - %@\n", p[@"pid"], [p[@"path"] lastPathComponent] ?: @"Unknown"];
+                }
+                if (processes.count > 20) [msg appendString:@"... 他多数"];
+
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"実行中プロセス" message:msg preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    }];
+}
+
 @end
