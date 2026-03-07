@@ -1,75 +1,55 @@
-import sys
+import re
 
-filepath = 'IdeviceManager.m'
-with open(filepath, 'r') as f:
+with open('IdeviceManager.m', 'r') as f:
     content = f.read()
 
-# Fix idevice_tcp_provider_new call and reorder logic to load pairing file first
-old_block = """    struct IdeviceFfiError *err = NULL;
-    struct IdeviceProviderHandle *provider = NULL;
+# Fix image_mounter_copy_devices call and memory management
+old_ddi_block = r"""        plist_t devices = NULL; size_t count = 0;
+        err = image_mounter_copy_devices(mounter, &devices, &count);
+        if (!err) ddi = (count > 0); else idevice_error_free(err);
+        image_mounter_free(mounter);"""
 
-    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, sizeof(sa), &provider);
-    if (err) {
-        [self _handleFfiError:err];
-        return;
-    }
-    self.provider = provider;
+new_ddi_block = r"""        plist_t *devices = NULL; size_t count = 0;
+        err = image_mounter_copy_devices(mounter, &devices, &count);
+        if (!err) {
+            ddi = (count > 0);
+            if (devices) idevice_plist_array_free(devices, (uintptr_t)count);
+        } else {
+            idevice_error_free(err);
+        }
+        image_mounter_free(mounter);"""
 
-    struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_connect(provider, &lockdown);
-    if (err) {
-        [self _handleFfiError:err];
-        return;
-    }
-    self.lockdownClient = lockdown;
+content = content.replace(old_ddi_block, new_ddi_block)
 
-    if (self.pairingFilePath) {
-        struct IdevicePairingFile *pairingFile = NULL;
-        err = idevice_pairing_file_read([self.pairingFilePath UTF8String], &pairingFile);
-        if (err) {
-            [self _handleFfiError:err];
+# Ensure pairingFilePath check is robust
+old_pairing_check = r"""    if (pairingPath) {
+        err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
+        if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
+        if (err || !pairingForProvider || !pairingForSession) {
+            [self _handleFfiError:err fallback:@"ペアリングファイルの読み込みに失敗しました"];
+            if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
+            if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
+    } else { [self _handleError:@"ペアリングファイルが選択されていません"]; return; }"""
 
-        err = lockdownd_start_session(lockdown, pairingFile);
-        idevice_pairing_file_free(pairingFile);"""
-
-new_block = """    struct IdeviceFfiError *err = NULL;
-    struct IdeviceProviderHandle *provider = NULL;
-    struct IdevicePairingFile *pairingFile = NULL;
-
-    if (self.pairingFilePath) {
-        err = idevice_pairing_file_read([self.pairingFilePath UTF8String], &pairingFile);
-        if (err) {
-            [self _handleFfiError:err];
+new_pairing_check = r"""    if (pairingPath && pairingPath.length > 0) {
+        err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
+        if (!err) {
+            err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
+        }
+        if (err || !pairingForProvider || !pairingForSession) {
+            [self _handleFfiError:err fallback:@"ペアリングファイルの読み込みに失敗しました"];
+            if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
+            if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
     } else {
-        [self _handleError:@"Pairing file not selected"];
+        [self _handleError:@"ペアリングファイルが選択されていません。設定から選択してください。"];
         return;
-    }
+    }"""
 
-    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingFile, "frappe-idevice", &provider);
-    if (err) {
-        if (pairingFile) idevice_pairing_file_free(pairingFile);
-        [self _handleFfiError:err];
-        return;
-    }
-    self.provider = provider;
+content = content.replace(old_pairing_check, new_pairing_check)
 
-    struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_connect(provider, &lockdown);
-    if (err) {
-        if (pairingFile) idevice_pairing_file_free(pairingFile);
-        [self _handleFfiError:err];
-        return;
-    }
-    self.lockdownClient = lockdown;
-
-    err = lockdownd_start_session(lockdown, pairingFile);
-    idevice_pairing_file_free(pairingFile);"""
-
-content = content.replace(old_block, new_block)
-
-with open(filepath, 'w') as f:
+with open('IdeviceManager.m', 'w') as f:
     f.write(content)

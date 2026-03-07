@@ -85,33 +85,63 @@
 - (void)_performConnect {
     NSString *ip = self.ipAddress; uint16_t port = self.port; NSString *pairingPath = self.pairingFilePath;
     struct sockaddr_in sa; memset(&sa, 0, sizeof(sa)); sa.sin_family = AF_INET; sa.sin_port = htons(port);
-    if (inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"IPアドレスの形式が正しくありません"]; return; }
+    if (!ip || ip.length == 0 || inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"IPアドレスの形式が正しくありません"]; return; }
     struct IdeviceFfiError *err = NULL; struct IdeviceProviderHandle *localProvider = NULL;
     struct LockdowndClientHandle *localLockdown = NULL; struct HeartbeatClientHandle *localHb = NULL;
     struct IdevicePairingFile *pairingForProvider = NULL; struct IdevicePairingFile *pairingForSession = NULL;
-    if (pairingPath) {
+    if (pairingPath && pairingPath.length > 0) {
         err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForProvider);
-        if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
+        if (!err) {
+            err = idevice_pairing_file_read([pairingPath UTF8String], &pairingForSession);
+        }
         if (err || !pairingForProvider || !pairingForSession) {
             [self _handleFfiError:err fallback:@"ペアリングファイルの読み込みに失敗しました"];
             if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
             if (pairingForSession) idevice_pairing_file_free(pairingForSession);
             return;
         }
-    } else { [self _handleError:@"ペアリングファイルが選択されていません"]; return; }
+    } else {
+        [self _handleError:@"ペアリングファイルが選択されていません。設定から選択してください。"];
+        return;
+    }
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
-    if (err || !localProvider) { [self _handleFfiError:err fallback:@"プロバイダーの作成に失敗しました"]; idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localProvider) {
+        [self _handleFfiError:err fallback:@"プロバイダーの作成に失敗しました"];
+        idevice_pairing_file_free(pairingForProvider);
+        idevice_pairing_file_free(pairingForSession);
+        return;
+    }
+    // Note: localProvider now owns pairingForProvider logic internally usually,
+    // but if idevice_tcp_provider_new fails, we must free it.
+
     err = lockdownd_connect(localProvider, &localLockdown);
-    if (err || !localLockdown) { [self _handleFfiError:err fallback:@"Lockdownサービスへの接続に失敗しました"]; idevice_provider_free(localProvider); idevice_pairing_file_free(pairingForSession); return; }
+    if (err || !localLockdown) {
+        [self _handleFfiError:err fallback:@"Lockdownサービスへの接続に失敗しました"];
+        idevice_provider_free(localProvider);
+        idevice_pairing_file_free(pairingForSession);
+        return;
+    }
+
     err = lockdownd_start_session(localLockdown, pairingForSession);
-    if (err) { [self _handleFfiError:err fallback:@"セッションの開始に失敗しました"]; idevice_pairing_file_free(pairingForSession); lockdownd_client_free(localLockdown); idevice_provider_free(localProvider); return; }
+    if (err) {
+        [self _handleFfiError:err fallback:@"セッションの開始に失敗しました"];
+        idevice_pairing_file_free(pairingForSession);
+        lockdownd_client_free(localLockdown);
+        idevice_provider_free(localProvider);
+        return;
+    }
     err = heartbeat_connect(localProvider, &localHb); if (err) idevice_error_free(err);
     BOOL ddi = NO; struct ImageMounterHandle *mounter = NULL;
     err = image_mounter_connect(localProvider, &mounter);
     if (!err && mounter) {
-        plist_t devices = NULL; size_t count = 0;
+        plist_t *devices = NULL; size_t count = 0;
         err = image_mounter_copy_devices(mounter, &devices, &count);
-        if (!err) ddi = (count > 0); else idevice_error_free(err);
+        if (!err) {
+            ddi = (count > 0);
+            if (devices) idevice_plist_array_free(devices, (uintptr_t)count);
+        } else {
+            if (err) idevice_error_free(err);
+        }
         image_mounter_free(mounter);
     } else if (err) idevice_error_free(err);
     [_lock lock];
@@ -138,7 +168,7 @@
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         struct IdeviceFfiError *err = NULL;
         [strongSelf->_lock lock]; if (strongSelf.heartbeatClient) err = heartbeat_send_polo(strongSelf.heartbeatClient); [strongSelf->_lock unlock];
-        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"ハートビートが途切れました"; }
+        if (err) { if (err) idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"ハートビートが途切れました"; }
     });
 }
 
@@ -187,7 +217,7 @@
         installation_proxy_client_free(client);
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリ一覧の取得に失敗しました"];
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
@@ -270,13 +300,13 @@
         bool ssl = false;
         struct IdeviceFfiError *err = lockdownd_start_service(l, "com.apple.instruments.server.services.deviceinfo", &service_port, &ssl);
         if (err) {
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
             err = lockdownd_start_service(l, "com.apple.mobile.installation_proxy", &service_port, &ssl);
         }
 
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "サービスの開始に失敗しました"];
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:4 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
@@ -304,7 +334,7 @@
         struct IdeviceFfiError *err = lockdownd_start_service(self.lockdownClient, "com.apple.mobile.restored", &port, &ssl);
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDサービスの開始に失敗しました"];
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:6 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
@@ -331,7 +361,7 @@
         err = idevice_rsd_checkin(socket);
         if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDチェックインに失敗しました"];
-            idevice_error_free(err);
+            if (err) idevice_error_free(err);
             idevice_free(socket);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:8 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;

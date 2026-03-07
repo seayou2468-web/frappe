@@ -32,6 +32,14 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusChanged) name:@"IdeviceStatusChanged" object:nil];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    IdeviceManager *mgr = [IdeviceManager sharedManager];
+    if (mgr.status == IdeviceStatusDisconnected && mgr.pairingFilePath.length > 0) {
+        [mgr connect];
+    }
+}
+
 - (void)setupUI {
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.backgroundColor = [UIColor clearColor];

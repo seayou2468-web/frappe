@@ -1,26 +1,10 @@
-import sys
-import os
+import re
 
-def add_dealloc(filepath):
-    with open(filepath, 'r') as f:
-        lines = f.readlines()
+with open('IdeviceManager.m', 'r') as f:
+    content = f.read()
 
-    if any('dealloc' in line for line in lines):
-        print(f"{filepath} already has dealloc")
-        return
+if '- (void)dealloc {' not in content:
+    content = content.replace('@end', '- (void)dealloc { [self disconnect]; }\n@end')
 
-    new_lines = []
-    found_end = False
-    for line in reversed(lines):
-        if not found_end and '@end' in line:
-            new_lines.insert(0, line)
-            new_lines.insert(0, '- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }\n\n')
-            found_end = True
-        else:
-            new_lines.insert(0, line)
-
-    with open(filepath, 'w') as f:
-        f.writelines(new_lines)
-
-add_dealloc('IdeviceViewController.m')
-add_dealloc('MainContainerViewController.m')
+with open('IdeviceManager.m', 'w') as f:
+    f.write(content)
