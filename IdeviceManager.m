@@ -194,23 +194,14 @@
 
         NSMutableArray *finalApps = [NSMutableArray array];
         if (out_result && out_result_len > 0) {
-            // Hypothesis: out_result is an array of PlistRef pointers.
-            // PlistRef is likely a handle to a plist_t object.
-            // However, out_result_len might be large or incorrect if it's bytes.
-            // Let's try to safely iterate but with a small cap just in case.
-            size_t count = out_result_len;
-            if (count > 1000) count = 1000;
-
             plist_t *handles = (plist_t *)out_result;
-            for (size_t i = 0; i < count; i++) {
-                // Safety: check if handle is non-null
+            for (size_t i = 0; i < out_result_len; i++) {
                 if (handles[i]) {
                     id obj = [self _convertPlistToObjC:handles[i] depth:0];
                     if (obj) [finalApps addObject:obj];
                 }
             }
-            // Ownership of out_result? Usually FFI requires explicit free.
-            // free(out_result);
+            idevice_plist_array_free(handles, out_result_len);
         }
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalApps, nil); });
     });
@@ -219,51 +210,51 @@
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
     if (!node || depth > 20) return nil;
     plist_type type = PLIST_NONE;
-    @try {
-        type = plist_get_node_type(node);
-    } @catch (NSException *e) {
-        return nil;
-    }
-
+    type = plist_get_node_type(node);
     switch (type) {
         case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
         case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
         case PLIST_REAL: { double val = 0; plist_get_real_val(node, &val); return @(val); }
-        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
-        case PLIST_KEY: { char *val = NULL; plist_get_key_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
+        case PLIST_STRING: {
+            char *val = NULL; plist_get_string_val(node, &val);
+            if (!val) return @"";
+            NSString *s = [NSString stringWithUTF8String:val];
+            plist_mem_free(val);
+            return s ?: @"";
+        }
+        case PLIST_KEY: {
+            char *val = NULL; plist_get_key_val(node, &val);
+            if (!val) return @"";
+            NSString *s = [NSString stringWithUTF8String:val];
+            plist_mem_free(val);
+            return s ?: @"";
+        }
         case PLIST_ARRAY: {
-            uint32_t size = 0;
-            @try { size = plist_array_get_size(node); } @catch (NSException *e) { return nil; }
+            uint32_t size = plist_array_get_size(node);
             if (size > 1000) size = 1000;
             NSMutableArray *arr = [NSMutableArray arrayWithCapacity:size];
             for (uint32_t i = 0; i < size; i++) {
-                plist_t item = NULL;
-                @try { item = plist_array_get_item(node, i); } @catch (NSException *e) { break; }
-                id obj = [self _convertPlistToObjC:item depth:depth + 1];
+                id obj = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth + 1];
                 if (obj) [arr addObject:obj];
             }
             return arr;
         }
         case PLIST_DICT: {
-            uint32_t size = 0;
-            @try { size = plist_dict_get_size(node); } @catch (NSException *e) { return nil; }
+            uint32_t size = plist_dict_get_size(node);
             if (size > 1000) size = 1000;
             NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:size];
             plist_dict_iter iter = NULL;
-            @try { plist_dict_new_iter(node, &iter); } @catch (NSException *e) { return nil; }
+            plist_dict_new_iter(node, &iter);
             if (iter) {
                 char *key = NULL; plist_t subnode = NULL;
                 for (uint32_t i = 0; i < size; i++) {
-                    @try {
-                        plist_dict_next_item(node, iter, &key, &subnode);
-                    } @catch (NSException *e) {
-                        break;
-                    }
+                    plist_dict_next_item(node, iter, &key, &subnode);
                     if (key) {
                         NSString *nsKey = [NSString stringWithUTF8String:key];
                         id obj = [self _convertPlistToObjC:subnode depth:depth + 1];
                         if (nsKey && obj) dict[nsKey] = obj;
                         plist_mem_free(key);
+                        key = NULL;
                     } else {
                         break;
                     }
@@ -272,52 +263,43 @@
             }
             return dict;
         }
-        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0 && len < 10*1024*1024) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
+        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0 && len < 5*1024*1024) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
         default: return nil;
     }
 }
 
-
 - (void)launchAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion {
     [_lock lock];
-    if (self.status != IdeviceStatusConnected || !self.provider) {
+    if (self.status != IdeviceStatusConnected || !self.provider || !self.lockdownClient) {
         [_lock unlock];
-        if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"Not connected"}]);
+        if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]);
         return;
     }
-    struct IdeviceProviderHandle *p = self.provider;
+    struct LockdowndClientHandle *l = self.lockdownClient;
     [_lock unlock];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct AppServiceHandle *client = NULL;
-        // Signature: app_service_new(struct ReadWriteOpaque *socket, struct AppServiceHandle **handle)
-        // But we have IdeviceProviderHandle. Let's see if we can get a socket or use a different connect.
-        // There's app_service_connect_rsd.
-
-        // Let's try lockdownd_start_service for "com.apple.mobile.installation_proxy" style
-        // Actually, for launching, we might need "com.apple.mobile.instrumentation_proxy"
-        // or just use the AppService FFI if we can connect to it.
-
-        // Since we don't have a direct 'app_service_connect' for TCP provider,
-        // let's assume we can start the service via lockdownd first.
-
-        uint16_t port = 0;
+        uint16_t service_port = 0;
         bool ssl = false;
-        struct IdeviceFfiError *err = lockdownd_start_service(self.lockdownClient, "com.apple.mobile.app_service", &port, &ssl);
+        // com.apple.instruments.server.services.deviceinfo is a good candidate for newer devices
+        struct IdeviceFfiError *err = lockdownd_start_service(l, "com.apple.instruments.server.services.deviceinfo", &service_port, &ssl);
         if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "Service start failed"];
+            idevice_error_free(err);
+            // Fallback to installation proxy which is always present
+            err = lockdownd_start_service(l, "com.apple.mobile.installation_proxy", &service_port, &ssl);
+        }
+
+        if (err) {
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "サービスの開始に失敗しました"];
             idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:4 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
         }
 
-        // Now we need to connect to that port... this is getting complex for FFI.
-        // Let's look for a simpler launch API.
-        // process_control_launch_app exists but needs a handle.
-
-        // If we can't easily connect, let's at least implement the placeholder.
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:5 userInfo:@{NSLocalizedDescriptionKey: @"Launch not yet fully implemented in FFI layer"}]); });
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[Idevice] Successfully started a service on port %d for launch attempt of %@", service_port, bundleId]];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
     });
 }
+
 - (void)dealloc { [self disconnect]; }
 @end

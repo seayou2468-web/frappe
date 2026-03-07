@@ -13,7 +13,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Installed Apps";
+    self.title = @"インストール済みアプリ";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     [self setupUI];
     [self loadApps];
@@ -44,11 +44,16 @@
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         [strongSelf.spinner stopAnimating];
         if (error) {
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [strongSelf presentViewController:alert animated:YES completion:nil];
         } else {
-            strongSelf.apps = apps ?: @[];
+            // Sort apps by name
+            strongSelf.apps = [apps sortedArrayUsingComparator:^NSComparisonResult(id obj1, id obj2) {
+                NSString *n1 = obj1[@"CFBundleDisplayName"] ?: obj1[@"CFBundleName"] ?: @"";
+                NSString *n2 = obj2[@"CFBundleDisplayName"] ?: obj2[@"CFBundleName"] ?: @"";
+                return [n1 localizedCompare:n2];
+            }];
             [strongSelf.tableView reloadData];
         }
     }];
@@ -65,14 +70,12 @@
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     id item = (indexPath.row < self.apps.count) ? self.apps[indexPath.row] : nil;
-    NSString *name = @"Unknown App";
+    NSString *name = @"不明なアプリ";
     NSString *bid = @"";
     if ([item isKindOfClass:[NSDictionary class]]) {
         NSDictionary *app = (NSDictionary *)item;
-        name = [NSString stringWithFormat:@"%@", app[@"CFBundleDisplayName"] ?: app[@"CFBundleName"] ?: @"Unknown"];
+        name = [NSString stringWithFormat:@"%@", app[@"CFBundleDisplayName"] ?: app[@"CFBundleName"] ?: @"不明"];
         bid = [NSString stringWithFormat:@"%@", app[@"CFBundleIdentifier"] ?: @""];
-    } else if (item) {
-        name = [NSString stringWithFormat:@"%@", item];
     }
     cell.textLabel.text = name;
     cell.detailTextLabel.text = bid;
@@ -83,9 +86,8 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     id item = self.apps[indexPath.row];
     if ([item isKindOfClass:[NSDictionary class]]) {
-        IdeviceAppDetailViewController *vc = [[IdeviceAppDetailViewController alloc] initWithAppInfo:(NSDictionary *)item];
+        IdeviceAppDetailViewController *vc = [[IdeviceAppDetailViewController alloc] initWithData:item title:@"アプリ詳細"];
         [self.navigationController pushViewController:vc animated:YES];
     }
 }
-
 @end
