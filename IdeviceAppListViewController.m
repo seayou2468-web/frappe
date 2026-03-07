@@ -5,7 +5,8 @@
 
 @interface IdeviceAppListViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) NSArray *apps;
+@property (nonatomic, strong) NSArray *userApps;
+@property (nonatomic, strong) NSArray *systemApps;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @end
 
@@ -48,18 +49,44 @@
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [strongSelf presentViewController:alert animated:YES completion:nil];
         } else {
-            // Sort apps by name
-            strongSelf.apps = [apps sortedArrayUsingComparator:^NSComparisonResult(id obj1, id obj2) {
+            NSMutableArray *u = [NSMutableArray array];
+            NSMutableArray *s = [NSMutableArray array];
+
+            for (NSDictionary *app in apps) {
+                if (![app isKindOfClass:[NSDictionary class]]) continue;
+                NSString *type = app[@"ApplicationType"];
+                if ([type isEqualToString:@"System"]) [s addObject:app];
+                else [u addObject:app];
+            }
+
+            NSComparator comp = ^NSComparisonResult(id obj1, id obj2) {
                 NSString *n1 = obj1[@"CFBundleDisplayName"] ?: obj1[@"CFBundleName"] ?: @"";
                 NSString *n2 = obj2[@"CFBundleDisplayName"] ?: obj2[@"CFBundleName"] ?: @"";
                 return [n1 localizedCompare:n2];
-            }];
+            };
+
+            strongSelf.userApps = [u sortedArrayUsingComparator:comp];
+            strongSelf.systemApps = [s sortedArrayUsingComparator:comp];
             [strongSelf.tableView reloadData];
         }
     }];
 }
 
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.apps.count; }
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 2;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return (section == 0) ? self.userApps.count : self.systemApps.count;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0) return self.userApps.count > 0 ? @"ユーザーアプリ" : nil;
+    return self.systemApps.count > 0 ? @"システムアプリ" : nil;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"AppCell"];
     if (!cell) {
@@ -69,11 +96,13 @@
         cell.detailTextLabel.textColor = [UIColor lightGrayColor];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
-    id item = (indexPath.row < self.apps.count) ? self.apps[indexPath.row] : nil;
+
+    NSArray *source = (indexPath.section == 0) ? self.userApps : self.systemApps;
+    NSDictionary *app = (indexPath.row < source.count) ? source[indexPath.row] : nil;
+
     NSString *name = @"不明なアプリ";
     NSString *bid = @"";
-    if ([item isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *app = (NSDictionary *)item;
+    if (app) {
         name = [NSString stringWithFormat:@"%@", app[@"CFBundleDisplayName"] ?: app[@"CFBundleName"] ?: @"不明"];
         bid = [NSString stringWithFormat:@"%@", app[@"CFBundleIdentifier"] ?: @""];
     }
@@ -84,7 +113,8 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    id item = self.apps[indexPath.row];
+    NSArray *source = (indexPath.section == 0) ? self.userApps : self.systemApps;
+    id item = source[indexPath.row];
     if ([item isKindOfClass:[NSDictionary class]]) {
         IdeviceAppDetailViewController *vc = [[IdeviceAppDetailViewController alloc] initWithData:item title:@"アプリ詳細"];
         [self.navigationController pushViewController:vc animated:YES];
