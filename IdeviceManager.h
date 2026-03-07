@@ -27,4 +27,7 @@ typedef NS_ENUM(NSInteger, IdeviceConnectionStatus) {
 - (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion;
 - (void)launchAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion;
 
+// RSD Support
+- (void)getRsdServicesWithCompletion:(void (^)(NSArray *services, NSError *error))completion;
+
 @end

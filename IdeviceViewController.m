@@ -4,6 +4,7 @@
 #import "FileBrowserViewController.h"
 #import "LogViewerViewController.h"
 #import "IdeviceAppListViewController.h"
+#import "IdeviceRsdViewController.h"
 #import "BottomMenuView.h"
 #import "MainContainerViewController.h"
 #import "TabManager.h"
@@ -25,10 +26,8 @@
     self.title = @"iDevice Tools";
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
     self.lastReportedStatus = IdeviceStatusDisconnected;
-
     UIBarButtonItem *backToFmBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
     self.navigationItem.leftBarButtonItem = backToFmBtn;
-
     [self setupUI];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusChanged) name:@"IdeviceStatusChanged" object:nil];
 }
@@ -40,13 +39,11 @@
     self.tableView.dataSource = self;
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.tableView];
-
     self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeFiles];
     self.bottomMenu.translatesAutoresizingMaskIntoConstraints = NO;
     __weak typeof(self) weakSelf = self;
     self.bottomMenu.onAction = ^(BottomMenuAction action) { [weakSelf handleMenuAction:action]; };
     [self.view addSubview:self.bottomMenu];
-
     [NSLayoutConstraint activateConstraints:@[
         [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -57,7 +54,6 @@
         [self.bottomMenu.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [self.bottomMenu.heightAnchor constraintEqualToConstant:60 + [UIApplication sharedApplication].keyWindow.safeAreaInsets.bottom]
     ]];
-
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 180)];
     self.statusIndicator = [[UIView alloc] initWithFrame:CGRectMake((header.frame.size.width - 100) / 2, 20, 100, 100)];
     self.statusIndicator.layer.cornerRadius = 50;
@@ -65,20 +61,17 @@
     self.statusIndicator.layer.borderColor = [UIColor grayColor].CGColor;
     self.statusIndicator.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
     [header addSubview:self.statusIndicator];
-
     self.deviceImageView = [[UIImageView alloc] initWithFrame:CGRectMake(25, 25, 50, 50)];
     self.deviceImageView.contentMode = UIViewContentModeScaleAspectFit;
     self.deviceImageView.image = [UIImage systemImageNamed:@"iphone"];
     self.deviceImageView.tintColor = [UIColor whiteColor];
     [self.statusIndicator addSubview:self.deviceImageView];
-
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 130, header.frame.size.width, 50)];
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
     self.statusLabel.numberOfLines = 0;
     self.statusLabel.textColor = [UIColor whiteColor];
     self.statusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     [header addSubview:self.statusLabel];
-
     self.tableView.tableHeaderView = header;
     [self statusChanged];
 }
@@ -88,22 +81,18 @@
         IdeviceManager *mgr = [IdeviceManager sharedManager];
         UIColor *statusColor = [UIColor grayColor];
         NSString *statusStr = @"切断済み";
-
         switch (mgr.status) {
             case IdeviceStatusConnecting: statusStr = @"接続中..."; statusColor = [UIColor orangeColor]; break;
             case IdeviceStatusConnected: statusStr = @"接続完了"; statusColor = [UIColor greenColor]; break;
             case IdeviceStatusError: statusStr = [NSString stringWithFormat:@"エラー: %@", mgr.lastError]; statusColor = [UIColor redColor]; break;
             default: break;
         }
-
-        // Alert if error state is newly reached
         if (mgr.status == IdeviceStatusError && self.lastReportedStatus != IdeviceStatusError) {
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"接続失敗" message:mgr.lastError preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [self presentViewController:alert animated:YES completion:nil];
         }
         self.lastReportedStatus = mgr.status;
-
         [UIView animateWithDuration:0.3 animations:^{
             self.statusIndicator.layer.borderColor = statusColor.CGColor;
             self.deviceImageView.tintColor = statusColor;
@@ -112,7 +101,6 @@
             self.statusIndicator.layer.shadowRadius = (mgr.status == IdeviceStatusConnected) ? 10.0 : 0.0;
             self.statusIndicator.layer.shadowOpacity = (mgr.status == IdeviceStatusConnected) ? 0.8 : 0.0;
         }];
-
         self.statusLabel.text = [NSString stringWithFormat:@"%@\nIP: %@:%d", statusStr, mgr.ipAddress, (int)mgr.port];
         [self.tableView reloadData];
     });
@@ -137,7 +125,7 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
     if (section == 1) return 2;
-    if (section == 2) return 1;
+    if (section == 2) return 2; // Features (Apps, RSD)
     if (section == 3) return 1;
     if (section == 4) return 1;
     return 0;
@@ -168,10 +156,15 @@
         else { cell.textLabel.text = @"内部ブラウザで選択"; cell.detailTextLabel.text = nil; }
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
-        cell.textLabel.text = @"インストール済みアプリ";
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"インストール済みアプリ";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor whiteColor] : [UIColor grayColor];
+        } else {
+            cell.textLabel.text = @"RSD サービスブラウザ";
+            cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor whiteColor] : [UIColor grayColor];
+        }
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor whiteColor] : [UIColor grayColor];
     } else if (indexPath.section == 3) {
         cell.textLabel.text = (mgr.status == IdeviceStatusConnected) ? @"切断" : @"接続";
         cell.textLabel.textColor = (mgr.status == IdeviceStatusConnected) ? [UIColor redColor] : [ThemeEngine liquidColor];
@@ -190,7 +183,12 @@
     IdeviceManager *mgr = [IdeviceManager sharedManager];
     if (indexPath.section == 0) { if (indexPath.row == 0) [self editIP]; else [self editPort]; }
     else if (indexPath.section == 1) { if (indexPath.row == 0) [self openSystemFilePicker]; else [self openInternalFileBrowser]; }
-    else if (indexPath.section == 2) { if (mgr.status == IdeviceStatusConnected) [self.navigationController pushViewController:[[IdeviceAppListViewController alloc] init] animated:YES]; }
+    else if (indexPath.section == 2) {
+        if (mgr.status == IdeviceStatusConnected) {
+            if (indexPath.row == 0) [self.navigationController pushViewController:[[IdeviceAppListViewController alloc] init] animated:YES];
+            else [self.navigationController pushViewController:[[IdeviceRsdViewController alloc] init] animated:YES];
+        }
+    }
     else if (indexPath.section == 3) { if (mgr.status == IdeviceStatusConnected) [mgr disconnect]; else [mgr connect]; }
     else if (indexPath.section == 4) [self.navigationController pushViewController:[[LogViewerViewController alloc] init] animated:YES];
 }
