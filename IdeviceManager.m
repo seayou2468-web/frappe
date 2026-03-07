@@ -63,15 +63,21 @@ typedef struct RsdSession RsdSession;
 
 - (BOOL)ddiMounted { [_lock lock]; BOOL mounted = _ddiMounted; [_lock unlock]; return mounted; }
 
+
 - (BOOL)heartbeatActive { [_lock lock]; BOOL active = _heartbeatActive; [_lock unlock]; return active; }
+
 
 - (IdeviceConnectionStatus)status { [_lock lock]; IdeviceConnectionStatus s = _status; [_lock unlock]; return s; }
 
+
 - (NSString *)ipAddress { [_lock lock]; NSString *ip = [_ipAddress copy]; [_lock unlock]; return ip; }
+
 
 - (NSString *)lastError { [_lock lock]; NSString *err = [_lastError copy]; [_lock unlock]; return err; }
 
+
 - (NSString *)pairingFilePath { [_lock lock]; NSString *path = [_pairingFilePath copy]; [_lock unlock]; return path; }
+
 
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
     if (!node || depth > 20) return nil;
@@ -142,7 +148,11 @@ typedef struct RsdSession RsdSession;
     NSString *ipStr = [self.ipAddress copy];
     [_lock unlock];
     if (!lockdown || !provider || !ipStr) return NULL;
+
     struct IdeviceFfiError *err = NULL;
+    struct IdeviceFfiError *last_err = NULL;
+
+    // Method 1: CoreDeviceProxy (Modern iOS 17+)
     struct CoreDeviceProxyHandle *proxy = NULL;
     err = core_device_proxy_connect(provider, &proxy);
     if (!err && proxy) {
@@ -151,22 +161,30 @@ typedef struct RsdSession RsdSession;
         err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
         if (!err && rsd_port > 0) {
             struct AdapterHandle *adapter = NULL;
+            // The proxy handle is consumed by create_tcp_adapter
             err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
             if (!err && adapter) {
                 session->adapter = adapter;
+                session->proxy = NULL; // Mark as consumed
                 struct ReadWriteOpaque *stream = NULL;
                 err = adapter_connect(adapter, rsd_port, &stream);
                 if (!err && stream) {
                     session->stream = stream;
                     struct RsdHandshakeHandle *handshake = NULL;
+                    // The stream handle is consumed by rsd_handshake_new
                     err = rsd_handshake_new(stream, &handshake);
-                    if (!err && handshake) { session->handshake = handshake; return NULL; }
+                    if (!err && handshake) {
+                        session->handshake = handshake;
+                        session->stream = NULL; // Mark as consumed
+                        return NULL;
+                    }
                 }
             }
         }
     }
-    if (err) idevice_error_free(err);
+    if (err) { if (last_err) idevice_error_free(last_err); last_err = err; }
     [self _freeRsdSession:session];
+
     const char *services[] = {"com.apple.mobile.restored", "com.apple.remoteserver", "com.apple.remoteserviceproxy"};
     for (int i = 0; i < 3; i++) {
         uint16_t rsd_port = 0; bool ssl = false;
@@ -183,17 +201,23 @@ typedef struct RsdSession RsdSession;
                     session->stream = stream;
                     struct RsdHandshakeHandle *handshake = NULL;
                     err = rsd_handshake_new(stream, &handshake);
-                    if (!err && handshake) { session->handshake = handshake; return NULL; }
+                    if (!err && handshake) {
+                        session->handshake = handshake;
+                        session->stream = NULL; // Consumed
+                        if (last_err) idevice_error_free(last_err);
+                        return NULL;
+                    }
                 }
             }
         }
-        if (err) idevice_error_free(err);
+        if (err) { if (last_err) idevice_error_free(last_err); last_err = err; }
         [self _freeRsdSession:session];
     }
-    return NULL;
+    return last_err;
 }
 
 - (uint16_t)port { [_lock lock]; uint16_t p = _port; [_lock unlock]; return p; }
+
 
 - (void)_bridgeTcpForSession:(RsdSession *)session ip:(NSString *)ip port:(uint16_t)port {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -221,9 +245,18 @@ typedef struct RsdSession RsdSession;
             uint8_t *data = NULL; uintptr_t len = 0;
             struct IdeviceFfiError *err = idevice_tcp_eat_object_read(eater, &data, &len);
             if (err) { idevice_error_free(err); break; }
-            if (data && len > 0) { send(sock, data, len, 0); idevice_data_free(data, len); }
-            else if (data) { idevice_data_free(data, len); }
-            else { break; }
+            if (data && len > 0) {
+#ifdef MSG_NOSIGNAL
+                send(sock, data, len, MSG_NOSIGNAL);
+#else
+                send(sock, data, len, 0);
+#endif
+                idevice_data_free(data, len);
+            } else if (data) {
+                idevice_data_free(data, len);
+            } else {
+                break;
+            }
         }
         close(sock);
     });
@@ -232,7 +265,11 @@ typedef struct RsdSession RsdSession;
 - (void)_freeRsdSession:(RsdSession *)session {
     if (session->handshake) rsd_handshake_free(session->handshake);
     if (session->stream) idevice_stream_free(session->stream);
-    if (session->adapter) adapter_free(session->adapter);
+    if (session->adapter) {
+        struct IdeviceFfiError *e = adapter_close(session->adapter);
+        if (e) idevice_error_free(e);
+        adapter_free(session->adapter);
+    }
     if (session->proxy) core_device_proxy_free(session->proxy);
     if (session->feeder) idevice_free_tcp_feed_object(session->feeder);
     if (session->eater) idevice_free_tcp_eat_object(session->eater);
@@ -269,7 +306,7 @@ typedef struct RsdSession RsdSession;
         [self _handleError:@"ペアリングファイルが選択されていません。設定から選択してください。"];
         return;
     }
-    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
+    err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider); if (!err) pairingForProvider = NULL;
     if (err || !localProvider) {
         [self _handleFfiError:err fallback:@"プロバイダーの作成に失敗しました"];
         if (pairingForProvider) idevice_pairing_file_free(pairingForProvider);
@@ -283,7 +320,7 @@ typedef struct RsdSession RsdSession;
         if (pairingForSession) idevice_pairing_file_free(pairingForSession);
         return;
     }
-    err = lockdownd_start_session(localLockdown, pairingForSession);
+    err = lockdownd_start_session(localLockdown, pairingForSession); if (!err) pairingForSession = NULL;
     if (err) {
         [self _handleFfiError:err fallback:@"セッションの開始に失敗しました"];
         if (pairingForSession) idevice_pairing_file_free(pairingForSession);
@@ -346,63 +383,14 @@ typedef struct RsdSession RsdSession;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
-            idevice_error_free(err);
+        if (err || !rsd.handshake) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
+            if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
-        }
-        struct DiagnosticsServiceHandle *diag = NULL;
-        err = diagnostics_service_connect_rsd(rsd.adapter, rsd.handshake, &diag);
-        if (err || !diag) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Diagnosticsへの接続に失敗しました"] : @"Diagnosticsへの接続に失敗しました";
-            if (err) idevice_error_free(err);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:11 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+        }]); });
             return;
         }
-        char *filename = NULL; uintptr_t expected = 0; struct SysdiagnoseStreamHandle *stream_h = NULL;
-        err = diagnostics_service_capture_sysdiagnose(diag, false, &filename, &expected, &stream_h);
-        if (err || !stream_h) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Sysdiagnoseの開始に失敗しました"] : @"Sysdiagnoseの開始に失敗しました";
-            if (err) idevice_error_free(err);
-            if (filename) rsd_free_string(filename);
-            diagnostics_service_free(diag);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:12 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        NSString *destName = filename ? [NSString stringWithUTF8String:filename] : [NSString stringWithFormat:@"sysdiagnose_%ld.tar.gz", (long)[[NSDate date] timeIntervalSince1970]];
-        if (filename) rsd_free_string(filename);
-        NSString *docPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *finalPath = [docPath stringByAppendingPathComponent:destName];
-        [[NSFileManager defaultManager] createFileAtPath:finalPath contents:nil attributes:nil];
-        NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:finalPath];
-        if (!file) {
-             sysdiagnose_stream_free(stream_h); diagnostics_service_free(diag); [self _freeRsdSession:&rsd];
-             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:13 userInfo:@{NSLocalizedDescriptionKey: @"ファイルの作成に失敗しました"}]); });
-             return;
-        }
-        uint8_t *data = NULL; uintptr_t len = 0; BOOL loopSuccess = YES; NSError *loopErr = nil;
-        while (true) {
-            err = sysdiagnose_stream_next(stream_h, &data, &len);
-            if (err) {
-                loopErr = [NSError errorWithDomain:@"Idevice" code:16 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err->message ?: "ストリーム取得エラー"]}];
-                idevice_error_free(err); loopSuccess = NO; break;
-            }
-            if (!data || len == 0) break;
-            [file writeData:[NSData dataWithBytes:data length:len]];
-            idevice_data_free(data, (uintptr_t)len);
-        }
-        [file closeFile];
-        sysdiagnose_stream_free(stream_h); diagnostics_service_free(diag); [self _freeRsdSession:&rsd];
-        if (loopSuccess) {
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalPath, nil); });
-        } else {
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, loopErr); });
-        }
-    });
-}
 
 - (void)connect {
     [_lock lock];
@@ -482,43 +470,14 @@ typedef struct RsdSession RsdSession;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
-            idevice_error_free(err);
+        if (err || !rsd.handshake) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
+            if (err) idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
-        }
-        struct AppServiceHandle *appSvc = NULL;
-        err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &appSvc);
-        if (err || !appSvc) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "AppServiceへの接続に失敗しました"] : @"AppServiceへの接続に失敗しました";
-            if (err) idevice_error_free(err);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:14 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
+        }]); });
             return;
         }
-        struct ProcessTokenC *rawProcesses = NULL; uintptr_t count = 0;
-        err = app_service_list_processes(appSvc, &rawProcesses, &count);
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "プロセス一覧の取得に失敗しました"];
-            idevice_error_free(err); app_service_free(appSvc); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:15 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        NSMutableArray *results = [NSMutableArray array];
-        for (uintptr_t i = 0; i < count; i++) {
-            struct ProcessTokenC *p = &rawProcesses[i];
-            NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-            dict[@"pid"] = @(p->pid);
-            if (p->executable_url && strlen(p->executable_url) > 0) dict[@"path"] = [NSString stringWithUTF8String:p->executable_url];
-            [results addObject:dict];
-        }
-        app_service_free_process_list(rawProcesses, (uintptr_t)count);
-        app_service_free(appSvc);
-        [self _freeRsdSession:&rsd];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(results, nil); });
-    });
-}
 
 - (void)getRsdServicesWithCompletion:(void (^)(NSArray *services, NSError *error))completion {
     [_lock lock];
@@ -531,35 +490,14 @@ typedef struct RsdSession RsdSession;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        struct CRsdServiceArray *rawServices = NULL;
-        err = rsd_get_services(rsd.handshake, &rawServices);
-        if (err || !rawServices) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDサービスの取得に失敗しました"] : @"RSDサービスの取得に失敗しました";
+        if (err || !rsd.handshake) {
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
             if (err) idevice_error_free(err);
-            [self _freeRsdSession:&rsd];
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
             return;
+        }]); });
+            return;
         }
-        NSMutableArray *results = [NSMutableArray array];
-        for (size_t i = 0; i < rawServices->count; i++) {
-            struct CRsdService *s = &rawServices->services[i];
-            NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-            if (s->name && strlen(s->name) > 0) dict[@"name"] = [NSString stringWithUTF8String:s->name];
-            if (s->entitlement && strlen(s->entitlement) > 0) dict[@"entitlement"] = [NSString stringWithUTF8String:s->entitlement];
-            dict[@"port"] = @(s->port);
-            [results addObject:dict];
-        }
-        rsd_free_services(rawServices);
-        [self _freeRsdSession:&rsd];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(results, nil); });
-    });
-}
 
 - (void)launchAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion {
     [_lock lock];
@@ -593,15 +531,21 @@ typedef struct RsdSession RsdSession;
 
 - (void)setHeartbeatActive:(BOOL)heartbeatActive { [_lock lock]; _heartbeatActive = heartbeatActive; [_lock unlock]; }
 
+
 - (void)setIpAddress:(NSString *)ipAddress { [_lock lock]; _ipAddress = [ipAddress copy]; [[NSUserDefaults standardUserDefaults] setObject:_ipAddress forKey:@"IdeviceIP"]; [_lock unlock]; }
+
 
 - (void)setLastError:(NSString *)lastError { [_lock lock]; _lastError = [lastError copy]; [_lock unlock]; }
 
+
 - (void)setPairingFilePath:(NSString *)pairingFilePath { [_lock lock]; _pairingFilePath = [pairingFilePath copy]; [[NSUserDefaults standardUserDefaults] setObject:_pairingFilePath forKey:@"IdevicePairingPath"]; [_lock unlock]; }
+
 
 - (void)setPort:(uint16_t)port { [_lock lock]; _port = port; [[NSUserDefaults standardUserDefaults] setInteger:(NSInteger)_port forKey:@"IdevicePort"]; [_lock unlock]; }
 
+
 - (void)setStatus:(IdeviceConnectionStatus)status { [_lock lock]; _status = status; [_lock unlock]; }
+
 
 - (void)startSyslogCaptureWithCallback:(void (^)(NSString *line))callback {
     [_lock lock];
@@ -673,7 +617,7 @@ typedef struct RsdSession RsdSession;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd;
         struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (!err) {
+        if (!err && rsd.handshake) {
             struct RemoteServerHandle *rs_handle = NULL;
             err = remote_server_connect_rsd(rsd.adapter, rsd.handshake, &rs_handle);
             if (!err && rs_handle) {
@@ -698,7 +642,7 @@ typedef struct RsdSession RsdSession;
             }
             if (err) idevice_error_free(err);
             [self _freeRsdSession:&rsd];
-        } else {
+        } else if (err) {
             idevice_error_free(err);
         }
         struct ScreenshotrClientHandle *client = NULL;
