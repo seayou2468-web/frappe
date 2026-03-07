@@ -69,7 +69,7 @@ screenshot_method = r"""
                 iv.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
                 [vc.view addSubview:iv];
                 UIBarButtonItem *shareBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareImage:)];
-                objc_set_associated_object(shareBtn, "img", image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(shareBtn, "img", image, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 vc.navigationItem.rightBarButtonItem = shareBtn;
                 [self.navigationController pushViewController:vc animated:YES];
             }
@@ -78,7 +78,7 @@ screenshot_method = r"""
 }
 
 - (void)shareImage:(UIBarButtonItem *)sender {
-    UIImage *img = objc_get_associated_object(sender, "img");
+    UIImage *img = objc_getAssociatedObject(sender, "img");
     if (!img) return;
     UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[img] applicationActivities:nil];
     [self presentViewController:avc animated:YES completion:nil];
