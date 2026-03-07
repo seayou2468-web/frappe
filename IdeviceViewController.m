@@ -18,67 +18,15 @@
 @property (nonatomic, strong) BottomMenuView *bottomMenu;
 @property (nonatomic, assign) IdeviceConnectionStatus lastReportedStatus;
 
-- (void)captureSysdiagnose {
-    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    spinner.center = self.view.center;
-    [self.view addSubview:spinner];
-    [spinner startAnimating];
-    self.view.userInteractionEnabled = NO;
-
-    [[IdeviceManager sharedManager] captureSysdiagnoseWithCompletion:^(NSString *path, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [spinner stopAnimating];
-            [spinner removeFromSuperview];
-            self.view.userInteractionEnabled = YES;
-
-            if (error) {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            } else {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"完了" message:[NSString stringWithFormat:@"Sysdiagnoseを保存しました:\n%@", [path lastPathComponent]] preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            }
-        });
-    }];
-}
-
-
-- (void)showProcessList {
-    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    spinner.center = self.view.center;
-    [self.view addSubview:spinner];
-    [spinner startAnimating];
-    self.view.userInteractionEnabled = NO;
-
-    [[IdeviceManager sharedManager] getProcessListWithCompletion:^(NSArray *processes, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [spinner stopAnimating];
-            [spinner removeFromSuperview];
-            self.view.userInteractionEnabled = YES;
-
-            if (error) {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"エラー" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            } else {
-                NSMutableString *msg = [NSMutableString string];
-                // Limit to first 20 processes for display in alert
-                NSInteger count = MIN(processes.count, 20);
-                for (NSInteger i = 0; i < count; i++) {
-                    NSDictionary *p = processes[i];
-                    [msg appendFormat:@"PID: %@ - %@\n", p[@"pid"], [p[@"path"] lastPathComponent] ?: @"Unknown"];
-                }
-                if (processes.count > 20) [msg appendString:@"... 他多数"];
-
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"実行中プロセス" message:msg preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            }
-        });
-    }];
-}
+- (void)captureSysdiagnose;
+- (void)showProcessList;
+- (void)editIP;
+- (void)editPort;
+- (void)openSystemFilePicker;
+- (void)openInternalFileBrowser;
+- (void)closeTapped;
+- (void)statusChanged;
+- (void)setupUI;
 
 @end
 
@@ -196,9 +144,10 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
     if (section == 1) return 2;
-    if (section == 2) return 2; // Features (Apps, RSD)
+    if (section == 2) return 2;
     if (section == 3) return 1;
-    if (section == 4) return 1; if (section == 5) return 2;
+    if (section == 4) return 1;
+    if (section == 5) return 2;
     return 0;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -206,7 +155,8 @@
     if (section == 1) return @"ペアリング";
     if (section == 2) return @"機能";
     if (section == 3) return @"アクション";
-    if (section == 4) return @"システム"; if (section == 5) return @"RSDサービス利用";
+    if (section == 4) return @"システム";
+    if (section == 5) return @"RSDサービス利用";
     return nil;
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -329,7 +279,6 @@
     }];
 }
 
-
 - (void)showProcessList {
     UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     spinner.center = self.view.center;
@@ -349,9 +298,8 @@
                 [self presentViewController:alert animated:YES completion:nil];
             } else {
                 NSMutableString *msg = [NSMutableString string];
-                // Limit to first 20 processes for display in alert
-                NSInteger count = MIN(processes.count, 20);
-                for (NSInteger i = 0; i < count; i++) {
+                NSInteger countNum = MIN(processes.count, 20);
+                for (NSInteger i = 0; i < countNum; i++) {
                     NSDictionary *p = processes[i];
                     [msg appendFormat:@"PID: %@ - %@\n", p[@"pid"], [p[@"path"] lastPathComponent] ?: @"Unknown"];
                 }
