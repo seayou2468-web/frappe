@@ -14,6 +14,7 @@
 @property (nonatomic, strong) UIButton *selectPairingFileButton;
 @property (nonatomic, strong) NSString *selectedPairingFilePath;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
+@property (nonatomic, strong) UILabel *deviceInfoLabel;
 
 @end
 
@@ -50,6 +51,14 @@
     self.statusLabel.font = [UIFont boldSystemFontOfSize:18];
     self.statusLabel.text = @"Disconnected";
     [self.statusContainer addSubview:self.statusLabel];
+
+    // Device Info Label
+    self.deviceInfoLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 150, self.statusContainer.bounds.size.width - 20, 40)];
+    self.deviceInfoLabel.textAlignment = NSTextAlignmentCenter;
+    self.deviceInfoLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
+    self.deviceInfoLabel.font = [UIFont systemFontOfSize:14];
+    self.deviceInfoLabel.numberOfLines = 2;
+    [self.statusContainer addSubview:self.deviceInfoLabel];
 
     // Pairing File Label
     self.pairingFileLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 320, self.view.bounds.size.width - 40, 40)];
@@ -128,6 +137,7 @@
     }
 
     [self updateStatus:@"Connecting..." color:[UIColor systemOrangeColor] animating:YES];
+    self.deviceInfoLabel.text = @"";
     self.connectButton.enabled = NO;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -173,7 +183,7 @@
         return;
     }
 
-    // Start Session (Lockdown usually requires session)
+    // Start TLS Session
     err = idevice_start_session(device, pairing_file, NO);
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
@@ -200,12 +210,44 @@
         return;
     }
 
-    // If we reached here, we are "connected" in a sense that we have a lockdown client
-    [self updateStatus:@"Connected" color:[UIColor systemGreenColor] animating:YES];
-    [self showAlertWithTitle:@"Success" message:@"Connected to lockdownd successfully!"];
+    // Start Lockdownd Session
+    err = lockdownd_start_session(lockdown, pairing_file);
+    if (err) {
+        NSString *msg = [NSString stringWithUTF8String:err->message];
+        idevice_error_free(err);
+        lockdownd_client_free(lockdown);
+        idevice_pairing_file_free(pairing_file);
+        idevice_free(device);
+        [self updateStatus:@"Lockdown Session Error" color:[UIColor systemRedColor] animating:NO];
+        [self showAlertWithTitle:@"Lockdown Session Error" message:msg];
+        [self reenableConnectButton];
+        return;
+    }
 
-    // Clean up or keep handles if needed for further features.
-    // For this task, we just verify connection.
+    // Get Device Name to verify
+    plist_t name_plist = NULL;
+    err = lockdownd_get_value(lockdown, "DeviceName", NULL, &name_plist);
+    NSString *deviceName = @"Connected Device";
+    if (!err && name_plist) {
+        char *val = NULL;
+        plist_get_string_val(name_plist, &val);
+        if (val) {
+            deviceName = [NSString stringWithUTF8String:val];
+            plist_mem_free(val);
+        }
+        plist_free(name_plist);
+    } else if (err) {
+        idevice_error_free(err);
+    }
+
+    // If we reached here, we are fully connected and verified
+    [self updateStatus:@"Connected" color:[UIColor systemGreenColor] animating:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.deviceInfoLabel.text = deviceName;
+    });
+    [self showAlertWithTitle:@"Success" message:[NSString stringWithFormat:@"Successfully connected and verified with %@!", deviceName]];
+
+    // Clean up
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
     idevice_free(device);
