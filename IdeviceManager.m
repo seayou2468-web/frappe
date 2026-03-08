@@ -333,15 +333,212 @@ typedef struct RsdSession RsdSession;
 }
 
 - (void)launchAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    [self launchAppWithBundleId:bundleId arguments:nil environment:nil useJIT:NO completion:completion];
+}
+
+- (void)launchAppWithBundleId:(NSString *)bundleId arguments:(NSArray *)args environment:(NSDictionary *)env useJIT:(BOOL)useJIT completion:(void (^)(NSError *error))completion {
+    [_lock lock];
+    if (self.status != IdeviceStatusConnected || !self.provider) {
+        [_lock unlock];
+        if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]);
+        return;
+    }
+    [_lock unlock];
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        uint16_t service_port = 0; bool ssl = false;
-        [_lock lock]; struct LockdowndClientHandle *l = self.lockdownClient; [_lock unlock];
-        struct IdeviceFfiError *err = lockdownd_start_service(l, "com.apple.mobile.installation_proxy", &service_port, &ssl);
-        if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:4 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err->message ?: "サービスの開始に失敗しました"]}]); }); idevice_error_free(err); return; }
-        [[Logger sharedLogger] log:[NSString stringWithFormat:@"Launching %@...", bundleId]];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        RsdSession rsd;
+        struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
+        if (err || !rsd.handshake) {
+            if (err) idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:@{NSLocalizedDescriptionKey: @"RSDセッションの確立に失敗しました"}]);
+            });
+            return;
+        }
+
+        struct RemoteServerHandle *rs = NULL;
+        err = remote_server_connect_rsd(rsd.adapter, rsd.handshake, &rs);
+        if (err || !rs) {
+            if (err) idevice_error_free(err);
+            [self _freeRsdSession:&rsd];
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:23 userInfo:@{NSLocalizedDescriptionKey: @"RemoteServerへの接続に失敗しました"}]);
+            });
+            return;
+        }
+
+        struct ProcessControlHandle *pc = NULL;
+        err = process_control_new(rs, &pc);
+        if (err || !pc) {
+            if (err) idevice_error_free(err);
+            remote_server_free(rs);
+            [self _freeRsdSession:&rsd];
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:24 userInfo:@{NSLocalizedDescriptionKey: @"ProcessControlの作成に失敗しました"}]);
+            });
+            return;
+        }
+
+        // Prepare arguments
+        uintptr_t argc = args.count;
+        const char **argv = NULL;
+        if (argc > 0) {
+            argv = (const char **)calloc(argc, sizeof(char *));
+            for (uintptr_t i = 0; i < argc; i++) argv[i] = [args[i] UTF8String];
+        }
+
+        // Prepare environment
+        uintptr_t envc = env.count;
+        const char **envv = NULL;
+        if (envc > 0) {
+            envv = (const char **)calloc(envc, sizeof(char *));
+            NSArray *keys = [env allKeys];
+            for (uintptr_t i = 0; i < envc; i++) {
+                NSString *kv = [NSString stringWithFormat:@"%@=%@", keys[i], env[keys[i]]];
+                envv[i] = strdup([kv UTF8String]);
+            }
+        }
+
+        uint64_t pid = 0;
+        err = process_control_launch_app(pc, [bundleId UTF8String], envv, envc, argv, argc, useJIT, true, &pid);
+
+        if (argv) free(argv);
+        if (envv) {
+            for (uintptr_t i = 0; i < envc; i++) free((void *)envv[i]);
+            free(envv);
+        }
+
+        if (err) {
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリの起動に失敗しました"];
+            idevice_error_free(err);
+            process_control_free(pc);
+            remote_server_free(rs);
+            [self _freeRsdSession:&rsd];
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:22 userInfo:@{NSLocalizedDescriptionKey: msg}]);
+            });
+            return;
+        }
+
+        if (useJIT && pid > 0) {
+            struct DebugProxyHandle *debugProxy = NULL;
+            err = debug_proxy_connect_rsd(rsd.adapter, rsd.handshake, &debugProxy);
+            if (!err && debugProxy) {
+                debug_proxy_set_ack_mode(debugProxy, 0); // Disable ACK for better perf
+
+                char attachCmd[64];
+                snprintf(attachCmd, sizeof(attachCmd), "vAttach;%llx", pid);
+                struct DebugserverCommandHandle *cmd = debugserver_command_new(attachCmd, NULL, 0);
+                char *resp = NULL;
+                debug_proxy_send_command(debugProxy, cmd, &resp);
+                if (resp) rsd_free_string(resp);
+                debugserver_command_free(cmd);
+
+                // Continue execution
+                struct DebugserverCommandHandle *cont = debugserver_command_new("c", NULL, 0);
+                debug_proxy_send_command(debugProxy, cont, &resp);
+                if (resp) rsd_free_string(resp);
+                debugserver_command_free(cont);
+
+                debug_proxy_free(debugProxy);
+            } else if (err) {
+                idevice_error_free(err);
+            }
+        }
+
+        process_control_free(pc);
+        remote_server_free(rs);
+        [self _freeRsdSession:&rsd];
+
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nil);
+        });
+    });
+}]);
+        return;
+    }
+    [_lock unlock];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        RsdSession rsd;
+        struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
+        if (err || !rsd.handshake) {
+            if (err) idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:@{NSLocalizedDescriptionKey: @"RSDセッションの確立に失敗しました"}]);
+            });
+            return;
+        }
+
+        struct AppServiceHandle *appSvc = NULL;
+        err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &appSvc);
+        if (err || !appSvc) {
+            if (err) idevice_error_free(err);
+            [self _freeRsdSession:&rsd];
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:21 userInfo:@{NSLocalizedDescriptionKey: @"AppServiceへの接続に失敗しました"}]);
+            });
+            return;
+        }
+
+        // Prepare arguments
+        uintptr_t argc = args.count;
+        const char **argv = NULL;
+        if (argc > 0) {
+            argv = (const char **)calloc(argc, sizeof(char *));
+            for (uintptr_t i = 0; i < argc; i++) {
+                argv[i] = [args[i] UTF8String];
+            }
+        }
+
+        struct LaunchResponseC *response = NULL;
+        err = app_service_launch_app(appSvc, [bundleId UTF8String], argv, argc, 1, useJIT ? 1 : 0, NULL, &response);
+        if (argv) free(argv);
+
+        if (err) {
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリの起動に失敗しました"];
+            idevice_error_free(err);
+            app_service_free(appSvc);
+            [self _freeRsdSession:&rsd];
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+                completion([NSError errorWithDomain:@"Idevice" code:22 userInfo:@{NSLocalizedDescriptionKey: msg}]);
+            });
+            return;
+        }
+
+        uint64_t pid = response ? response->pid : 0;
+        if (response) app_service_free_launch_response(response);
+
+        if (useJIT && pid > 0) {
+            struct DebugProxyHandle *debugProxy = NULL;
+            err = debug_proxy_connect_rsd(rsd.adapter, rsd.handshake, &debugProxy);
+            if (!err && debugProxy) {
+                char attachCmd[64];
+                snprintf(attachCmd, sizeof(attachCmd), "vAttach;%llx", pid);
+                struct DebugserverCommandHandle *cmd = debugserver_command_new(attachCmd, NULL, 0);
+                char *resp = NULL;
+                debug_proxy_send_command(debugProxy, cmd, &resp);
+                if (resp) rsd_free_string(resp);
+                debugserver_command_free(cmd);
+
+                // Continue execution
+                struct DebugserverCommandHandle *cont = debugserver_command_new("c", NULL, 0);
+                debug_proxy_send_command(debugProxy, cont, &resp);
+                if (resp) rsd_free_string(resp);
+                debugserver_command_free(cont);
+
+                debug_proxy_free(debugProxy);
+            } else if (err) {
+                idevice_error_free(err);
+            }
+        }
+
+        app_service_free(appSvc);
+        [self _freeRsdSession:&rsd];
+
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nil);
+        });
     });
 }
 
