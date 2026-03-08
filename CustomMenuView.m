@@ -39,7 +39,7 @@
     CGRect screenBounds = CGRectZero;
     UIWindow *window = self.window ?: self.superview.window;
     if (window.windowScene) {
-        screenBounds = window.windowScene.screen.bounds;
+        screenBounds = window.windowScene.coordinateSpace.bounds;
     }
 
     if (CGRectIsEmpty(screenBounds)) {

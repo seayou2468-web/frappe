@@ -1,3 +1,4 @@
+#import "L.h"
 #import "CustomMenuView.h"
 #import "FileBrowserViewController.h"
 #import "SQLiteViewerViewController.h"
@@ -19,6 +20,7 @@
 #import "HexEditorViewController.h"
 #import "FileInfoViewController.h"
 #import "LogViewerViewController.h"
+#import "IdeviceViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 @interface FileBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate, UIDocumentPickerDelegate, UIGestureRecognizerDelegate>
@@ -33,7 +35,6 @@
 @property (assign, nonatomic) BOOL isSearchRevealed;
 - (void)createNewPDF;
 - (void)createNewSpreadsheet;
-@end
 
 @implementation FileBrowserViewController
 
@@ -253,6 +254,7 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"新規スプレッドシート作成" systemImage:@"tablecells.fill.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self createNewSpreadsheet]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ファイルから読み込む" systemImage:@"plus.circle" style:CustomMenuActionStyleDefault handler:^{ [self selectFile]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"システムログ" systemImage:@"terminal" style:CustomMenuActionStyleDefault handler:^{ [self showLogViewer]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:[L s:@"iDevice管理" en:@"iDevice Manager"] systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{ [self showIdeviceManager]; }]];
     [menu showInView:self.view];
 }
 
@@ -286,6 +288,7 @@
 }
 
 - (void)showLogViewer {
+    [menu addAction:[CustomMenuAction actionWithTitle:[L s:@"iDevice管理" en:@"iDevice Manager"] systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{ [self showIdeviceManager]; }]];
     LogViewerViewController *vc = [[LogViewerViewController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
@@ -462,4 +465,8 @@
 
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
+- (void)showIdeviceManager {
+    IdeviceViewController *vc = [[IdeviceViewController alloc] init];
+    [self.navigationController pushViewController:vc animated:YES];
+}
 @end

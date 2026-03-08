@@ -4,6 +4,7 @@
 #import "CustomMenuView.h"
 #import "WebBrowserViewController.h"
 #import "PersistenceManager.h"
+#import "L.h"
 #import <LocalAuthentication/LocalAuthentication.h>
 
 @interface SettingsViewController ()
@@ -14,7 +15,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"設定";
+    self.title = [L s:@"設定" en:@"Settings"];
     self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
@@ -27,7 +28,7 @@
 #pragma mark - TableView
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 8;
+    return 9;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -36,24 +37,26 @@
         case 1: return 3; // Display
         case 2: return 1; // Sort
         case 3: return 2; // Appearance
-        case 4: return 4; // Web: Engine, Homepage, Clear Data, Add Whitelist
-        case 5: return [PersistenceManager sharedManager].persistentDomains.count; // Whitelist items
-        case 6: return 1; // Advanced
-        case 7: return [BookmarksManager sharedManager].bookmarks.count; // Favorites
+        case 4: return 4; // Web
+        case 5: return [PersistenceManager sharedManager].persistentDomains.count;
+        case 6: return 3; // iDevice Settings
+        case 7: return 1; // Advanced
+        case 8: return [BookmarksManager sharedManager].bookmarks.count;
         default: return 0;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"全般";
-        case 1: return @"表示設定";
-        case 2: return @"並び替え";
-        case 3: return @"外観カスタマイズ";
-        case 4: return @"ウェブブラウザ";
-        case 5: return @"データを常に保持するサイト";
-        case 6: return @"詳細";
-        case 7: return @"お気に入り";
+        case 0: return [L s:@"全般" en:@"General"];
+        case 1: return [L s:@"表示設定" en:@"Display"];
+        case 2: return [L s:@"並び替え" en:@"Sort"];
+        case 3: return [L s:@"テーマ" en:@"Appearance"];
+        case 4: return [L s:@"ウェブ" en:@"Web"];
+        case 5: return [L s:@"永続ドメイン" en:@"Persistent Domains"];
+        case 6: return [L s:@"iDevice設定" en:@"iDevice Settings"];
+        case 7: return [L s:@"高度な設定" en:@"Advanced"];
+        case 8: return [L s:@"お気に入り" en:@"Favorites"];
         default: return nil;
     }
 }
@@ -73,11 +76,11 @@
 
     if (indexPath.section == 0) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"起動時のパス";
+            cell.textLabel.text = [L s:@"起動時のパス" en:@"Start Path"];
             cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: NSHomeDirectory();
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else {
-            cell.textLabel.text = @"削除時に確認する";
+            cell.textLabel.text = [L s:@"削除時に確認する" en:@"Confirm Deletion"];
             UISwitch *sw = [[UISwitch alloc] init];
             sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"ConfirmDeletion"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"ConfirmDeletion"] : YES;
             [sw addTarget:self action:@selector(confirmDeleteToggled:) forControlEvents:UIControlEventValueChanged];
@@ -85,68 +88,78 @@
         }
     } else if (indexPath.section == 1) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"隠しファイルを表示";
+            cell.textLabel.text = [L s:@"隠しファイルを表示" en:@"Show Hidden Files"];
             UISwitch *sw = [[UISwitch alloc] init];
             sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"ShowHiddenFiles"];
             [sw addTarget:self action:@selector(hiddenSwitchToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
         } else if (indexPath.row == 1) {
-            cell.textLabel.text = @"フォルダを先頭に表示";
+            cell.textLabel.text = [L s:@"フォルダを先頭に表示" en:@"Folders First"];
             UISwitch *sw = [[UISwitch alloc] init];
             sw.on = [[NSUserDefaults standardUserDefaults] objectForKey:@"FoldersFirst"] ? [[NSUserDefaults standardUserDefaults] boolForKey:@"FoldersFirst"] : YES;
             [sw addTarget:self action:@selector(foldersFirstToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
         } else {
-            cell.textLabel.text = @"検索バーを常に表示";
+            cell.textLabel.text = [L s:@"検索バーを常に表示" en:@"Always Show Search"];
             UISwitch *sw = [[UISwitch alloc] init];
             sw.on = [[NSUserDefaults standardUserDefaults] boolForKey:@"AlwaysShowSearch"];
             [sw addTarget:self action:@selector(alwaysShowSearchToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = sw;
         }
     } else if (indexPath.section == 2) {
-        cell.textLabel.text = @"並び替え順";
+        cell.textLabel.text = [L s:@"並び替え順" en:@"Sort Method"];
         NSInteger sort = [[NSUserDefaults standardUserDefaults] integerForKey:@"SortMethod"];
-        NSArray *modes = @[@"名前", @"日付", @"サイズ"];
+        NSArray *modes = @[[L s:@"名前" en:@"Name"], [L s:@"日付" en:@"Date"], [L s:@"サイズ" en:@"Size"]];
         cell.detailTextLabel.text = modes[sort % 3];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 3) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"グラス効果の透明度";
+            cell.textLabel.text = [L s:@"グラス効果の透明度" en:@"Glass Alpha"];
             cell.detailTextLabel.text = [NSString stringWithFormat:@"%.1f", [[NSUserDefaults standardUserDefaults] floatForKey:@"GlassAlpha"] ?: 0.5];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else {
-            cell.textLabel.text = @"アクセントカラー";
-            cell.detailTextLabel.text = @"選択中";
+            cell.textLabel.text = [L s:@"アクセントカラー" en:@"Accent Color"];
+            cell.detailTextLabel.text = [L s:@"選択中" en:@"Selected"];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 4) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"検索エンジン";
+            cell.textLabel.text = [L s:@"検索エンジン" en:@"Search Engine"];
             NSString *engine = [[NSUserDefaults standardUserDefaults] stringForKey:@"SearchEngine"] ?: @"Google";
-            if ([engine isEqualToString:@"Custom"]) {
-                NSString *customUrl = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"];
-                cell.detailTextLabel.text = customUrl ? [NSString stringWithFormat:@"カスタム (%@)", customUrl] : @"カスタム (未設定)";
-            } else {
-                cell.detailTextLabel.text = engine;
-            }
+            cell.detailTextLabel.text = engine;
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else if (indexPath.row == 1) {
-            cell.textLabel.text = @"ホームページ";
+            cell.textLabel.text = [L s:@"ホームページ" en:@"Homepage"];
             cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         } else if (indexPath.row == 2) {
-            cell.textLabel.text = @"ブラウザデータを消去";
+            cell.textLabel.text = [L s:@"ブラウザデータを消去" en:@"Clear Browser Data"];
             cell.textLabel.textColor = [UIColor systemRedColor];
         } else {
-            cell.textLabel.text = @"永続保存サイトを追加";
+            cell.textLabel.text = [L s:@"永続保存サイトを追加" en:@"Add Persistent Domain"];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 5) {
         cell.textLabel.text = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
     } else if (indexPath.section == 6) {
-        cell.textLabel.text = @"全ての設定をリセット";
-        cell.textLabel.textColor = [UIColor systemRedColor];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"IP Address";
+            cell.detailTextLabel.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"IdeviceIP"] ?: @"10.7.0.1";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = @"Port";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld", (long)([[NSUserDefaults standardUserDefaults] integerForKey:@"IdevicePort"] ?: 62078)];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        } else {
+            cell.textLabel.text = [L s:@"言語設定" en:@"Language"];
+            NSString *lang = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppLanguage"] ?: @"jp";
+            cell.detailTextLabel.text = [lang isEqualToString:@"en"] ? @"English" : @"日本語";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
     } else if (indexPath.section == 7) {
+        cell.textLabel.text = [L s:@"全ての設定をリセット" en:@"Reset All Settings"];
+        cell.textLabel.textColor = [UIColor systemRedColor];
+    } else if (indexPath.section == 8) {
         NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
         cell.textLabel.text = [path lastPathComponent];
         cell.detailTextLabel.text = path;
@@ -167,92 +180,94 @@
         else if (indexPath.row == 1) [self editHomepage];
         else if (indexPath.row == 2) [self clearBrowserData];
         else [self addNewPersistentDomain];
-    } else if (indexPath.section == 6) [self confirmResetSettings];
+    } else if (indexPath.section == 6) {
+        if (indexPath.row == 0) [self editIdeviceIP];
+        else if (indexPath.row == 1) [self editIdevicePort];
+        else [self selectLanguage];
+    } else if (indexPath.section == 7) [self confirmResetSettings];
 }
 
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return (indexPath.section == 5 || indexPath.section == 7);
+#pragma mark - iDevice Settings
+
+- (void)editIdeviceIP {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"IP Address" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"IdeviceIP"] ?: @"10.7.0.1"; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[NSUserDefaults standardUserDefaults] setObject:alert.textFields[0].text forKey:@"IdeviceIP"];
+        [self.tableView reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle == UITableViewCellEditingStyleDelete) {
-        if (indexPath.section == 5) {
-            NSString *domain = [PersistenceManager sharedManager].persistentDomains[indexPath.row];
-            [[PersistenceManager sharedManager] removeDomain:domain];
-        } else if (indexPath.section == 7) {
-            NSString *path = [BookmarksManager sharedManager].bookmarks[indexPath.row];
-            [[BookmarksManager sharedManager] removeBookmark:path];
-        }
-        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-    }
+- (void)editIdevicePort {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Port" message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = [NSString stringWithFormat:@"%ld", (long)([[NSUserDefaults standardUserDefaults] integerForKey:@"IdevicePort"] ?: 62078)];
+        tf.keyboardType = UIKeyboardTypeNumberPad;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [[NSUserDefaults standardUserDefaults] setInteger:[alert.textFields[0].text integerValue] forKey:@"IdevicePort"];
+        [self.tableView reloadData];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
-#pragma mark - Browser Customization
+- (void)selectLanguage {
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"言語設定" en:@"Language"]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"日本語" systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"jp" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"English" systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+        [[NSUserDefaults standardUserDefaults] setObject:@"en" forKey:@"AppLanguage"];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
+        [self.tableView reloadData];
+    }]];
+    [menu showInView:self.view];
+}
+
+#pragma mark - Existing Logic (Simplified)
 
 - (void)selectSearchEngine {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"検索エンジン"];
-    NSArray *engines = @[@"Google", @"Bing", @"DuckDuckGo", @"Yahoo", @"Custom"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"検索エンジン" en:@"Search Engine"]];
+    NSArray *engines = @[@"Google", @"Bing", @"DuckDuckGo", @"Yahoo"];
     for (NSString *engine in engines) {
-        NSString *display = [engine isEqualToString:@"Custom"] ? @"カスタム設定..." : engine;
-        [menu addAction:[CustomMenuAction actionWithTitle:display systemImage:nil style:CustomMenuActionStyleDefault handler:^{
-            if ([engine isEqualToString:@"Custom"]) {
-                [self editCustomSearchURL];
-            } else {
-                [[NSUserDefaults standardUserDefaults] setObject:engine forKey:@"SearchEngine"];
-                [self.tableView reloadData];
-            }
+        [menu addAction:[CustomMenuAction actionWithTitle:engine systemImage:nil style:CustomMenuActionStyleDefault handler:^{
+            [[NSUserDefaults standardUserDefaults] setObject:engine forKey:@"SearchEngine"];
+            [self.tableView reloadData];
         }]];
     }
     [menu showInView:self.view];
 }
 
-- (void)editCustomSearchURL {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"カスタム検索" message:@"検索URLを入力してください (例: https://example.com/search?q=)" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"CustomSearchURL"] ?: @"";
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        NSString *url = alert.textFields[0].text;
-        if (url.length > 0) {
-            [[NSUserDefaults standardUserDefaults] setObject:@"Custom" forKey:@"SearchEngine"];
-            [[NSUserDefaults standardUserDefaults] setObject:url forKey:@"CustomSearchURL"];
-            [self.tableView reloadData];
-        }
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
 - (void)editHomepage {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ホームページ" message:@"URLを入力してください" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com";
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[L s:@"ホームページ" en:@"Homepage"] message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"https://www.google.com"; }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[NSUserDefaults standardUserDefaults] setObject:alert.textFields[0].text forKey:@"WebHomepage"];
         [self.tableView reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-#pragma mark - Existing Logic
-
 - (void)editDefaultPath {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"起動パス" message:@"アプリ起動時に開くパスを入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[L s:@"起動パス" en:@"Start Path"] message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: NSHomeDirectory(); }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [[NSUserDefaults standardUserDefaults] setObject:alert.textFields[0].text forKey:@"DefaultStartPath"];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
         [self.tableView reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)selectSortMethod {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"並び替え"];
-    NSArray *modes = @[@"名前", @"日付", @"サイズ"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"並び替え" en:@"Sort"]];
+    NSArray *modes = @[[L s:@"名前" en:@"Name"], [L s:@"日付" en:@"Date"], [L s:@"サイズ" en:@"Size"]];
     for (NSInteger i = 0; i < modes.count; i++) {
         [menu addAction:[CustomMenuAction actionWithTitle:modes[i] systemImage:nil style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setInteger:i forKey:@"SortMethod"];
@@ -264,7 +279,7 @@
 }
 
 - (void)selectGlassAlpha {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"透明度を選択"];
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"透明度を選択" en:@"Select Transparency"]];
     NSArray *alphas = @[@"0.2", @"0.4", @"0.6", @"0.8"];
     for (NSString *a in alphas) {
         [menu addAction:[CustomMenuAction actionWithTitle:a systemImage:nil style:CustomMenuActionStyleDefault handler:^{
@@ -277,8 +292,8 @@
 }
 
 - (void)selectAccentColor {
-    CustomMenuView *menu = [CustomMenuView menuWithTitle:@"カラーを選択"];
-    NSDictionary *colors = @{@"ブルー": @"blue", @"レッド": @"red", @"グリーン": @"green", @"パープル": @"purple"};
+    CustomMenuView *menu = [CustomMenuView menuWithTitle:[L s:@"カラーを選択" en:@"Select Color"]];
+    NSDictionary *colors = @{[L s:@"ブルー" en:@"Blue"]: @"blue", [L s:@"レッド" en:@"Red"]: @"red", [L s:@"グリーン" en:@"Green"]: @"green", [L s:@"パープル" en:@"Purple"]: @"purple"};
     for (NSString *name in colors) {
         [menu addAction:[CustomMenuAction actionWithTitle:name systemImage:@"circle.fill" style:CustomMenuActionStyleDefault handler:^{
             [[NSUserDefaults standardUserDefaults] setObject:colors[name] forKey:@"AccentColor"];
@@ -290,36 +305,36 @@
 }
 
 - (void)addNewPersistentDomain {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"永続ドメイン" message:@"ドメイン名を入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[L s:@"永続ドメイン" en:@"Persistent Domain"] message:nil preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:nil];
-    [alert addAction:[UIAlertAction actionWithTitle:@"追加" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *domain = alert.textFields[0].text;
         if (domain.length > 0) { [[PersistenceManager sharedManager] addDomain:domain]; [self.tableView reloadData]; }
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)clearBrowserData {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"データ消去" message:@"履歴、クッキー、キャッシュを全て消去しますか？" preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"消去" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { [WebBrowserViewController resetSharedDataStore]; }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[L s:@"データ消去" en:@"Clear Data"] message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"消去" en:@"Clear"] style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { [WebBrowserViewController resetSharedDataStore]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)confirmResetSettings {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"設定リセット" message:@"全ての設定を初期状態に戻しますか？" preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"リセット" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[L s:@"設定リセット" en:@"Reset Settings"] message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"リセット" en:@"Reset"] style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         NSString *appDomain = [[NSBundle mainBundle] bundleIdentifier];
         [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:appDomain];
         [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil];
         [self.tableView reloadData];
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:[L s:@"キャンセル" en:@"Cancel"] style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)confirmDeleteToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ConfirmDeletion"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
+- (void)confirmDeleteToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ConfirmDeletion"]; }
 - (void)hiddenSwitchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"ShowHiddenFiles"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
 - (void)foldersFirstToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"FoldersFirst"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
 - (void)alwaysShowSearchToggled:(UISwitch *)sender { [[NSUserDefaults standardUserDefaults] setBool:sender.on forKey:@"AlwaysShowSearch"]; [[NSNotificationCenter defaultCenter] postNotificationName:@"SettingsChanged" object:nil]; }
