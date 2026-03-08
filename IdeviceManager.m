@@ -192,7 +192,7 @@ typedef struct RsdSession RsdSession;
         if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:nil]); }); return; }
         struct AppServiceHandle *app = NULL; err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &app);
         if (err || !app) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:14 userInfo:nil]); }); return; }
-        struct AppListEntryC *raw = NULL; uintptr_t count = 0; err = app_service_list_apps(app, &raw, &count);
+        struct AppListEntryC *raw = NULL; uintptr_t count = 0; err = app_service_list_apps(app, 1, 1, 1, 1, 1, &raw, &count);
         if (err) { idevice_error_free(err); app_service_free(app); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:nil]); }); return; }
         NSMutableArray *apps = [NSMutableArray array];
         for (uintptr_t i = 0; i < count; i++) {
