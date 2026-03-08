@@ -58,6 +58,7 @@
         [self addButtonWithSystemImage:@"star" action:BottomMenuActionFavorites];
         [self addButtonWithSystemImage:@"gear" action:BottomMenuActionSettings];
         [self addButtonWithSystemImage:@"ellipsis.circle" action:BottomMenuActionOthers];
+        [self addButtonWithSystemImage:@"iphone" action:BottomMenuActionIdevice];
     }
 }
 

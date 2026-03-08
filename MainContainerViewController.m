@@ -4,6 +4,7 @@
 #import "FileBrowserViewController.h"
 #import "WebBrowserViewController.h"
 #import "ThemeEngine.h"
+#import "IdeviceViewController.h"
 #import "BottomMenuView.h"
 
 
@@ -119,6 +120,12 @@
         }
         case BottomMenuActionTabs: {
             [self showTabSwitcher];
+            break;
+        }
+        case BottomMenuActionIdevice: {
+            IdeviceViewController *ideviceVC = [[IdeviceViewController alloc] init];
+            UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:ideviceVC];
+            [self presentViewController:nav animated:YES completion:nil];
             break;
         }
         default: break;
