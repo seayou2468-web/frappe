@@ -26,8 +26,8 @@ typedef NS_ENUM(NSInteger, IdeviceConnectionStatus) {
 - (void)selectPairingFile:(NSString *)path;
 
 - (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion;
-- (void)launchAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion;
 - (void)launchAppWithBundleId:(NSString *)bundleId arguments:(NSArray *)args environment:(NSDictionary *)env useJIT:(BOOL)useJIT completion:(void (^)(NSError *error))completion;
+- (void)uninstallAppWithBundleId:(NSString *)bundleId completion:(void (^)(NSError *error))completion;
 
 // RSD Support
 - (void)startSyslogCaptureWithCallback:(void (^)(NSString *line))callback;
