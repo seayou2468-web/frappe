@@ -1,5 +1,7 @@
 #import "IdeviceManager.h"
+#import <netinet/in.h>
 #import <arpa/inet.h>
+#import <stdlib.h>
 
 @implementation IdeviceManager
 
@@ -43,7 +45,7 @@
         self.provider = newProvider;
 
         struct LockdowndClientHandle *lockdown = NULL;
-        err = lockdownd_connect(newProvider, "IdeviceManager", &lockdown);
+        err = lockdownd_connect(newProvider, &lockdown);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"Lockdown Error: %s", err->message];
             idevice_error_free(err);
@@ -84,7 +86,7 @@
     if (!self.provider) { completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct LockdowndClientHandle *lockdown = NULL;
-        struct IdeviceFfiError *err = lockdownd_connect(self.provider, "IdeviceManager", &lockdown);
+        struct IdeviceFfiError *err = lockdownd_connect(self.provider, &lockdown);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"Lockdown Error: %s", err->message];
             idevice_error_free(err);
@@ -113,7 +115,7 @@
     if (!self.provider) { completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct InstallationProxyClientHandle *instproxy = NULL;
-        struct IdeviceFfiError *err = instproxy_client_connect(self.provider, "IdeviceManager", &instproxy);
+        struct IdeviceFfiError *err = installation_proxy_connect(self.provider, &instproxy);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"InstProxy Error: %s", err->message];
             idevice_error_free(err);
@@ -131,14 +133,14 @@
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"Browse Error: %s", err->message];
             idevice_error_free(err);
-            instproxy_client_free(instproxy);
+            installation_proxy_client_free(instproxy);
             dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
             return;
         }
 
         NSArray *apps = [self objectFromPlist:apps_plist];
         plist_free(apps_plist);
-        instproxy_client_free(instproxy);
+        installation_proxy_client_free(instproxy);
         dispatch_async(dispatch_get_main_queue(), ^{ completion(apps, nil); });
     });
 }
@@ -147,7 +149,7 @@
     if (!self.provider) { completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct AfcClientHandle *afc = NULL;
-        struct IdeviceFfiError *err = afc_client_connect(self.provider, "IdeviceManager", &afc);
+        struct IdeviceFfiError *err = afc_client_connect(self.provider, &afc);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"AFC Error: %s", err->message];
             idevice_error_free(err);

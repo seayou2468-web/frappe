@@ -13,8 +13,6 @@
 
 - (id)objectFromPlist:(plist_t)plist;
 
-@end
-
 - (void)fetchDeviceInfoWithCompletion:(void (^)(NSDictionary *info, NSString *error))completion;
 - (void)listAppsWithCompletion:(void (^)(NSArray *apps, NSString *error))completion;
 - (void)listDirectory:(NSString *)path completion:(void (^)(NSArray *items, NSString *error))completion;
