@@ -1,9 +1,8 @@
 #import "IdeviceViewController.h"
 #import "ThemeEngine.h"
 #import "L.h"
-#import "extend/idevice.h"
+#import "IdeviceManager.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <arpa/inet.h>
 
 typedef NS_ENUM(NSInteger, DeviceConnectionStatus) {
     DeviceConnectionStatusDisconnected,
@@ -168,59 +167,17 @@ typedef NS_ENUM(NSInteger, DeviceConnectionStatus) {
 
     [self updateStatus:DeviceConnectionStatusConnecting message:@""];
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSString *ip = [[NSUserDefaults standardUserDefaults] stringForKey:@"IdeviceIP"] ?: @"10.7.0.1";
-        int port = (int)[[NSUserDefaults standardUserDefaults] integerForKey:@"IdevicePort"];
-        if (port == 0) port = 62078;
+    NSString *ip = [[NSUserDefaults standardUserDefaults] stringForKey:@"IdeviceIP"] ?: @"10.7.0.1";
+    int port = (int)[[NSUserDefaults standardUserDefaults] integerForKey:@"IdevicePort"];
+    if (port == 0) port = 62078;
 
-        struct IdevicePairingFile *pairing = NULL;
-        struct IdeviceFfiError *err = idevice_pairing_file_read([self.selectedPairingPath UTF8String], &pairing);
-        if (err) {
-            NSString *errMsg = [NSString stringWithFormat:@"%s", err->message];
-            idevice_error_free(err);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self updateStatus:DeviceConnectionStatusError message:[NSString stringWithFormat:@"Pairing Load Error: %@", errMsg]];
-            });
-            return;
+    [[IdeviceManager sharedManager] connectWithIP:ip port:port pairingPath:self.selectedPairingPath completion:^(BOOL success, NSString *message) {
+        if (success) {
+            [self updateStatus:DeviceConnectionStatusConnected message:message];
+        } else {
+            [self updateStatus:DeviceConnectionStatusError message:message];
         }
-
-        struct sockaddr_in sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_port = htons(port);
-        inet_pton(AF_INET, [ip UTF8String], &sa.sin_addr);
-
-        struct IdeviceHandle *device = NULL;
-        err = idevice_new_tcp_socket((const idevice_sockaddr *)&sa, sizeof(sa), "IdeviceManager", &device);
-        if (err) {
-            NSString *errMsg = [NSString stringWithFormat:@"%s", err->message];
-            idevice_error_free(err);
-            idevice_pairing_file_free(pairing);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self updateStatus:DeviceConnectionStatusError message:[NSString stringWithFormat:@"Connection Error: %@", errMsg]];
-            });
-            return;
-        }
-
-        err = idevice_start_session(device, pairing, false);
-        if (err) {
-            NSString *errMsg = [NSString stringWithFormat:@"%s", err->message];
-            idevice_error_free(err);
-            idevice_free(device);
-            idevice_pairing_file_free(pairing);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self updateStatus:DeviceConnectionStatusError message:[NSString stringWithFormat:@"Session Error: %@", errMsg]];
-            });
-            return;
-        }
-
-        // Success!
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self updateStatus:DeviceConnectionStatusConnected message:@""];
-            idevice_free(device);
-            idevice_pairing_file_free(pairing);
-        });
-    });
+    }];
 }
 
 @end
