@@ -1,9 +1,16 @@
 #import "IdeviceManager.h"
-#import <arpa/inet.h>
 #import "Logger.h"
-#import <sys/socket.h>
-#import <netinet/in.h>
 #import <unistd.h>
+
+// 100% idevice.h Compliance: Manual sockaddr definition to avoid external networking headers
+struct my_in_addr { unsigned int s_addr; };
+struct my_sockaddr_in {
+    unsigned char sin_len;
+    unsigned char sin_family;
+    unsigned short sin_port;
+    struct my_in_addr sin_addr;
+    char sin_zero[8];
+};
 
 struct RsdSession {
     struct AdapterHandle *adapter;
@@ -92,6 +99,20 @@ typedef struct RsdSession RsdSession;
 - (BOOL)ddiMounted { [_lock lock]; BOOL mounted = _ddiMounted; [_lock unlock]; return mounted; }
 - (void)setDdiMounted:(BOOL)ddiMounted { [_lock lock]; _ddiMounted = ddiMounted; [_lock unlock]; }
 
+#pragma mark - Internal Helpers
+
+static unsigned short my_htons(unsigned short h) { return (unsigned short)((h >> 8) | (h << 8)); }
+static unsigned int my_inet_addr(const char *cp) {
+    unsigned int res = 0; int part = 0;
+    while (*cp) {
+        if (*cp >= '0' && *cp <= '9') { part = part * 10 + (*cp - '0'); }
+        else if (*cp == '.') { res = (res << 8) | part; part = 0; }
+        cp++;
+    }
+    res = (res << 8) | part;
+    return (unsigned int)((res & 0xFF000000) >> 24 | (res & 0x00FF0000) >> 8 | (res & 0x0000FF00) << 8 | (res & 0x000000FF) << 24);
+}
+
 #pragma mark - Actions
 
 - (void)selectPairingFile:(NSString *)path { self.pairingFilePath = path; }
@@ -104,11 +125,14 @@ typedef struct RsdSession RsdSession;
 
 - (void)_performConnect {
     NSString *ipStr = self.ipAddress; uint16_t portNum = self.port; NSString *pairingPath = self.pairingFilePath;
-    struct sockaddr_in sa; memset(&sa, 0, sizeof(sa)); sa.sin_family = AF_INET; sa.sin_port = htons(portNum);
-    if (!ipStr || ipStr.length == 0 || inet_pton(AF_INET, [ipStr UTF8String], &sa.sin_addr) <= 0) { [self _handleError:@"IP形式不正"]; return; }
+    struct my_sockaddr_in sa; __builtin_memset(&sa, 0, sizeof(sa));
+    sa.sin_len = sizeof(sa); sa.sin_family = 2; // AF_INET
+    sa.sin_port = my_htons(portNum); sa.sin_addr.s_addr = my_inet_addr([ipStr UTF8String]);
+
     struct IdeviceFfiError *err = NULL; struct IdeviceProviderHandle *localProvider = NULL;
     struct LockdowndClientHandle *localLockdown = NULL; struct HeartbeatClientHandle *localHb = NULL;
     struct IdevicePairingFile *pForProvider = NULL; struct IdevicePairingFile *pForSession = NULL;
+
     if (pairingPath && pairingPath.length > 0) {
         err = idevice_pairing_file_read([pairingPath UTF8String], &pForProvider);
         if (!err) err = idevice_pairing_file_read([pairingPath UTF8String], &pForSession);
@@ -117,6 +141,7 @@ typedef struct RsdSession RsdSession;
             if (pForProvider) idevice_pairing_file_free(pForProvider); if (pForSession) idevice_pairing_file_free(pForSession); return;
         }
     } else { [self _handleError:@"ペアリングファイル未選択"]; return; }
+
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pForProvider, "frappe-idevice", &localProvider);
     if (err || !localProvider) { [self _handleFfiError:err fallback:@"プロバイダー作成失敗"]; if (pForProvider) idevice_pairing_file_free(pForProvider); if (pForSession) idevice_pairing_file_free(pForSession); return; }
     pForProvider = NULL; // Consumed
@@ -126,13 +151,14 @@ typedef struct RsdSession RsdSession;
     if (err) { [self _handleFfiError:err fallback:@"セッション開始失敗"]; if (pForSession) idevice_pairing_file_free(pForSession); if (localLockdown) lockdownd_client_free(localLockdown); if (localProvider) idevice_provider_free(localProvider); return; }
     pForSession = NULL; // Consumed
     heartbeat_connect(localProvider, &localHb);
+
     BOOL ddiFlag = NO; struct ImageMounterHandle *mounter = NULL;
     if (image_mounter_connect(localProvider, &mounter) == NULL && mounter) {
         plist_t *devices = NULL; size_t count = 0;
         if (image_mounter_copy_devices(mounter, &devices, &count) == NULL && count > 0) { ddiFlag = YES; }
-        if (devices) idevice_plist_array_free(devices, (uintptr_t)count);
-        image_mounter_free(mounter);
+        if (devices) idevice_plist_array_free(devices, (uintptr_t)count); image_mounter_free(mounter);
     }
+
     [_lock lock]; _provider = localProvider; _lockdownClient = localLockdown; _heartbeatClient = localHb; _heartbeatActive = (localHb != NULL); _ddiMounted = ddiFlag; _status = IdeviceStatusConnected;
     if (localHb) { dispatch_async(dispatch_get_main_queue(), ^{ [self _startHeartbeatTimer]; }); }
     dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
@@ -169,7 +195,7 @@ typedef struct RsdSession RsdSession;
 #pragma mark - RSD Management
 
 - (struct IdeviceFfiError *)_establishRsdSession:(RsdSession *)session {
-    memset(session, 0, sizeof(RsdSession)); [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    __builtin_memset(session, 0, sizeof(RsdSession)); [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
     if (!p) return NULL; [_rsdLock lock];
     struct CoreDeviceProxyHandle *proxy = NULL; struct IdeviceFfiError *err = core_device_proxy_connect(p, &proxy);
     if (!err && proxy) {
@@ -177,13 +203,17 @@ typedef struct RsdSession RsdSession;
         if (!err && port > 0) {
             err = core_device_proxy_create_tcp_adapter(proxy, &session->adapter);
             if (!err && session->adapter) {
+                proxy = NULL; // Consumed
                 struct ReadWriteOpaque *stream = NULL; err = adapter_connect(session->adapter, port, &stream);
-                if (!err && stream) { err = rsd_handshake_new(stream, &session->handshake); }
+                if (!err && stream) {
+                    err = rsd_handshake_new(stream, &session->handshake);
+                    if (!err && session->handshake) { [_rsdLock unlock]; return NULL; }
+                }
             }
         }
-        core_device_proxy_free(proxy);
+        if (proxy) core_device_proxy_free(proxy);
     }
-    if (err) { [self _freeRsdSession:session]; } [_rsdLock unlock]; return err;
+    [self _freeRsdSession:session]; [_rsdLock unlock]; return err;
 }
 
 - (void)_freeRsdSession:(RsdSession *)session {
@@ -259,12 +289,8 @@ typedef struct RsdSession RsdSession;
         if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:nil]); }); return; }
         struct AppServiceHandle *app = NULL; err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &app);
         if (err || !app) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:14 userInfo:nil]); }); return; }
-        err = app_service_uninstall_app(app, [bundleId UTF8String]);
-        app_service_free(app); [self _freeRsdSession:&rsd];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-            if (err) { completion([NSError errorWithDomain:@"Idevice" code:25 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err->message ?: "削除失敗"]}]); idevice_error_free(err); }
-            else completion(nil);
-        });
+        err = app_service_uninstall_app(app, [bundleId UTF8String]); app_service_free(app); [self _freeRsdSession:&rsd];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ if (err) { completion([NSError errorWithDomain:@"Idevice" code:25 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err->message ?: "削除失敗"]}]); idevice_error_free(err); } else completion(nil); });
     });
 }
 
@@ -352,7 +378,7 @@ typedef struct RsdSession RsdSession;
         } else if (err) idevice_error_free(err);
         struct ScreenshotrClientHandle *src = NULL;
         if (screenshotr_connect(p, &src) == NULL && src) {
-            struct ScreenshotData sd; memset(&sd, 0, sizeof(sd));
+            struct ScreenshotData sd; __builtin_memset(&sd, 0, sizeof(sd));
             if (screenshotr_take_screenshot(src, &sd) == NULL && sd.data && sd.length > 0) {
                 UIImage *img = [UIImage imageWithData:[NSData dataWithBytes:sd.data length:sd.length]]; screenshotr_screenshot_free(sd); screenshotr_client_free(src);
                 if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); }); return;
@@ -395,7 +421,7 @@ typedef struct RsdSession RsdSession;
     if (t == PLIST_STRING || t == PLIST_KEY) { char *v = NULL; (t == PLIST_STRING) ? plist_get_string_val(node, &v) : plist_get_key_val(node, &v); NSString *s = v ? [NSString stringWithUTF8String:v] : @""; if (v) plist_mem_free(v); return s; }
     if (t == PLIST_ARRAY) {
         uint32_t sz = plist_array_get_size(node); NSMutableArray *a = [NSMutableArray arrayWithCapacity:sz];
-        for (uint32_t i = 0; i < sz && i < 1000; i++) { id o = [self _convertPlistToObjC:[self plist_array_get_item:node index:i] depth:depth+1]; if (o) [a addObject:o]; }
+        for (uint32_t i = 0; i < sz && i < 1000; i++) { id o = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth+1]; if (o) [a addObject:o]; }
         return a;
     }
     if (t == PLIST_DICT) {
@@ -407,7 +433,5 @@ typedef struct RsdSession RsdSession;
     if (t == PLIST_DATA) { uint64_t l = 0; const char *p = plist_get_data_ptr(node, &l); return (p && l > 0 && l < 5000000) ? [NSData dataWithBytes:p length:(NSUInteger)l] : [NSData data]; }
     return nil;
 }
-
-- (plist_t)plist_array_get_item:(plist_t)node index:(uint32_t)i { return plist_array_get_item(node, i); }
 
 @end
