@@ -12,7 +12,7 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *connectButton;
 @property (nonatomic, strong) UIButton *selectPairingFileButton;
-@property (nonatomic, strong) NSString *selectedPairingFilePath;
+@property (nonatomic, strong) NSURL *selectedPairingFileURL;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
 @property (nonatomic, strong) UILabel *deviceInfoLabel;
 
@@ -125,13 +125,13 @@
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (url) {
-        self.selectedPairingFilePath = url.path;
+        self.selectedPairingFileURL = url;
         self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", url.lastPathComponent];
     }
 }
 
 - (void)connectTapped {
-    if (!self.selectedPairingFilePath) {
+    if (!self.selectedPairingFileURL) {
         [self showAlertWithTitle:@"Error" message:@"Please select a pairing file first."];
         return;
     }
@@ -172,7 +172,9 @@
     }
 
     struct IdevicePairingFile *pairing_file = NULL;
-    err = idevice_pairing_file_read([self.selectedPairingFilePath UTF8String], &pairing_file);
+    BOOL access = [self.selectedPairingFileURL startAccessingSecurityScopedResource];
+    err = idevice_pairing_file_read([self.selectedPairingFileURL.path UTF8String], &pairing_file);
+    if (access) [self.selectedPairingFileURL stopAccessingSecurityScopedResource];
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
         idevice_error_free(err);
