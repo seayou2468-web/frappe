@@ -89,30 +89,28 @@
 }
 
 - (void)updateStatus:(NSString *)status color:(UIColor *)color animating:(BOOL)animating {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.statusLabel.text = status;
-        self.statusIndicator.backgroundColor = color;
-        [self.statusIndicator.layer removeAllAnimations];
+    self.statusLabel.text = status;
+    self.statusIndicator.backgroundColor = color;
+    [self.statusIndicator.layer removeAllAnimations];
 
-        if (animating) {
-            CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
-            pulse.duration = 0.8;
-            pulse.fromValue = @(1.0);
-            pulse.toValue = @(0.3);
-            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            pulse.autoreverses = YES;
-            pulse.repeatCount = HUGE_VALF;
-            [self.statusIndicator.layer addAnimation:pulse forKey:@"pulse"];
+    if (animating) {
+        CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        pulse.duration = 0.8;
+        pulse.fromValue = @(1.0);
+        pulse.toValue = @(0.3);
+        pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        pulse.autoreverses = YES;
+        pulse.repeatCount = HUGE_VALF;
+        [self.statusIndicator.layer addAnimation:pulse forKey:@"pulse"];
 
-            // Glow effect
-            self.statusIndicator.layer.shadowColor = color.CGColor;
-            self.statusIndicator.layer.shadowOffset = CGSizeZero;
-            self.statusIndicator.layer.shadowOpacity = 1.0;
-            self.statusIndicator.layer.shadowRadius = 15;
-        } else {
-            self.statusIndicator.layer.shadowOpacity = 0;
-        }
-    });
+        // Glow effect
+        self.statusIndicator.layer.shadowColor = color.CGColor;
+        self.statusIndicator.layer.shadowOffset = CGSizeZero;
+        self.statusIndicator.layer.shadowOpacity = 1.0;
+        self.statusIndicator.layer.shadowRadius = 15;
+    } else {
+        self.statusIndicator.layer.shadowOpacity = 0;
+    }
 }
 
 - (void)selectPairingFile {
@@ -140,9 +138,7 @@
     self.deviceInfoLabel.text = @"";
     self.connectButton.enabled = NO;
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [self performConnection];
-    });
+    [self performConnection];
 }
 
 - (void)performConnection {
@@ -175,6 +171,7 @@
     BOOL access = [self.selectedPairingFileURL startAccessingSecurityScopedResource];
     err = idevice_pairing_file_read([self.selectedPairingFileURL.path UTF8String], &pairing_file);
     if (access) [self.selectedPairingFileURL stopAccessingSecurityScopedResource];
+
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
         idevice_error_free(err);
@@ -244,9 +241,7 @@
 
     // If we reached here, we are fully connected and verified
     [self updateStatus:@"Connected" color:[UIColor systemGreenColor] animating:YES];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.deviceInfoLabel.text = deviceName;
-    });
+    self.deviceInfoLabel.text = deviceName;
     [self showAlertWithTitle:@"Success" message:[NSString stringWithFormat:@"Successfully connected and verified with %@!", deviceName]];
 
     // Clean up
@@ -257,17 +252,13 @@
 }
 
 - (void)reenableConnectButton {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.connectButton.enabled = YES;
-    });
+    self.connectButton.enabled = YES;
 }
 
 - (void)showAlertWithTitle:(NSString *)title message:(NSString *)message {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-    });
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
