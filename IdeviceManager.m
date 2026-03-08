@@ -82,7 +82,7 @@ typedef struct RsdSession RsdSession;
     [self disconnect];
 }
 
-#pragma mark - Thread-safe Accessors
+#pragma mark - Accessors
 
 - (IdeviceConnectionStatus)status { [_lock lock]; IdeviceConnectionStatus s = _status; [_lock unlock]; return s; }
 - (void)setStatus:(IdeviceConnectionStatus)status { [_lock lock]; _status = status; [_lock unlock]; }
@@ -128,7 +128,7 @@ typedef struct RsdSession RsdSession;
             return;
         }
     } else {
-        [self _handleError:@"ペアリングファイルが選択されていません。設定から選択してください。"];
+        [self _handleError:@"ペアリングファイルが選択されていません。"];
         return;
     }
     err = idevice_tcp_provider_new((const idevice_sockaddr *)&sa, pairingForProvider, "frappe-idevice", &localProvider);
@@ -141,7 +141,7 @@ typedef struct RsdSession RsdSession;
     pairingForProvider = NULL; // Consumed
     err = lockdownd_connect(localProvider, &localLockdown);
     if (err || !localLockdown) {
-        [self _handleFfiError:err fallback:@"Lockdownサービスへの接続に失敗しました"];
+        [self _handleFfiError:err fallback:@"Lockdownへの接続に失敗しました"];
         if (localProvider) idevice_provider_free(localProvider);
         if (pairingForSession) idevice_pairing_file_free(pairingForSession);
         return;
@@ -155,27 +155,12 @@ typedef struct RsdSession RsdSession;
         return;
     }
     pairingForSession = NULL; // Consumed
-    err = heartbeat_connect(localProvider, &localHb); if (err) { idevice_error_free(err); }
-    BOOL ddiFlag = NO; struct ImageMounterHandle *mounter = NULL;
-    err = image_mounter_connect(localProvider, &mounter);
-    if (!err && mounter) {
-        plist_t *devices = NULL; size_t count = 0;
-        err = image_mounter_copy_devices(mounter, &devices, &count);
-        if (!err) { ddiFlag = (count > 0); if (devices) idevice_plist_array_free(devices, (uintptr_t)count); }
-        else { idevice_error_free(err); }
-        image_mounter_free(mounter);
-    } else if (err) { idevice_error_free(err); }
+    heartbeat_connect(localProvider, &localHb);
     [_lock lock];
-    if (self.status == IdeviceStatusConnecting) {
-        _provider = localProvider; _lockdownClient = localLockdown;
-        _heartbeatClient = localHb; _heartbeatActive = (localHb != NULL); _ddiMounted = ddiFlag; _status = IdeviceStatusConnected;
-        if (localHb) { dispatch_async(dispatch_get_main_queue(), ^{ [self _startHeartbeatTimer]; }); }
-        dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
-    } else {
-        if (localHb) heartbeat_client_free(localHb);
-        if (localLockdown) lockdownd_client_free(localLockdown);
-        if (localProvider) idevice_provider_free(localProvider);
-    }
+    _provider = localProvider; _lockdownClient = localLockdown; _heartbeatClient = localHb;
+    _heartbeatActive = (localHb != NULL); _status = IdeviceStatusConnected;
+    if (localHb) { dispatch_async(dispatch_get_main_queue(), ^{ [self _startHeartbeatTimer]; }); }
+    dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
     [_lock unlock];
 }
 
@@ -185,8 +170,7 @@ typedef struct RsdSession RsdSession;
     if (self.heartbeatClient) { heartbeat_client_free(self.heartbeatClient); _heartbeatClient = NULL; }
     if (self.lockdownClient) { lockdownd_client_free(self.lockdownClient); _lockdownClient = NULL; }
     if (self.provider) { idevice_provider_free(self.provider); _provider = NULL; }
-    if (self.pairingFile) { idevice_pairing_file_free(self.pairingFile); _pairingFile = NULL; }
-    _status = IdeviceStatusDisconnected; _heartbeatActive = NO; _ddiMounted = NO;
+    _status = IdeviceStatusDisconnected; _heartbeatActive = NO;
     [self stopSyslogCapture];
     [_lock unlock];
     dispatch_async(dispatch_get_main_queue(), ^{ [[NSNotificationCenter defaultCenter] postNotificationName:@"IdeviceStatusChanged" object:nil]; });
@@ -213,7 +197,7 @@ typedef struct RsdSession RsdSession;
         __strong typeof(weakSelf) strongSelf = weakSelf; if (!strongSelf) return;
         struct IdeviceFfiError *err = NULL;
         [strongSelf->_lock lock]; if (strongSelf.heartbeatClient) err = heartbeat_send_polo(strongSelf.heartbeatClient); [strongSelf->_lock unlock];
-        if (err) { idevice_error_free(err); [strongSelf disconnect]; strongSelf.lastError = @"ハートビートが途切れました"; }
+        if (err) { idevice_error_free(err); [strongSelf disconnect]; }
     });
 }
 
@@ -223,112 +207,57 @@ typedef struct RsdSession RsdSession;
     memset(session, 0, sizeof(RsdSession));
     [_lock lock]; struct IdeviceProviderHandle *provider = self.provider; [_lock unlock];
     if (!provider) return NULL;
-
     [_rsdLock lock];
-    struct IdeviceFfiError *err = NULL;
-    struct CoreDeviceProxyHandle *proxy = NULL;
-
-    err = core_device_proxy_connect(provider, &proxy);
-    if (err || !proxy) {
-        [_rsdLock unlock];
-        return err;
+    struct IdeviceFfiError *err = core_device_proxy_connect(provider, &session->proxy);
+    if (!err && session->proxy) {
+        uint16_t rsd_port = 0;
+        err = core_device_proxy_get_server_rsd_port(session->proxy, &rsd_port);
+        if (!err && rsd_port > 0) {
+            err = core_device_proxy_create_tcp_adapter(session->proxy, &session->adapter);
+            session->proxy = NULL; // Consumed
+            if (!err && session->adapter) {
+                err = adapter_connect(session->adapter, rsd_port, &session->stream);
+                if (!err && session->stream) {
+                    err = rsd_handshake_new(session->stream, &session->handshake);
+                    session->stream = NULL; // Consumed
+                    if (!err && session->handshake) { [_rsdLock unlock]; return NULL; }
+                }
+            }
+        }
     }
-    session->proxy = proxy;
-
-    uint16_t rsd_port = 0;
-    err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
-    if (err || rsd_port == 0) {
-        [self _freeRsdSession:session];
-        [_rsdLock unlock];
-        return err;
-    }
-
-    struct AdapterHandle *adapter = NULL;
-    err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
-    session->proxy = NULL; // Consumed
-    if (err || !adapter) {
-        [self _freeRsdSession:session];
-        [_rsdLock unlock];
-        return err;
-    }
-    session->adapter = adapter;
-
-    struct ReadWriteOpaque *stream = NULL;
-    err = adapter_connect(adapter, rsd_port, &stream);
-    if (err || !stream) {
-        [self _freeRsdSession:session];
-        [_rsdLock unlock];
-        return err;
-    }
-    session->stream = stream;
-
-    struct RsdHandshakeHandle *handshake = NULL;
-    err = rsd_handshake_new(stream, &handshake);
-    session->stream = NULL; // Consumed
-    if (err || !handshake) {
-        [self _freeRsdSession:session];
-        [_rsdLock unlock];
-        return err;
-    }
-    session->handshake = handshake;
-
-    [_rsdLock unlock];
-    return NULL;
+    [self _freeRsdSession:session]; [_rsdLock unlock]; return err;
 }
 
 - (void)_freeRsdSession:(RsdSession *)session {
     [_rsdLock lock];
-    if (session->handshake) {
-        rsd_handshake_free(session->handshake);
-        session->handshake = NULL;
-    }
-    if (session->stream) {
-        idevice_stream_free(session->stream);
-        session->stream = NULL;
-    }
-    if (session->adapter) {
-        struct IdeviceFfiError *e = adapter_close(session->adapter);
-        if (e) idevice_error_free(e);
-        adapter_free(session->adapter);
-        session->adapter = NULL;
-    }
-    if (session->proxy) {
-        core_device_proxy_free(session->proxy);
-        session->proxy = NULL;
-    }
+    if (session->handshake) rsd_handshake_free(session->handshake);
+    if (session->stream) idevice_stream_free(session->stream);
+    if (session->adapter) { adapter_close(session->adapter); adapter_free(session->adapter); }
+    if (session->proxy) core_device_proxy_free(session->proxy);
+    memset(session, 0, sizeof(RsdSession));
     [_rsdLock unlock];
 }
 
 #pragma mark - App Management
 
 - (void)getAppListWithCompletion:(void (^)(NSArray *apps, NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    if (!p) { if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct InstallationProxyClientHandle *client = NULL;
         struct IdeviceFfiError *err = installation_proxy_connect(p, &client);
-        if (err || !client) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "InstProxyへの接続に失敗しました"] : @"InstProxyへの接続に失敗しました";
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:2 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        void *out_result = NULL; size_t out_result_len = 0;
-        err = installation_proxy_get_apps(client, "Any", NULL, 0, &out_result, &out_result_len);
+        if (err || !client) { if (err) idevice_error_free(err); if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:2 userInfo:nil]); }); return; }
+        void *out_res = NULL; size_t out_len = 0;
+        err = installation_proxy_get_apps(client, "Any", NULL, 0, &out_res, &out_len);
         installation_proxy_client_free(client);
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリ一覧の取得に失敗しました"];
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
+        if (err) { idevice_error_free(err); if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:3 userInfo:nil]); }); return; }
+        NSMutableArray *apps = [NSMutableArray array];
+        if (out_res && out_len > 0) {
+            plist_t *handles = (plist_t *)out_res;
+            for (size_t i = 0; i < out_len; i++) { id obj = [self _convertPlistToObjC:handles[i] depth:0]; if (obj) [apps addObject:obj]; }
+            idevice_plist_array_free(handles, (uintptr_t)out_len);
         }
-        NSMutableArray *finalApps = [NSMutableArray array];
-        if (out_result && out_result_len > 0) {
-            plist_t *handles = (plist_t *)out_result;
-            for (size_t i = 0; i < out_result_len; i++) { if (handles[i]) { id obj = [self _convertPlistToObjC:handles[i] depth:0]; if (obj) [finalApps addObject:obj]; } }
-            idevice_plist_array_free(handles, (uintptr_t)out_result_len);
-        }
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalApps, nil); });
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(apps, nil); });
     });
 }
 
@@ -337,452 +266,200 @@ typedef struct RsdSession RsdSession;
 }
 
 - (void)launchAppWithBundleId:(NSString *)bundleId arguments:(NSArray *)args environment:(NSDictionary *)env useJIT:(BOOL)useJIT completion:(void (^)(NSError *error))completion {
-    [_lock lock];
-    if (self.status != IdeviceStatusConnected || !self.provider) {
-        [_lock unlock];
-        if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]);
-        return;
-    }
-    [_lock unlock];
-
+    [_lock lock]; struct IdeviceProviderHandle *provider = self.provider; [_lock unlock];
+    if (!provider) { if (completion) completion([NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        RsdSession rsd;
-        struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err || !rsd.handshake) {
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:@{NSLocalizedDescriptionKey: @"RSDセッションの確立に失敗しました"}]);
-            });
-            return;
-        }
-
+        RsdSession rsd; struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
+        if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:nil]); }); return; }
         struct RemoteServerHandle *rs = NULL;
         err = remote_server_connect_rsd(rsd.adapter, rsd.handshake, &rs);
-        if (err || !rs) {
-            if (err) idevice_error_free(err);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:23 userInfo:@{NSLocalizedDescriptionKey: @"RemoteServerへの接続に失敗しました"}]);
-            });
-            return;
-        }
-
+        if (err || !rs) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:23 userInfo:nil]); }); return; }
         struct ProcessControlHandle *pc = NULL;
         err = process_control_new(rs, &pc);
-        if (err || !pc) {
-            if (err) idevice_error_free(err);
-            remote_server_free(rs);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:24 userInfo:@{NSLocalizedDescriptionKey: @"ProcessControlの作成に失敗しました"}]);
-            });
-            return;
-        }
-
-        // Prepare arguments
-        uintptr_t argc = args.count;
-        const char **argv = NULL;
-        if (argc > 0) {
-            argv = (const char **)calloc(argc, sizeof(char *));
-            for (uintptr_t i = 0; i < argc; i++) argv[i] = [args[i] UTF8String];
-        }
-
-        // Prepare environment
-        uintptr_t envc = env.count;
-        const char **envv = NULL;
+        if (err || !pc) { if (err) idevice_error_free(err); remote_server_free(rs); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:24 userInfo:nil]); }); return; }
+        uintptr_t argc = args.count; const char **argv = NULL;
+        if (argc > 0) { argv = (const char **)calloc(argc, sizeof(char *)); for (uintptr_t i = 0; i < argc; i++) argv[i] = [args[i] UTF8String]; }
+        uintptr_t envc = env.count; const char **envv = NULL;
         if (envc > 0) {
             envv = (const char **)calloc(envc, sizeof(char *));
             NSArray *keys = [env allKeys];
-            for (uintptr_t i = 0; i < envc; i++) {
-                NSString *kv = [NSString stringWithFormat:@"%@=%@", keys[i], env[keys[i]]];
-                envv[i] = strdup([kv UTF8String]);
-            }
+            for (uintptr_t i = 0; i < envc; i++) { NSString *kv = [NSString stringWithFormat:@"%@=%@", keys[i], env[keys[i]]]; envv[i] = strdup([kv UTF8String]); }
         }
-
         uint64_t pid = 0;
         err = process_control_launch_app(pc, [bundleId UTF8String], envv, envc, argv, argc, useJIT, true, &pid);
-
-        if (argv) free(argv);
-        if (envv) {
-            for (uintptr_t i = 0; i < envc; i++) free((void *)envv[i]);
-            free(envv);
-        }
-
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリの起動に失敗しました"];
-            idevice_error_free(err);
-            process_control_free(pc);
-            remote_server_free(rs);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:22 userInfo:@{NSLocalizedDescriptionKey: msg}]);
-            });
-            return;
-        }
-
+        if (argv) free(argv); if (envv) { for (uintptr_t i = 0; i < envc; i++) free((void *)envv[i]); free(envv); }
+        if (err) { idevice_error_free(err); process_control_free(pc); remote_server_free(rs); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion([NSError errorWithDomain:@"Idevice" code:22 userInfo:nil]); }); return; }
         if (useJIT && pid > 0) {
-            struct DebugProxyHandle *debugProxy = NULL;
-            err = debug_proxy_connect_rsd(rsd.adapter, rsd.handshake, &debugProxy);
-            if (!err && debugProxy) {
-                debug_proxy_set_ack_mode(debugProxy, 0); // Disable ACK for better perf
-
-                char attachCmd[64];
-                snprintf(attachCmd, sizeof(attachCmd), "vAttach;%llx", pid);
-                struct DebugserverCommandHandle *cmd = debugserver_command_new(attachCmd, NULL, 0);
-                char *resp = NULL;
-                debug_proxy_send_command(debugProxy, cmd, &resp);
-                if (resp) rsd_free_string(resp);
-                debugserver_command_free(cmd);
-
-                // Continue execution
+            struct DebugProxyHandle *dp = NULL;
+            err = debug_proxy_connect_rsd(rsd.adapter, rsd.handshake, &dp);
+            if (!err && dp) {
+                debug_proxy_set_ack_mode(dp, 0);
+                char attach[64]; snprintf(attach, 64, "vAttach;%llx", pid);
+                struct DebugserverCommandHandle *cmd = debugserver_command_new(attach, NULL, 0);
+                char *resp = NULL; debug_proxy_send_command(dp, cmd, &resp); if (resp) rsd_free_string(resp); debugserver_command_free(cmd);
                 struct DebugserverCommandHandle *cont = debugserver_command_new("c", NULL, 0);
-                debug_proxy_send_command(debugProxy, cont, &resp);
-                if (resp) rsd_free_string(resp);
-                debugserver_command_free(cont);
-
-                debug_proxy_free(debugProxy);
-            } else if (err) {
-                idevice_error_free(err);
-            }
+                debug_proxy_send_command(dp, cont, &resp); if (resp) rsd_free_string(resp); debugserver_command_free(cont);
+                debug_proxy_free(dp);
+            } else if (err) idevice_error_free(err);
         }
-
-        process_control_free(pc);
-        remote_server_free(rs);
-        [self _freeRsdSession:&rsd];
-
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-            completion(nil);
-        });
-    });
-}]);
-        return;
-    }
-    [_lock unlock];
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        RsdSession rsd;
-        struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err || !rsd.handshake) {
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:20 userInfo:@{NSLocalizedDescriptionKey: @"RSDセッションの確立に失敗しました"}]);
-            });
-            return;
-        }
-
-        struct AppServiceHandle *appSvc = NULL;
-        err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &appSvc);
-        if (err || !appSvc) {
-            if (err) idevice_error_free(err);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:21 userInfo:@{NSLocalizedDescriptionKey: @"AppServiceへの接続に失敗しました"}]);
-            });
-            return;
-        }
-
-        // Prepare arguments
-        uintptr_t argc = args.count;
-        const char **argv = NULL;
-        if (argc > 0) {
-            argv = (const char **)calloc(argc, sizeof(char *));
-            for (uintptr_t i = 0; i < argc; i++) {
-                argv[i] = [args[i] UTF8String];
-            }
-        }
-
-        struct LaunchResponseC *response = NULL;
-        err = app_service_launch_app(appSvc, [bundleId UTF8String], argv, argc, 1, useJIT ? 1 : 0, NULL, &response);
-        if (argv) free(argv);
-
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "アプリの起動に失敗しました"];
-            idevice_error_free(err);
-            app_service_free(appSvc);
-            [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-                completion([NSError errorWithDomain:@"Idevice" code:22 userInfo:@{NSLocalizedDescriptionKey: msg}]);
-            });
-            return;
-        }
-
-        uint64_t pid = response ? response->pid : 0;
-        if (response) app_service_free_launch_response(response);
-
-        if (useJIT && pid > 0) {
-            struct DebugProxyHandle *debugProxy = NULL;
-            err = debug_proxy_connect_rsd(rsd.adapter, rsd.handshake, &debugProxy);
-            if (!err && debugProxy) {
-                char attachCmd[64];
-                snprintf(attachCmd, sizeof(attachCmd), "vAttach;%llx", pid);
-                struct DebugserverCommandHandle *cmd = debugserver_command_new(attachCmd, NULL, 0);
-                char *resp = NULL;
-                debug_proxy_send_command(debugProxy, cmd, &resp);
-                if (resp) rsd_free_string(resp);
-                debugserver_command_free(cmd);
-
-                // Continue execution
-                struct DebugserverCommandHandle *cont = debugserver_command_new("c", NULL, 0);
-                debug_proxy_send_command(debugProxy, cont, &resp);
-                if (resp) rsd_free_string(resp);
-                debugserver_command_free(cont);
-
-                debug_proxy_free(debugProxy);
-            } else if (err) {
-                idevice_error_free(err);
-            }
-        }
-
-        app_service_free(appSvc);
-        [self _freeRsdSession:&rsd];
-
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{
-            completion(nil);
-        });
+        process_control_free(pc); remote_server_free(rs); [self _freeRsdSession:&rsd];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
     });
 }
 
 #pragma mark - RSD Support
 
 - (void)getRsdServicesWithCompletion:(void (^)(NSArray *services, NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    [_lock unlock];
+    [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    if (!p) { if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd; struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err || !rsd.handshake) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
+        if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:nil]); }); return; }
+        struct CRsdServiceArray *raw = NULL;
+        err = rsd_get_services(rsd.handshake, &raw);
+        if (err || !raw) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:11 userInfo:nil]); }); return; }
+        NSMutableArray *res = [NSMutableArray array];
+        for (size_t i = 0; i < raw->count; i++) {
+            struct CRsdService *s = &raw->services[i]; NSMutableDictionary *d = [NSMutableDictionary dictionary];
+            if (s->name) d[@"name"] = [NSString stringWithUTF8String:s->name];
+            d[@"port"] = @(s->port); d[@"uses_remote_xpc"] = @(s->uses_remote_xpc);
+            [res addObject:d];
         }
-        struct CRsdServiceArray *rawServices = NULL;
-        err = rsd_get_services(rsd.handshake, &rawServices);
-        if (err || !rawServices) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDサービスの取得に失敗しました"] : @"RSDサービスの取得に失敗しました";
-            if (err) idevice_error_free(err); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        NSMutableArray *results = [NSMutableArray array];
-        for (size_t i = 0; i < rawServices->count; i++) {
-            struct CRsdService *s = &rawServices->services[i]; NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-            if (s->name && strlen(s->name) > 0) dict[@"name"] = [NSString stringWithUTF8String:s->name];
-            dict[@"port"] = @(s->port); dict[@"uses_remote_xpc"] = @(s->uses_remote_xpc);
-            if (s->features_count > 0 && s->features) {
-                NSMutableArray *fs = [NSMutableArray array];
-                for (size_t j = 0; j < s->features_count; j++) { if (s->features[j]) [fs addObject:[NSString stringWithUTF8String:s->features[j]]]; }
-                dict[@"features"] = [fs componentsJoinedByString:@", "]; dict[@"entitlement"] = dict[@"features"];
-            }
-            [results addObject:dict];
-        }
-        rsd_free_services(rawServices); [self _freeRsdSession:&rsd];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(results, nil); });
+        rsd_free_services(raw); [self _freeRsdSession:&rsd];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(res, nil); });
     });
 }
 
 - (void)getProcessListWithCompletion:(void (^)(NSArray *processes, NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    [_lock unlock];
+    [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    if (!p) { if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd; struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err || !rsd.handshake) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        struct AppServiceHandle *appSvc = NULL;
-        err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &appSvc);
-        if (err || !appSvc) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "AppServiceへの接続に失敗しました"] : @"AppServiceへの接続に失敗しました";
-            if (err) idevice_error_free(err); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:14 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        struct ProcessTokenC *rawProcesses = NULL; uintptr_t count = 0;
-        err = app_service_list_processes(appSvc, &rawProcesses, &count);
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "プロセス一覧の取得に失敗しました"];
-            idevice_error_free(err); app_service_free(appSvc); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:15 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        NSMutableArray *results = [NSMutableArray array];
+        if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:nil]); }); return; }
+        struct AppServiceHandle *app = NULL;
+        err = app_service_connect_rsd(rsd.adapter, rsd.handshake, &app);
+        if (err || !app) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:14 userInfo:nil]); }); return; }
+        struct ProcessTokenC *raw = NULL; uintptr_t count = 0;
+        err = app_service_list_processes(app, &raw, &count);
+        if (err) { idevice_error_free(err); app_service_free(app); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:15 userInfo:nil]); }); return; }
+        NSMutableArray *res = [NSMutableArray array];
         for (uintptr_t i = 0; i < count; i++) {
-            struct ProcessTokenC *p = &rawProcesses[i]; NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-            dict[@"pid"] = @(p->pid);
-            if (p->executable_url && strlen(p->executable_url) > 0) dict[@"path"] = [NSString stringWithUTF8String:p->executable_url];
-            [results addObject:dict];
+            NSMutableDictionary *d = [NSMutableDictionary dictionary];
+            d[@"pid"] = @(raw[i].pid);
+            if (raw[i].executable_url) d[@"path"] = [NSString stringWithUTF8String:raw[i].executable_url];
+            [res addObject:d];
         }
-        app_service_free_process_list(rawProcesses, (uintptr_t)count); app_service_free(appSvc); [self _freeRsdSession:&rsd];
-        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(results, nil); });
+        app_service_free_process_list(raw, count); app_service_free(app); [self _freeRsdSession:&rsd];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(res, nil); });
     });
 }
 
 - (void)captureSysdiagnoseWithCompletion:(void (^)(NSString *path, NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    [_lock unlock];
+    [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    if (!p) { if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd; struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (err || !rsd.handshake) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "RSDセッションの確立に失敗しました"] : @"RSDセッションの確立に失敗しました";
-            if (err) idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
+        if (err) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:10 userInfo:nil]); }); return; }
         struct DiagnosticsServiceHandle *diag = NULL;
         err = diagnostics_service_connect_rsd(rsd.adapter, rsd.handshake, &diag);
-        if (err || !diag) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Diagnosticsへの接続に失敗しました"] : @"Diagnosticsへの接続に失敗しました";
-            if (err) idevice_error_free(err); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:11 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        char *filename = NULL; uintptr_t expected = 0; struct SysdiagnoseStreamHandle *stream_h = NULL;
-        err = diagnostics_service_capture_sysdiagnose(diag, false, &filename, &expected, &stream_h);
-        if (err || !stream_h) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Sysdiagnoseの開始に失敗しました"] : @"Sysdiagnoseの開始に失敗しました";
-            if (err) idevice_error_free(err); if (filename) rsd_free_string(filename); diagnostics_service_free(diag); [self _freeRsdSession:&rsd];
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:12 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        NSString *destName = filename ? [NSString stringWithUTF8String:filename] : [NSString stringWithFormat:@"sysdiagnose_%ld.tar.gz", (long)[[NSDate date] timeIntervalSince1970]];
-        if (filename) rsd_free_string(filename);
-        NSString *docPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *finalPath = [docPath stringByAppendingPathComponent:destName];
-        [[NSFileManager defaultManager] createFileAtPath:finalPath contents:nil attributes:nil];
-        NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:finalPath];
-        if (!file) { sysdiagnose_stream_free(stream_h); diagnostics_service_free(diag); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:13 userInfo:@{NSLocalizedDescriptionKey: @"ファイルの作成に失敗しました"}]); }); return; }
-        uint8_t *data = NULL; uintptr_t len = 0; BOOL loopSuccess = YES; NSError *loopErr = nil;
-        while (true) {
-            err = sysdiagnose_stream_next(stream_h, &data, &len);
-            if (err) { loopErr = [NSError errorWithDomain:@"Idevice" code:16 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithUTF8String:err->message ?: "ストリーム取得エラー"]}]; idevice_error_free(err); loopSuccess = NO; break; }
-            if (!data || len == 0) break;
-            [file writeData:[NSData dataWithBytes:data length:len]]; idevice_data_free(data, (uintptr_t)len);
-        }
-        [file closeFile]; sysdiagnose_stream_free(stream_h); diagnostics_service_free(diag); [self _freeRsdSession:&rsd];
-        if (loopSuccess) { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(finalPath, nil); }); }
-        else { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, loopErr); }); }
+        if (err || !diag) { if (err) idevice_error_free(err); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:11 userInfo:nil]); }); return; }
+        char *file_c = NULL; uintptr_t exp = 0; struct SysdiagnoseStreamHandle *ssh = NULL;
+        err = diagnostics_service_capture_sysdiagnose(diag, false, &file_c, &exp, &ssh);
+        if (err || !ssh) { if (err) idevice_error_free(err); diagnostics_service_free(diag); [self _freeRsdSession:&rsd]; if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:12 userInfo:nil]); }); return; }
+        NSString *name = file_c ? [NSString stringWithUTF8String:file_c] : @"sysdiagnose.tar.gz"; if (file_c) rsd_free_string(file_c);
+        NSString *path = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject] stringByAppendingPathComponent:name];
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) { sysdiagnose_stream_free(ssh); diagnostics_service_free(diag); [self _freeRsdSession:&rsd]; return; }
+        uint8_t *buf = NULL; uintptr_t blen = 0;
+        while (sysdiagnose_stream_next(ssh, &buf, &blen) == NULL && buf && blen > 0) { [fh writeData:[NSData dataWithBytes:buf length:blen]]; idevice_data_free(buf, blen); }
+        [fh closeFile]; sysdiagnose_stream_free(ssh); diagnostics_service_free(diag); [self _freeRsdSession:&rsd];
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(path, nil); });
     });
 }
 
 - (void)takeScreenshotWithCompletion:(void (^)(UIImage *image, NSError *error))completion {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:@{NSLocalizedDescriptionKey: @"デバイスに接続されていません"}]); return; }
-    struct IdeviceProviderHandle *p_outer = self.provider; [_lock unlock];
+    [_lock lock]; struct IdeviceProviderHandle *p = self.provider; [_lock unlock];
+    if (!p) { if (completion) completion(nil, [NSError errorWithDomain:@"Idevice" code:1 userInfo:nil]); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         RsdSession rsd; struct IdeviceFfiError *err = [self _establishRsdSession:&rsd];
-        if (!err && rsd.handshake) {
-            struct RemoteServerHandle *rs_handle = NULL;
-            err = remote_server_connect_rsd(rsd.adapter, rsd.handshake, &rs_handle);
-            if (!err && rs_handle) {
-                struct ScreenshotClientHandle *client = NULL;
-                err = screenshot_client_new(rs_handle, &client);
-                if (!err && client) {
+        if (!err) {
+            struct RemoteServerHandle *rs = NULL;
+            if (remote_server_connect_rsd(rsd.adapter, rsd.handshake, &rs) == NULL && rs) {
+                struct ScreenshotClientHandle *sc = NULL;
+                if (screenshot_client_new(rs, &sc) == NULL && sc) {
                     uint8_t *data = NULL; uintptr_t len = 0;
-                    err = screenshot_client_take_screenshot(client, &data, &len);
-                    screenshot_client_free(client);
-                    if (!err && data && len > 0) {
-                        NSData *pngData = [NSData dataWithBytes:data length:len];
-                        UIImage *img = [UIImage imageWithData:pngData];
-                        idevice_data_free(data, (uintptr_t)len);
-                        remote_server_free(rs_handle); [self _freeRsdSession:&rsd];
-                        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); });
-                        return;
+                    if (screenshot_client_take_screenshot(sc, &data, &len) == NULL && data && len > 0) {
+                        UIImage *img = [UIImage imageWithData:[NSData dataWithBytes:data length:len]];
+                        idevice_data_free(data, len); screenshot_client_free(sc); remote_server_free(rs); [self _freeRsdSession:&rsd];
+                        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); }); return;
                     }
-                    if (data) idevice_data_free(data, (uintptr_t)len);
+                    if (data) idevice_data_free(data, len); screenshot_client_free(sc);
                 }
-                remote_server_free(rs_handle);
+                remote_server_free(rs);
             }
-            if (err) idevice_error_free(err); [self _freeRsdSession:&rsd];
-        } else if (err) {
-            idevice_error_free(err);
+            [self _freeRsdSession:&rsd];
+        } else if (err) idevice_error_free(err);
+        struct ScreenshotrClientHandle *src = NULL;
+        if (screenshotr_connect(p, &src) == NULL && src) {
+            struct ScreenshotData sd; memset(&sd, 0, sizeof(sd));
+            if (screenshotr_take_screenshot(src, &sd) == NULL && sd.data && sd.length > 0) {
+                UIImage *img = [UIImage imageWithData:[NSData dataWithBytes:sd.data length:sd.length]];
+                screenshotr_screenshot_free(sd); screenshotr_client_free(src);
+                if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); }); return;
+            }
+            screenshotr_client_free(src);
         }
-        struct ScreenshotrClientHandle *client = NULL;
-        err = screenshotr_connect(p_outer, &client);
-        if (err || !client) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Screenshotrへの接続に失敗しました"] : @"Screenshotrへの接続に失敗しました";
-            if (err) idevice_error_free(err); if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:17 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        struct ScreenshotData data; memset(&data, 0, sizeof(data));
-        err = screenshotr_take_screenshot(client, &data);
-        screenshotr_client_free(client);
-        if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "スクリーンショットの取得に失敗しました"];
-            if (err) idevice_error_free(err); if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:18 userInfo:@{NSLocalizedDescriptionKey: msg}]); });
-            return;
-        }
-        if (data.data && data.length > 0) {
-            NSData *pngData = [NSData dataWithBytes:data.data length:data.length];
-            UIImage *img = [UIImage imageWithData:pngData];
-            screenshotr_screenshot_free(data); if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(img, nil); });
-        } else { if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:19 userInfo:@{NSLocalizedDescriptionKey: @"データが空です"}]); }); }
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, [NSError errorWithDomain:@"Idevice" code:18 userInfo:nil]); });
     });
 }
 
 #pragma mark - Syslog
 
 - (void)startSyslogCaptureWithCallback:(void (^)(NSString *line))callback {
-    [_lock lock]; if (self.status != IdeviceStatusConnected || !self.provider) { [_lock unlock]; return; }
-    if (self.syslogActive) { [_lock unlock]; return; }
+    [_lock lock]; if (!self.provider || self.syslogActive) { [_lock unlock]; return; }
     struct IdeviceProviderHandle *p = self.provider; self.syslogActive = YES; [_lock unlock];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct SyslogRelayClientHandle *client = NULL;
-        struct IdeviceFfiError *err = syslog_relay_connect_tcp(p, &client);
-        if (err || !client) { if (err) idevice_error_free(err); [self stopSyslogCapture]; return; }
-        [self->_lock lock]; self.syslogClient = client; [_lock unlock];
-        while (true) {
-            [_lock lock]; BOOL active = self.syslogActive; struct SyslogRelayClientHandle *c = self.syslogClient; [_lock unlock];
-            if (!active || !c) break;
-            char *line = NULL; err = syslog_relay_next(c, &line);
-            if (err) { idevice_error_free(err); break; }
-            if (line) { NSString *nsLine = [NSString stringWithUTF8String:line]; if (callback) dispatch_async(dispatch_get_main_queue(), ^{ callback(nsLine); }); rsd_free_string(line); }
+        struct SyslogRelayClientHandle *c = NULL;
+        if (syslog_relay_connect_tcp(p, &c) == NULL && c) {
+            [self->_lock lock]; self.syslogClient = c; [_lock unlock];
+            while (true) {
+                [_lock lock]; BOOL act = self.syslogActive; struct SyslogRelayClientHandle *cur = self.syslogClient; [_lock unlock];
+                if (!act || !cur) break;
+                char *line = NULL; if (syslog_relay_next(cur, &line) != NULL) break;
+                if (line) { NSString *nl = [NSString stringWithUTF8String:line]; if (callback) dispatch_async(dispatch_get_main_queue(), ^{ callback(nl); }); rsd_free_string(line); }
+            }
         }
         [self stopSyslogCapture];
     });
 }
 
 - (void)stopSyslogCapture {
-    [_lock lock]; self.syslogActive = NO;
-    if (self.syslogClient) { syslog_relay_client_free(self.syslogClient); self.syslogClient = NULL; }
-    [_lock unlock];
+    [_lock lock]; self.syslogActive = NO; if (self.syslogClient) { syslog_relay_client_free(self.syslogClient); self.syslogClient = NULL; } [_lock unlock];
 }
 
 #pragma mark - Plist Utils
 
 - (id)_convertPlistToObjC:(plist_t)node depth:(int)depth {
     if (!node || depth > 20) return nil;
-    plist_type typeNum = plist_get_node_type(node);
-    switch (typeNum) {
-        case PLIST_BOOLEAN: { uint8_t val = 0; plist_get_bool_val(node, &val); return @((BOOL)val); }
-        case PLIST_INT: { uint64_t val = 0; plist_get_uint_val(node, &val); return @(val); }
-        case PLIST_REAL: { double val = 0; plist_get_real_val(node, &val); return @(val); }
-        case PLIST_STRING: { char *val = NULL; plist_get_string_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
-        case PLIST_KEY: { char *val = NULL; plist_get_key_val(node, &val); NSString *s = (val) ? [NSString stringWithUTF8String:val] : @""; if (val) plist_mem_free(val); return s; }
-        case PLIST_ARRAY: {
-            uint32_t size = plist_array_get_size(node); if (size > 1000) size = 1000;
-            NSMutableArray *arr = [NSMutableArray arrayWithCapacity:size];
-            for (uint32_t i = 0; i < size; i++) { id obj = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth + 1]; if (obj) [arr addObject:obj]; }
-            return arr;
-        }
-        case PLIST_DICT: {
-            uint32_t size = plist_dict_get_size(node); if (size > 1000) size = 1000;
-            NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithCapacity:size];
-            plist_dict_iter iter = NULL; plist_dict_new_iter(node, &iter);
-            if (iter) {
-                char *key = NULL; plist_t subnode = NULL;
-                for (uint32_t i = 0; i < size; i++) {
-                    plist_dict_next_item(node, iter, &key, &subnode);
-                    if (key) { NSString *nsKey = [NSString stringWithUTF8String:key]; id obj = [self _convertPlistToObjC:subnode depth:depth + 1]; if (nsKey && obj) dict[nsKey] = obj; plist_mem_free(key); key = NULL; }
-                    else break;
-                }
-                free(iter);
-            }
-            return dict;
-        }
-        case PLIST_DATA: { uint64_t len = 0; const char *ptr = plist_get_data_ptr(node, &len); return (ptr && len > 0 && len < 5*1024*1024) ? [NSData dataWithBytes:ptr length:(NSUInteger)len] : [NSData data]; }
-        default: return nil;
+    plist_type t = plist_get_node_type(node);
+    if (t == PLIST_BOOLEAN) { uint8_t v = 0; plist_get_bool_val(node, &v); return @((BOOL)v); }
+    if (t == PLIST_INT) { uint64_t v = 0; plist_get_uint_val(node, &v); return @(v); }
+    if (t == PLIST_REAL) { double v = 0; plist_get_real_val(node, &v); return @(v); }
+    if (t == PLIST_STRING || t == PLIST_KEY) { char *v = NULL; (t == PLIST_STRING) ? plist_get_string_val(node, &v) : plist_get_key_val(node, &v); NSString *s = v ? [NSString stringWithUTF8String:v] : @""; if (v) plist_mem_free(v); return s; }
+    if (t == PLIST_ARRAY) {
+        uint32_t sz = plist_array_get_size(node); NSMutableArray *a = [NSMutableArray arrayWithCapacity:sz];
+        for (uint32_t i = 0; i < sz && i < 1000; i++) { id o = [self _convertPlistToObjC:plist_array_get_item(node, i) depth:depth+1]; if (o) [a addObject:o]; }
+        return a;
     }
+    if (t == PLIST_DICT) {
+        uint32_t sz = plist_dict_get_size(node); NSMutableDictionary *d = [NSMutableDictionary dictionaryWithCapacity:sz];
+        plist_dict_iter it = NULL; plist_dict_new_iter(node, &it);
+        if (it) { char *k = NULL; plist_t sub = NULL; while (true) { plist_dict_next_item(node, it, &k, &sub); if (!k) break; NSString *nk = [NSString stringWithUTF8String:k]; id o = [self _convertPlistToObjC:sub depth:depth+1]; if (nk && o) d[nk] = o; plist_mem_free(k); } free(it); }
+        return d;
+    }
+    if (t == PLIST_DATA) { uint64_t l = 0; const char *p = plist_get_data_ptr(node, &l); return (p && l > 0 && l < 5000000) ? [NSData dataWithBytes:p length:(NSUInteger)l] : [NSData data]; }
+    return nil;
 }
 
 @end
