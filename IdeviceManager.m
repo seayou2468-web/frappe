@@ -83,14 +83,14 @@
 }
 
 - (void)fetchDeviceInfoWithCompletion:(void (^)(NSDictionary *, NSString *))completion {
-    if (!self.provider) { completion(nil, @"Not connected"); return; }
+    if (!self.provider) { if(completion) completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct LockdowndClientHandle *lockdown = NULL;
         struct IdeviceFfiError *err = lockdownd_connect(self.provider, &lockdown);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"Lockdown Error: %s", err->message];
             idevice_error_free(err);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
@@ -100,84 +100,92 @@
             NSString *msg = [NSString stringWithFormat:@"Get Values Error: %s", err->message];
             idevice_error_free(err);
             lockdownd_client_free(lockdown);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
         NSDictionary *dict = [self objectFromPlist:values];
         plist_free(values);
         lockdownd_client_free(lockdown);
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(dict, nil); });
+        dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(dict, nil); });
     });
 }
 
 - (void)listAppsWithCompletion:(void (^)(NSArray *, NSString *))completion {
-    if (!self.provider) { completion(nil, @"Not connected"); return; }
+    if (!self.provider) { if(completion) completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct InstallationProxyClientHandle *instproxy = NULL;
         struct IdeviceFfiError *err = installation_proxy_connect(self.provider, &instproxy);
         if (err) {
-            NSString *msg = [NSString stringWithFormat:@"InstProxy Error: %s", err->message];
+            NSString *msg = [NSString stringWithFormat:@"InstProxy Connect Error: %s", err->message];
             idevice_error_free(err);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
         plist_t client_opts = plist_new_dict();
         plist_dict_set_item(client_opts, "ApplicationType", plist_new_string("Any"));
 
-        plist_t apps_plist = NULL;
-        err = instproxy_browse(instproxy, client_opts, &apps_plist);
+        plist_t *results = NULL;
+        size_t results_len = 0;
+        err = installation_proxy_browse(instproxy, client_opts, &results, &results_len);
         plist_free(client_opts);
 
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"Browse Error: %s", err->message];
             idevice_error_free(err);
             installation_proxy_client_free(instproxy);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
-        NSArray *apps = [self objectFromPlist:apps_plist];
-        plist_free(apps_plist);
+        NSMutableArray *apps = [NSMutableArray arrayWithCapacity:results_len];
+        for (size_t i = 0; i < results_len; i++) {
+            id obj = [self objectFromPlist:results[i]];
+            if (obj) [apps addObject:obj];
+        }
+        idevice_plist_array_free(results, (uintptr_t)results_len);
+
         installation_proxy_client_free(instproxy);
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(apps, nil); });
+        dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(apps, nil); });
     });
 }
 
 - (void)listDirectory:(NSString *)path completion:(void (^)(NSArray *, NSString *))completion {
-    if (!self.provider) { completion(nil, @"Not connected"); return; }
+    if (!self.provider) { if(completion) completion(nil, @"Not connected"); return; }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct AfcClientHandle *afc = NULL;
         struct IdeviceFfiError *err = afc_client_connect(self.provider, &afc);
         if (err) {
-            NSString *msg = [NSString stringWithFormat:@"AFC Error: %s", err->message];
+            NSString *msg = [NSString stringWithFormat:@"AFC Connect Error: %s", err->message];
             idevice_error_free(err);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
         char **list = NULL;
-        err = afc_list_directory(afc, [path UTF8String], &list);
+        size_t count = 0;
+        err = afc_list_directory(afc, [path UTF8String], &list, &count);
         if (err) {
             NSString *msg = [NSString stringWithFormat:@"List Dir Error: %s", err->message];
             idevice_error_free(err);
             afc_client_free(afc);
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(nil, msg); });
             return;
         }
 
-        NSMutableArray *items = [NSMutableArray array];
+        NSMutableArray *items = [NSMutableArray arrayWithCapacity:count];
         if (list) {
-            for (int i = 0; list[i]; i++) {
-                [items addObject:[NSString stringWithUTF8String:list[i]]];
-                plist_mem_free(list[i]);
+            for (size_t i = 0; i < count; i++) {
+                if (list[i]) {
+                    [items addObject:[NSString stringWithUTF8String:list[i]]];
+                }
             }
-            plist_mem_free(list);
+            idevice_outer_slice_free(list, (uintptr_t)count);
         }
 
         afc_client_free(afc);
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(items, nil); });
+        dispatch_async(dispatch_get_main_queue(), ^{ if(completion) completion(items, nil); });
     });
 }
 
@@ -188,17 +196,12 @@
 - (id)objectFromPlist:(plist_t)plist depth:(int)depth {
     if (!plist || depth > 20) return nil;
 
-    plist_type type = plist_get_node_type(plist);
-    switch (type) {
+    plist_type nodeType = plist_get_node_type(plist);
+    switch (nodeType) {
         case PLIST_BOOLEAN: {
             uint8_t val = 0;
             plist_get_bool_val(plist, &val);
             return @(val != 0);
-        }
-        case PLIST_UINT: {
-            uint64_t val = 0;
-            plist_get_uint_val(plist, &val);
-            return @(val);
         }
         case PLIST_INT: {
             int64_t val = 0;
@@ -253,7 +256,7 @@
                 if (obj) [dict setObject:obj forKey:[NSString stringWithUTF8String:key]];
                 plist_mem_free(key);
             }
-            plist_mem_free(iter);
+            plist_dict_free_iter(iter);
             return dict;
         }
         case PLIST_DATE: {
