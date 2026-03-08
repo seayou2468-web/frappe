@@ -35,6 +35,7 @@
 @property (assign, nonatomic) BOOL isSearchRevealed;
 - (void)createNewPDF;
 - (void)createNewSpreadsheet;
+@end
 
 @implementation FileBrowserViewController
 
@@ -288,7 +289,6 @@
 }
 
 - (void)showLogViewer {
-    [menu addAction:[CustomMenuAction actionWithTitle:[L s:@"iDevice管理" en:@"iDevice Manager"] systemImage:@"iphone" style:CustomMenuActionStyleDefault handler:^{ [self showIdeviceManager]; }]];
     LogViewerViewController *vc = [[LogViewerViewController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
