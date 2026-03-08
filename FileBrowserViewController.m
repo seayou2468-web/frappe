@@ -237,6 +237,7 @@
         case BottomMenuActionFavorites: [self showFavoritesMenu]; break;
         case BottomMenuActionOthers: [self showOthersMenu]; break;
         case BottomMenuActionSettings: [self showSettings]; break;
+        case BottomMenuActionIdevice: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) { [container handleMenuAction:action]; } break; }
         default: break;
     }
 }

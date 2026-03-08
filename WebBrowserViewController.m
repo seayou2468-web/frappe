@@ -432,6 +432,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         case BottomMenuActionOthers: [self showBrowserOthersMenu]; break;
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
+        case BottomMenuActionIdevice: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container handleMenuAction:action]; break; }
         default: break;
     }
 }
