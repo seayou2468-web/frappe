@@ -1,4 +1,6 @@
 #import "DdiManager.h"
+#import <netinet/in.h>
+#import <arpa/inet.h>
 
 @implementation DdiManager
 
@@ -9,50 +11,44 @@
     return shared;
 }
 
-- (void)checkAndMountDdiWithProvider:(struct IdeviceProviderHandle *)provider lockdown:(struct LockdowndClientHandle *)lockdown completion:(void (^)(BOOL success, NSString *message))completion {
+- (void)checkAndMountDdiWithLockdown:(struct LockdowndClientHandle *)lockdown ip:(NSString *)ip completion:(void (^)(BOOL success, NSString *message))completion {
     plist_t version_plist = NULL;
     lockdownd_get_value(lockdown, "ProductVersion", NULL, &version_plist);
     NSString *version = @"Unknown";
     if (version_plist) { char *val = NULL; plist_get_string_val(version_plist, &val); if (val) { version = [NSString stringWithUTF8String:val]; plist_mem_free(val); } plist_free(version_plist); }
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        uint16_t port = 0; bool ssl = false;
+        struct IdeviceFfiError *err = lockdownd_start_service(lockdown, "com.apple.mobile.mobile_image_mounter", &port, &ssl);
+        if (err) { completion(NO, [NSString stringWithFormat:@"Service failed: %s", err->message]); idevice_error_free(err); return; }
+
+        struct sockaddr_in addr; memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET; addr.sin_port = htons(port);
+        inet_pton(AF_INET, [ip UTF8String], &addr.sin_addr);
+
+        struct IdeviceHandle *device = NULL;
+        err = idevice_new_tcp_socket((const idevice_sockaddr *)&addr, sizeof(addr), "Mounter", &device);
+        if (err) { completion(NO, [NSString stringWithFormat:@"Socket failed: %s", err->message]); idevice_error_free(err); return; }
+
         struct ImageMounterHandle *mounter = NULL;
-        struct IdeviceFfiError *err = image_mounter_connect(provider, &mounter);
-        if (err) { completion(NO, [NSString stringWithFormat:@"Connect failed: %s", err->message]); idevice_error_free(err); return; }
+        err = image_mounter_new(device, &mounter); // device is consumed
+        if (err) { completion(NO, [NSString stringWithFormat:@"Mounter failed: %s", err->message]); idevice_error_free(err); idevice_free(device); return; }
 
         BOOL alreadyMounted = NO;
-
-        // 1. Check using copy_devices (modern way to check mount list)
-        plist_t *devices = NULL;
-        size_t devices_len = 0;
+        plist_t *devices = NULL; size_t devices_len = 0;
         err = image_mounter_copy_devices(mounter, &devices, &devices_len);
-        if (!err && devices) {
-            // If we have any devices in the list, DDI is likely mounted
-            if (devices_len > 0) {
-                alreadyMounted = YES;
-            }
-            idevice_plist_array_free(devices, devices_len);
-        }
+        if (!err && devices) { if (devices_len > 0) alreadyMounted = YES; idevice_plist_array_free(devices, devices_len); }
         if (err) idevice_error_free(err);
 
-        // 2. Fallback check using lookup_image
         if (!alreadyMounted) {
             uint8_t *sig = NULL; size_t sig_len = 0;
             err = image_mounter_lookup_image(mounter, "Developer", &sig, &sig_len);
-            if (!err && sig) {
-                alreadyMounted = YES;
-                idevice_data_free(sig, sig_len);
-            }
+            if (!err && sig) { alreadyMounted = YES; idevice_data_free(sig, sig_len); }
             if (err) idevice_error_free(err);
         }
 
-        if (alreadyMounted) {
-            completion(YES, [NSString stringWithFormat:@"DDI already mounted (iOS %@)", version]);
-            image_mounter_free(mounter);
-            return;
-        }
+        if (alreadyMounted) { completion(YES, [NSString stringWithFormat:@"DDI mounted (iOS %@)", version]); image_mounter_free(mounter); return; }
 
-        // 3. Check Developer Mode
         int dev_mode = 0;
         err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
         if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", err->message]); idevice_error_free(err); image_mounter_free(mounter); return; }

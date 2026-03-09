@@ -1,4 +1,6 @@
 #import "HeartbeatManager.h"
+#import <netinet/in.h>
+#import <arpa/inet.h>
 
 @interface HeartbeatManager ()
 @property (nonatomic, assign) struct HeartbeatClientHandle *heartbeatClient;
@@ -14,12 +16,25 @@
     return shared;
 }
 
-- (void)startHeartbeatWithProvider:(struct IdeviceProviderHandle *)provider {
+- (void)startHeartbeatWithLockdown:(struct LockdowndClientHandle *)lockdown ip:(NSString *)ip {
     [self stopHeartbeat];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        uint16_t port = 0; bool ssl = false;
+        struct IdeviceFfiError *err = lockdownd_start_service(lockdown, "com.apple.mobile.heartbeat", &port, &ssl);
+        if (err) { NSLog(@"[Heartbeat] Start service failed: %s", err->message); idevice_error_free(err); return; }
+
+        struct sockaddr_in addr; memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET; addr.sin_port = htons(port);
+        inet_pton(AF_INET, [ip UTF8String], &addr.sin_addr);
+
+        struct IdeviceHandle *device = NULL;
+        err = idevice_new_tcp_socket((const idevice_sockaddr *)&addr, sizeof(addr), "Heartbeat", &device);
+        if (err) { NSLog(@"[Heartbeat] Socket failed: %s", err->message); idevice_error_free(err); return; }
+
         struct HeartbeatClientHandle *hb = NULL;
-        struct IdeviceFfiError *err = heartbeat_connect(provider, &hb);
-        if (err) { NSLog(@"[Heartbeat] Connect failed: %s", err->message); idevice_error_free(err); return; }
+        err = heartbeat_new(device, &hb);
+        if (err) { NSLog(@"[Heartbeat] Client failed: %s", err->message); idevice_error_free(err); idevice_free(device); return; }
+
         self.heartbeatClient = hb; self.running = YES;
         [self heartbeatLoop];
     });
