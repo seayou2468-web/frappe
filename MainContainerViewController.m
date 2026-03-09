@@ -123,9 +123,11 @@
             break;
         }
         case BottomMenuActionIdevice: {
-            IdeviceViewController *ideviceVC = [[IdeviceViewController alloc] init];
-            UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:ideviceVC];
-            [self presentViewController:nav animated:YES completion:nil];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                IdeviceViewController *ideviceVC = [[IdeviceViewController alloc] init];
+                UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:ideviceVC];
+                [self presentViewController:nav animated:YES completion:nil];
+            });
             break;
         }
         default: break;
