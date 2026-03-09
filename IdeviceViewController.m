@@ -13,18 +13,16 @@
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
 
-// Lockdown Status
+// Status Containers
 @property (nonatomic, strong) UIView *lockdownContainer;
 @property (nonatomic, strong) UIView *lockdownIndicator;
 @property (nonatomic, strong) UILabel *lockdownLabel;
 @property (nonatomic, strong) UILabel *lockdownDetail;
 
-// Heartbeat Status
 @property (nonatomic, strong) UIView *heartbeatContainer;
 @property (nonatomic, strong) UIView *heartbeatIndicator;
 @property (nonatomic, strong) UILabel *heartbeatLabel;
 
-// DDI Status
 @property (nonatomic, strong) UIView *ddiContainer;
 @property (nonatomic, strong) UIView *ddiIndicator;
 @property (nonatomic, strong) UILabel *ddiLabel;
@@ -33,6 +31,10 @@
 @property (nonatomic, strong) UIButton *selectPairingFileButton;
 @property (nonatomic, strong) NSString *selectedPairingFilePath;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
+
+// Persistent handles to avoid Use-After-Free
+@property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
+@property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
 
 @end
 
@@ -47,9 +49,25 @@
     idevice_init_logger(Debug, Debug, NULL);
 }
 
+- (void)dealloc {
+    [self cleanupHandles];
+}
+
+- (void)cleanupHandles {
+    if (self.currentLockdown) {
+        lockdownd_client_free(self.currentLockdown);
+        self.currentLockdown = NULL;
+    }
+    if (self.currentPairingFile) {
+        idevice_pairing_file_free(self.currentPairingFile);
+        self.currentPairingFile = NULL;
+    }
+}
+
 - (void)closeTapped {
     dispatch_async(dispatch_get_main_queue(), ^{
         [[HeartbeatManager sharedManager] stopHeartbeat];
+        [self cleanupHandles];
         [self dismissViewControllerAnimated:YES completion:nil];
     });
 }
@@ -59,7 +77,7 @@
     self.scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.scrollView];
 
-    self.contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 1000)];
+    self.contentView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 1200)];
     [self.scrollView addSubview:self.contentView];
 
     CGFloat y = 20;
@@ -103,7 +121,7 @@
 
     self.connectButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.connectButton.frame = CGRectMake(40, y, width - 40, 50);
-    [self.connectButton setTitle:@"Start Global Connection" forState:UIControlStateNormal];
+    [self.connectButton setTitle:@"Start Connection" forState:UIControlStateNormal];
     [ThemeEngine applyLiquidStyleToView:self.connectButton cornerRadius:15];
     [self.connectButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [self.connectButton addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -139,6 +157,7 @@
         if (animating) {
             CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
             pulse.duration = 1.0; pulse.fromValue = @(1.0); pulse.toValue = @(0.3);
+            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
             [indicator.layer addAnimation:pulse forKey:@"pulse"];
             indicator.layer.shadowColor = color.CGColor; indicator.layer.shadowOffset = CGSizeZero; indicator.layer.shadowOpacity = 1.0; indicator.layer.shadowRadius = 10;
@@ -149,7 +168,8 @@
 - (void)selectPairingFile {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
-        picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
+        picker.delegate = self;
+        [self presentViewController:picker animated:YES completion:nil];
     });
 }
 
@@ -173,7 +193,7 @@
 - (void)connectTapped {
     if (!self.selectedPairingFilePath) { [self showAlertWithTitle:@"Error" message:@"Please select a pairing file first."]; return; }
     self.connectButton.enabled = NO;
-    // CONNECTION MUST RUN IN BACKGROUND TO AVOID FREEZING AND HANDLE RACE CONDITIONS
+    [self cleanupHandles];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         [self performConnection];
     });
@@ -203,23 +223,32 @@
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Pairing Error" color:[UIColor systemRedColor] animating:NO];
         idevice_error_free(err); idevice_free(device); [self reenableConnectButton]; return;
     }
+    self.currentPairingFile = pairing_file;
 
+    // 1. RSD Checkin (Attempt it, log if fail but don't stop)
+    struct IdeviceFfiError *rsd_err = idevice_rsd_checkin(device);
+    if (rsd_err) { NSLog(@"[RSD] Checkin failed: %s", rsd_err->message); idevice_error_free(rsd_err); }
+
+    // 2. Lockdown Client Creation
     struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_new(device, &lockdown); // device is consumed by lockdownd_new
+    err = lockdownd_new(device, &lockdown); // device is consumed here
     if (err) {
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Lockdown New Failed" color:[UIColor systemRedColor] animating:NO];
-        idevice_error_free(err); idevice_pairing_file_free(pairing_file); idevice_free(device);
+        idevice_error_free(err); idevice_free(device);
         [self reenableConnectButton]; return;
     }
+    self.currentLockdown = lockdown;
 
+    // 3. Start Session (XML request + TLS Upgrade)
+    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Starting Session..." color:[UIColor systemOrangeColor] animating:YES];
     err = lockdownd_start_session(lockdown, pairing_file);
     if (err) {
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Session Failed" color:[UIColor systemRedColor] animating:NO];
-        idevice_error_free(err); lockdownd_client_free(lockdown); idevice_pairing_file_free(pairing_file);
-        [self reenableConnectButton]; return;
+        [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]];
+        idevice_error_free(err); [self reenableConnectButton]; return;
     }
 
-    // Success Lockdown
+    // 4. Success - Get Device Info
     plist_t name_plist = NULL;
     lockdownd_get_value(lockdown, "DeviceName", NULL, &name_plist);
     NSString *deviceName = @"iOS Device";
@@ -227,26 +256,21 @@
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connected" color:[UIColor systemGreenColor] animating:YES];
     dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", deviceName]; });
 
-    // Start Heartbeat and DDI - these take ownership of their own service start now or use cloned lockdown if possible.
-    // To avoid crash, we start them and WAIT for them to initiate their connection before freeing lockdown.
-
+    // 5. Start Heartbeat
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Starting..." color:[UIColor systemOrangeColor] animating:YES];
     [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
 
+    // 6. Start DDI Check
     [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Checking..." color:[UIColor systemOrangeColor] animating:YES];
     [[DdiManager sharedManager] checkAndMountDdiWithLockdown:lockdown ip:@"10.7.0.1" completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Mounted" color:[UIColor systemGreenColor] animating:NO]; }
             else { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Not Mounted" color:[UIColor systemRedColor] animating:NO]; }
+            NSLog(@"[DDI] Status: %@", message);
         });
     }];
 
-    // GIVE SERVICES SOME TIME TO INITIATE (Short delay to avoid immediate free of lockdown handle used in background blocks)
-    [NSThread sleepForTimeInterval:1.0];
-
-    lockdownd_client_free(lockdown);
-    idevice_pairing_file_free(pairing_file);
     [self reenableConnectButton];
 }
 
