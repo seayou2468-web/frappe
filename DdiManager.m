@@ -59,8 +59,8 @@
         }
         if (err) idevice_error_free(err);
 
-        // Check dev mode
-        bool dev_mode = false;
+        // Check dev mode - image_mounter_query_developer_mode_status expects int*
+        int dev_mode = 0;
         err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
         if (err) {
             completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", err->message]);
@@ -69,7 +69,7 @@
             return;
         }
 
-        if (!dev_mode) {
+        if (dev_mode == 0) {
             completion(NO, @"Developer Mode not enabled.");
             image_mounter_free(mounter);
             return;

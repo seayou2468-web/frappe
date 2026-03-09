@@ -66,17 +66,26 @@
     CGFloat width = self.view.bounds.size.width - 40;
 
     // Lockdown Section
-    self.lockdownContainer = [self createStatusContainerAtY:y title:@"Lockdown Connection" indicator:&_lockdownIndicator label:&_lockdownLabel detail:&_lockdownDetail];
+    UIView *li, *ld;
+    UILabel *ll, *ldt;
+    self.lockdownContainer = [self createStatusContainerAtY:y title:@"Lockdown Connection" indicator:&li label:&ll detail:&ldt];
+    self.lockdownIndicator = li; self.lockdownLabel = ll; self.lockdownDetail = ldt;
     [self.contentView addSubview:self.lockdownContainer];
     y += 160;
 
     // Heartbeat Section
-    self.heartbeatContainer = [self createStatusContainerAtY:y title:@"Heartbeat Status" indicator:&_heartbeatIndicator label:&_heartbeatLabel detail:NULL];
+    UIView *hi;
+    UILabel *hl;
+    self.heartbeatContainer = [self createStatusContainerAtY:y title:@"Heartbeat Status" indicator:&hi label:&hl detail:NULL];
+    self.heartbeatIndicator = hi; self.heartbeatLabel = hl;
     [self.contentView addSubview:self.heartbeatContainer];
     y += 130;
 
     // DDI Section
-    self.ddiContainer = [self createStatusContainerAtY:y title:@"DDI Image Status" indicator:&_ddiIndicator label:&_ddiLabel detail:NULL];
+    UIView *di;
+    UILabel *dl;
+    self.ddiContainer = [self createStatusContainerAtY:y title:@"DDI Image Status" indicator:&di label:&dl detail:NULL];
+    self.ddiIndicator = di; self.ddiLabel = dl;
     [self.contentView addSubview:self.ddiContainer];
     y += 140;
 
@@ -120,23 +129,26 @@
     header.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     [container addSubview:header];
 
-    *indicator = [[UIView alloc] initWithFrame:CGRectMake(15, 40, 40, 40)];
-    (*indicator).layer.cornerRadius = 20;
-    (*indicator).backgroundColor = [UIColor systemGrayColor];
-    [container addSubview:*indicator];
+    UIView *ind = [[UIView alloc] initWithFrame:CGRectMake(15, 40, 40, 40)];
+    ind.layer.cornerRadius = 20;
+    ind.backgroundColor = [UIColor systemGrayColor];
+    [container addSubview:ind];
+    if (indicator) *indicator = ind;
 
-    *label = [[UILabel alloc] initWithFrame:CGRectMake(70, 40, container.bounds.size.width - 85, 40)];
-    (*label).textColor = [UIColor whiteColor];
-    (*label).font = [UIFont boldSystemFontOfSize:16];
-    (*label).text = @"Inactive";
-    [container addSubview:*label];
+    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(70, 40, container.bounds.size.width - 85, 40)];
+    lbl.textColor = [UIColor whiteColor];
+    lbl.font = [UIFont boldSystemFontOfSize:16];
+    lbl.text = @"Inactive";
+    [container addSubview:lbl];
+    if (label) *label = lbl;
 
     if (detail) {
-        *detail = [[UILabel alloc] initWithFrame:CGRectMake(15, 90, container.bounds.size.width - 30, 40)];
-        (*detail).textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
-        (*detail).font = [UIFont systemFontOfSize:13];
-        (*detail).numberOfLines = 2;
-        [container addSubview:*detail];
+        UILabel *dtl = [[UILabel alloc] initWithFrame:CGRectMake(15, 90, container.bounds.size.width - 30, 40)];
+        dtl.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
+        dtl.font = [UIFont systemFontOfSize:13];
+        dtl.numberOfLines = 2;
+        [container addSubview:dtl];
+        *detail = dtl;
     }
 
     return container;
@@ -151,6 +163,7 @@
         if (animating) {
             CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
             pulse.duration = 1.0; pulse.fromValue = @(1.0); pulse.toValue = @(0.3);
+            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
             [indicator.layer addAnimation:pulse forKey:@"pulse"];
             indicator.layer.shadowColor = color.CGColor;
@@ -251,7 +264,6 @@
     // Start Heartbeat
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Starting..." color:[UIColor systemOrangeColor] animating:YES];
     [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
-    // Since heartbeat starts on bg thread and updates logs, we'll assume success for UI here or wait for notification
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
 
     // Start DDI Check/Mount
@@ -267,8 +279,6 @@
         });
     }];
 
-    // Note: device is consumed by lockdown, which is consumed by services if they didn't clone it.
-    // In our implementation, services create their own sockets.
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
     [self reenableConnectButton];
