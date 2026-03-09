@@ -124,9 +124,12 @@
         }
         case BottomMenuActionIdevice: {
             dispatch_async(dispatch_get_main_queue(), ^{
-                IdeviceViewController *ideviceVC = [[IdeviceViewController alloc] init];
-                UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:ideviceVC];
-                [self presentViewController:nav animated:YES completion:nil];
+                TabInfo *active = [[TabManager sharedManager] activeTab];
+                if (active && [active.viewController isKindOfClass:[UINavigationController class]]) {
+                    UINavigationController *nav = (UINavigationController *)active.viewController;
+                    IdeviceViewController *ideviceVC = [[IdeviceViewController alloc] init];
+                    [nav pushViewController:ideviceVC animated:YES];
+                }
             });
             break;
         }

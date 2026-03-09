@@ -29,15 +29,31 @@
 - (void)setupUI {
     self.filterControl = [[UISegmentedControl alloc] initWithItems:@[@"User", @"System", @"Mixed"]];
     self.filterControl.selectedSegmentIndex = 0;
-    self.filterControl.frame = CGRectMake(10, 10, self.view.bounds.size.width - 20, 40);
+    self.filterControl.translatesAutoresizingMaskIntoConstraints = NO;
     [self.filterControl addTarget:self action:@selector(filterChanged:) forControlEvents:UIControlEventValueChanged];
     [self.view addSubview:self.filterControl];
 
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 60, self.view.bounds.size.width, self.view.bounds.size.height - 60) style:UITableViewStylePlain];
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.tableView];
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.filterControl.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
+        [self.filterControl.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
+        [self.filterControl.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
+        [self.filterControl.heightAnchor constraintEqualToConstant:40],
+
+        [self.tableView.topAnchor constraintEqualToAnchor:self.filterControl.bottomAnchor constant:10],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
 }
 
 - (void)filterChanged:(UISegmentedControl *)sender {
@@ -48,8 +64,14 @@
 - (void)refreshApps {
     [[AppManager sharedManager] fetchAppsWithProvider:self.provider completion:^(NSArray<AppInfo *> *apps, NSString *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (apps) { self.apps = apps; [self.tableView reloadData]; }
-            else { NSLog(@"[Apps] Error: %@", error); }
+            if (apps) {
+                self.apps = apps;
+                [self.tableView reloadData];
+            } else if (error) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error" message:error preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
         });
     }];
 }
@@ -57,8 +79,11 @@
 - (NSArray<AppInfo *> *)filteredApps {
     if (self.currentFilter == 2) return self.apps;
     BOOL wantSystem = (self.currentFilter == 1);
-    NSPredicate *pred = [NSPredicate predicateWithFormat:@"isSystem == %d", wantSystem];
-    return [self.apps filteredArrayUsingPredicate:pred];
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (AppInfo *app in self.apps) {
+        if (app.isSystem == wantSystem) [filtered addObject:app];
+    }
+    return [filtered copy];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -75,6 +100,11 @@
     cell.detailTextLabel.text = app.bundleId;
     cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     cell.backgroundColor = [UIColor clearColor];
+
+    UIView *selView = [[UIView alloc] init];
+    selView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    cell.selectedBackgroundView = selView;
+
     return cell;
 }
 
@@ -84,12 +114,32 @@
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:@"Launch Options" preferredStyle:UIAlertControllerStyleActionSheet];
     [alert addAction:[UIAlertAction actionWithTitle:@"Launch Normal" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [[AppManager sharedManager] launchApp:app.bundleId withJit:NO provider:self.provider completion:nil];
+        [[AppManager sharedManager] launchApp:app.bundleId withJit:NO provider:self.provider completion:^(BOOL success, NSString *message) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!success) {
+                    UIAlertController *errAlert = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
+                    [errAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [self presentViewController:errAlert animated:YES completion:nil];
+                }
+            });
+        }];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Launch with JIT" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [[AppManager sharedManager] launchApp:app.bundleId withJit:YES provider:self.provider completion:nil];
+        [[AppManager sharedManager] launchApp:app.bundleId withJit:YES provider:self.provider completion:^(BOOL success, NSString *message) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!success) {
+                    UIAlertController *errAlert = [UIAlertController alertControllerWithTitle:@"JIT Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
+                    [errAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [self presentViewController:errAlert animated:YES completion:nil];
+                }
+            });
+        }];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+    // iPad support for ActionSheet
+    alert.popoverPresentationController.sourceView = [tableView cellForRowAtIndexPath:indexPath];
+
     [self presentViewController:alert animated:YES completion:nil];
 }
 
