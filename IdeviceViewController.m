@@ -203,7 +203,8 @@
         idevice_error_free(err);
     }
 
-    // Connect to lockdownd FIRST (creating the client)
+    // Connect to lockdownd (creating the client)
+    // NOTE: device is consumed by lockdownd_new
     struct LockdowndClientHandle *lockdown = NULL;
     err = lockdownd_new(device, &lockdown);
     if (err) {
@@ -217,33 +218,13 @@
         return;
     }
 
-    // Start TLS Session AFTER lockdownd client is ready
-    err = idevice_start_session(device, pairing_file, NO);
-    if (err) {
-        // Log TLS error but try to continue or report
-        NSString *msg = [NSString stringWithUTF8String:err->message];
-        idevice_error_free(err);
-
-        // If TLS Handshake EOF, maybe retry with legacy or report
-        if ([msg containsString:@"tls handshake eof"]) {
-             [self updateStatus:@"TLS Handshake EOF" color:[UIColor systemRedColor] animating:NO];
-             [self showAlertWithTitle:@"Session Error" message:@"TLS handshake failed (EOF). The device might have rejected the connection or requires a different pairing method."];
-             lockdownd_client_free(lockdown);
-             idevice_pairing_file_free(pairing_file);
-             idevice_free(device);
-             [self reenableConnectButton];
-             return;
-        }
-    }
-
-    // Start Lockdownd Session
+    // Start Lockdownd Session (this usually handles TLS internally)
     err = lockdownd_start_session(lockdown, pairing_file);
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
         idevice_error_free(err);
         lockdownd_client_free(lockdown);
         idevice_pairing_file_free(pairing_file);
-        idevice_free(device);
         [self updateStatus:@"Lockdown Session Error" color:[UIColor systemRedColor] animating:NO];
         [self showAlertWithTitle:@"Lockdown Session Error" message:msg];
         [self reenableConnectButton];
@@ -274,7 +255,6 @@
     // Clean up
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
-    idevice_free(device);
     [self reenableConnectButton];
 }
 
