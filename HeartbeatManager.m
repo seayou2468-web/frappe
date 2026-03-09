@@ -63,25 +63,29 @@
 }
 
 - (void)heartbeatLoop {
+    uint64_t interval = 10000; // Default 10 seconds in milliseconds? Or just 10?
+    // Based on usual heartbeat, it's often 10 seconds.
+
     while (self.running && self.heartbeatClient) {
-        plist_t marco = NULL;
-        struct IdeviceFfiError *err = heartbeat_get_marco(self.heartbeatClient, &marco);
+        uint64_t next_interval = 0;
+        struct IdeviceFfiError *err = heartbeat_get_marco(self.heartbeatClient, interval, &next_interval);
         if (err) {
             NSLog(@"[Heartbeat] Error getting marco: %s", err->message);
             idevice_error_free(err);
             break;
         }
 
-        if (marco) {
-            plist_free(marco);
-            err = heartbeat_send_polo(self.heartbeatClient);
-            if (err) {
-                NSLog(@"[Heartbeat] Error sending polo: %s", err->message);
-                idevice_error_free(err);
-                break;
-            }
-            NSLog(@"[Heartbeat] Marco? Polo!");
+        if (next_interval > 0) {
+            interval = next_interval;
         }
+
+        err = heartbeat_send_polo(self.heartbeatClient);
+        if (err) {
+            NSLog(@"[Heartbeat] Error sending polo: %s", err->message);
+            idevice_error_free(err);
+            break;
+        }
+        NSLog(@"[Heartbeat] Marco? Polo! (Next interval: %llu)", interval);
     }
     [self stopHeartbeat];
 }
