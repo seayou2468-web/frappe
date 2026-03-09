@@ -31,7 +31,8 @@
 @property (nonatomic, strong) NSString *selectedPairingFilePath;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
 
-@property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
+// Persistent handles - Specification compliant
+@property (nonatomic, assign) struct IdeviceProviderHandle *currentProvider;
 @property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
 
 @end
@@ -52,9 +53,9 @@
 }
 
 - (void)cleanupHandles {
-    if (self.currentLockdown) {
-        lockdownd_client_free(self.currentLockdown);
-        self.currentLockdown = NULL;
+    if (self.currentProvider) {
+        idevice_provider_free(self.currentProvider);
+        self.currentProvider = NULL;
     }
     if (self.currentPairingFile) {
         idevice_pairing_file_free(self.currentPairingFile);
@@ -102,7 +103,7 @@
     [self.contentView addSubview:self.selectPairingFileButton]; y += 70;
 
     self.connectButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.connectButton.frame = CGRectMake(40, y, width - 40, 50); [self.connectButton setTitle:@"Start Connection" forState:UIControlStateNormal]; [ThemeEngine applyLiquidStyleToView:self.connectButton cornerRadius:15]; [self.connectButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal]; [self.connectButton addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.connectButton.frame = CGRectMake(40, y, width - 40, 50); [self.connectButton setTitle:@"Establish Link" forState:UIControlStateNormal]; [ThemeEngine applyLiquidStyleToView:self.connectButton cornerRadius:15]; [self.connectButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal]; [self.connectButton addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.contentView addSubview:self.connectButton];
     self.contentView.frame = CGRectMake(0, 0, self.view.bounds.size.width, y + 100);
 }
@@ -167,33 +168,26 @@
     addr.sin_family = AF_INET; addr.sin_port = htons(port);
     inet_pton(AF_INET, ip, &addr.sin_addr);
 
-    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connecting..." color:[UIColor systemOrangeColor] animating:YES];
+    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Starting Provider..." color:[UIColor systemOrangeColor] animating:YES];
 
     struct IdevicePairingFile *pairing_file = NULL;
     struct IdeviceFfiError *err = idevice_pairing_file_read([self.selectedPairingFilePath UTF8String], &pairing_file);
     if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Pairing Error" color:[UIColor systemRedColor] animating:NO]; idevice_error_free(err); [self reenableConnectButton]; return; }
     self.currentPairingFile = pairing_file;
 
-    struct IdeviceHandle *device = NULL;
-    err = idevice_new_tcp_socket((const idevice_sockaddr *)&addr, sizeof(addr), "IdeviceManager", &device);
-    if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Socket Failed" color:[UIColor systemRedColor] animating:NO]; [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]]; idevice_error_free(err); [self reenableConnectButton]; return; }
+    // 1. Create TCP Provider (Specification compliant)
+    struct IdeviceProviderHandle *provider = NULL;
+    err = idevice_tcp_provider_new((const idevice_sockaddr *)&addr, pairing_file, "IdeviceManager", &provider);
+    if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Provider Failed" color:[UIColor systemRedColor] animating:NO]; [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]]; idevice_error_free(err); [self reenableConnectButton]; return; }
+    self.currentProvider = provider;
 
-    // 1. RSD Checkin (Modern devices)
-    struct IdeviceFfiError *rsd_err = idevice_rsd_checkin(device);
-    if (rsd_err) { NSLog(@"[RSD] Checkin failed: %s", rsd_err->message); idevice_error_free(rsd_err); }
-
-    // 2. Create Lockdown Client (Uses the transport)
+    // 2. Connect Lockdown using Provider
+    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connecting..." color:[UIColor systemOrangeColor] animating:YES];
     struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_new(device, &lockdown); // device handle is consumed here
-    if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Lockdown New Failed" color:[UIColor systemRedColor] animating:NO]; idevice_error_free(err); idevice_free(device); [self reenableConnectButton]; return; }
-    self.currentLockdown = lockdown;
+    err = lockdownd_connect(provider, &lockdown);
+    if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Lockdown Failed" color:[UIColor systemRedColor] animating:NO]; [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]]; idevice_error_free(err); [self reenableConnectButton]; return; }
 
-    // 3. Start Session (XML request + TLS Upgrade)
-    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Starting Session..." color:[UIColor systemOrangeColor] animating:YES];
-    err = lockdownd_start_session(lockdown, pairing_file);
-    if (err) { [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Session Failed" color:[UIColor systemRedColor] animating:NO]; [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]]; idevice_error_free(err); [self reenableConnectButton]; return; }
-
-    // 4. Success - Get Device Info
+    // 3. Success Lockdown - Get Device Info
     plist_t name_plist = NULL;
     lockdownd_get_value(lockdown, "DeviceName", NULL, &name_plist);
     NSString *deviceName = @"iOS Device";
@@ -201,14 +195,14 @@
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connected" color:[UIColor systemGreenColor] animating:YES];
     dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", deviceName]; });
 
-    // 5. Start Heartbeat (Uses same lockdown client)
+    // 4. Start Heartbeat using Provider
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Starting..." color:[UIColor systemOrangeColor] animating:YES];
-    [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
+    [[HeartbeatManager sharedManager] startHeartbeatWithProvider:provider];
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
 
-    // 6. Start DDI Check (Uses same lockdown client)
+    // 5. Start DDI Check using Provider
     [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Checking..." color:[UIColor systemOrangeColor] animating:YES];
-    [[DdiManager sharedManager] checkAndMountDdiWithLockdown:lockdown ip:@"10.7.0.1" completion:^(BOOL success, NSString *message) {
+    [[DdiManager sharedManager] checkAndMountDdiWithProvider:provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Mounted" color:[UIColor systemGreenColor] animating:NO]; }
             else { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Not Mounted" color:[UIColor systemRedColor] animating:NO]; }
@@ -216,6 +210,7 @@
         });
     }];
 
+    lockdownd_client_free(lockdown);
     [self reenableConnectButton];
 }
 

@@ -1,6 +1,4 @@
 #import "HeartbeatManager.h"
-#import <netinet/in.h>
-#import <arpa/inet.h>
 
 @interface HeartbeatManager ()
 @property (nonatomic, assign) struct HeartbeatClientHandle *heartbeatClient;
@@ -16,26 +14,18 @@
     return shared;
 }
 
-- (void)startHeartbeatWithLockdown:(struct LockdowndClientHandle *)lockdown ip:(NSString *)ip {
+- (void)startHeartbeatWithProvider:(struct IdeviceProviderHandle *)provider {
     [self stopHeartbeat];
+    if (!provider) return;
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        uint16_t port = 0; bool ssl = false;
-        struct IdeviceFfiError *err = lockdownd_start_service(lockdown, "com.apple.mobile.heartbeat", &port, &ssl);
-        if (err) { NSLog(@"[Heartbeat] Start service failed: %s", err->message); idevice_error_free(err); return; }
-
-        struct sockaddr_in addr; memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET; addr.sin_port = htons(port);
-        inet_pton(AF_INET, [ip UTF8String], &addr.sin_addr);
-
-        struct IdeviceHandle *device = NULL;
-        err = idevice_new_tcp_socket((const idevice_sockaddr *)&addr, sizeof(addr), "Heartbeat", &device);
-        if (err) { NSLog(@"[Heartbeat] Socket failed: %s", err->message); idevice_error_free(err); return; }
-
         struct HeartbeatClientHandle *hb = NULL;
-        err = heartbeat_new(device, &hb);
-        if (err) { NSLog(@"[Heartbeat] Client failed: %s", err->message); idevice_error_free(err); idevice_free(device); return; }
+        struct IdeviceFfiError *err = heartbeat_connect(provider, &hb);
+        if (err) { NSLog(@"[Heartbeat] Connect failed: %s", err->message); idevice_error_free(err); return; }
 
-        self.heartbeatClient = hb; self.running = YES;
+        self.heartbeatClient = hb;
+        self.running = YES;
+        NSLog(@"[Heartbeat] Started via provider");
         [self heartbeatLoop];
     });
 }
@@ -47,6 +37,7 @@
         struct IdeviceFfiError *err = heartbeat_get_marco(self.heartbeatClient, interval, &next_interval);
         if (err) { NSLog(@"[Heartbeat] Error: %s", err->message); idevice_error_free(err); break; }
         if (next_interval > 0) interval = next_interval;
+
         err = heartbeat_send_polo(self.heartbeatClient);
         if (err) { NSLog(@"[Heartbeat] Polo error: %s", err->message); idevice_error_free(err); break; }
     }
@@ -55,6 +46,10 @@
 
 - (void)stopHeartbeat {
     self.running = NO;
-    if (self.heartbeatClient) { heartbeat_client_free(self.heartbeatClient); self.heartbeatClient = NULL; }
+    if (self.heartbeatClient) {
+        heartbeat_client_free(self.heartbeatClient);
+        self.heartbeatClient = NULL;
+        NSLog(@"[Heartbeat] Stopped");
+    }
 }
 @end
