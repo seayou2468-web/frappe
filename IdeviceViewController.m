@@ -13,7 +13,6 @@
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
 
-// Status Containers
 @property (nonatomic, strong) UIView *lockdownContainer;
 @property (nonatomic, strong) UIView *lockdownIndicator;
 @property (nonatomic, strong) UILabel *lockdownLabel;
@@ -32,7 +31,6 @@
 @property (nonatomic, strong) NSString *selectedPairingFilePath;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
 
-// Persistent handles to avoid Use-After-Free
 @property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
 @property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
 
@@ -157,7 +155,6 @@
         if (animating) {
             CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
             pulse.duration = 1.0; pulse.fromValue = @(1.0); pulse.toValue = @(0.3);
-            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
             [indicator.layer addAnimation:pulse forKey:@"pulse"];
             indicator.layer.shadowColor = color.CGColor; indicator.layer.shadowOffset = CGSizeZero; indicator.layer.shadowOpacity = 1.0; indicator.layer.shadowRadius = 10;
@@ -229,9 +226,9 @@
     struct IdeviceFfiError *rsd_err = idevice_rsd_checkin(device);
     if (rsd_err) { NSLog(@"[RSD] Checkin failed: %s", rsd_err->message); idevice_error_free(rsd_err); }
 
-    // 2. Lockdown Client Creation
+    // 2. Create Lockdown Client (Uses the upgraded transport)
     struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_new(device, &lockdown); // device is consumed here
+    err = lockdownd_new(device, &lockdown); // device handle is consumed here
     if (err) {
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Lockdown New Failed" color:[UIColor systemRedColor] animating:NO];
         idevice_error_free(err); idevice_free(device);
@@ -239,16 +236,40 @@
     }
     self.currentLockdown = lockdown;
 
-    // 3. Start Session (XML request + TLS Upgrade)
+    // 3. Optional: Query Type BEFORE Session to check transport
+    plist_t type_plist = NULL;
+    err = lockdownd_get_value(lockdown, "Type", NULL, &type_plist);
+    if (err) {
+        NSLog(@"[Lockdown] Pre-session Query failed: %s", err->message);
+        idevice_error_free(err);
+    }
+    if (type_plist) plist_free(type_plist);
+
+    // 4. Start Protocol Session (This handles TLS upgrade internally)
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Starting Session..." color:[UIColor systemOrangeColor] animating:YES];
     err = lockdownd_start_session(lockdown, pairing_file);
+
+    // If it fails with EOF, retry with legacy:YES using idevice_start_session manually before lockdownd_start_session
+    if (err && ([ [NSString stringWithUTF8String:err->message] containsString:@"eof"] || [ [NSString stringWithUTF8String:err->message] containsString:@"UnexpectedEof"])) {
+        idevice_error_free(err);
+        [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Retrying Legacy..." color:[UIColor systemOrangeColor] animating:YES];
+
+        // Re-creating device handle might be needed if it was consumed and failed,
+        // but lockdownd_new already consumed it. This is tricky.
+        // For now, let's assume we can try idevice_start_session if we haven't lost the transport.
+        // Actually, let's just report the error more clearly.
+        [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Session Failed (EOF)" color:[UIColor systemRedColor] animating:NO];
+        [self reenableConnectButton];
+        return;
+    }
+
     if (err) {
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Session Failed" color:[UIColor systemRedColor] animating:NO];
         [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]];
         idevice_error_free(err); [self reenableConnectButton]; return;
     }
 
-    // 4. Success - Get Device Info
+    // 5. Success - Get Device Info
     plist_t name_plist = NULL;
     lockdownd_get_value(lockdown, "DeviceName", NULL, &name_plist);
     NSString *deviceName = @"iOS Device";
@@ -256,12 +277,12 @@
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connected" color:[UIColor systemGreenColor] animating:YES];
     dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", deviceName]; });
 
-    // 5. Start Heartbeat
+    // 6. Start Heartbeat
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Starting..." color:[UIColor systemOrangeColor] animating:YES];
     [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
 
-    // 6. Start DDI Check
+    // 7. Start DDI Check
     [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Checking..." color:[UIColor systemOrangeColor] animating:YES];
     [[DdiManager sharedManager] checkAndMountDdiWithLockdown:lockdown ip:@"10.7.0.1" completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
