@@ -118,7 +118,7 @@
 
 - (void)selectPairingFile {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]];
+        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
         picker.delegate = self;
         picker.allowsMultipleSelection = NO;
         [self presentViewController:picker animated:YES completion:nil];
@@ -127,22 +127,22 @@
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
-    if (url) {
-        BOOL access = [url startAccessingSecurityScopedResource];
-        NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
-        [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
+    if (!url) return;
 
-        NSError *error = nil;
-        NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:nil error:&error];
-        if (access) [url stopAccessingSecurityScopedResource];
+    BOOL access = [url startAccessingSecurityScopedResource];
+    NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
 
-        if (filename) {
-            self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
-            self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", filename];
-        } else {
-            [self showAlertWithTitle:@"Import Error" message:error.localizedDescription];
-        }
+    NSError *error = nil;
+    NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:nil error:&error];
+    if (access) [url stopAccessingSecurityScopedResource];
+
+    if (filename) {
+        self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
+        self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", filename];
+    } else if (error) {
+        [self showAlertWithTitle:@"Import Error" message:error.localizedDescription];
     }
 }
 
