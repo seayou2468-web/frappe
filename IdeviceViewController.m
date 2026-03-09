@@ -121,13 +121,22 @@
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (!url) return;
+
     BOOL access = [url startAccessingSecurityScopedResource];
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
     [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
+
+    NSString *targetFilename = @"pairfile.plist";
+    NSString *targetPath = [pairingDir stringByAppendingPathComponent:targetFilename];
+
+    // Ensure we overwrite by removing existing file
+    [[NSFileManager defaultManager] removeItemAtPath:targetPath error:nil];
+
     NSError *error = nil;
-    NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:nil error:&error];
+    NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:targetFilename error:&error];
     if (access) [url stopAccessingSecurityScopedResource];
+
     if (filename) {
         self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
         self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", filename];
