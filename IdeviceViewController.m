@@ -115,7 +115,7 @@
 }
 
 - (void)selectPairingFile {
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypePropertyList, UTTypeData]];
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem]];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
     [self presentViewController:picker animated:YES completion:nil];
@@ -125,7 +125,8 @@
     NSURL *url = urls.firstObject;
     if (url) {
         BOOL access = [url startAccessingSecurityScopedResource];
-        NSString *pairingDir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"PairingFiles"];
+        NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
         [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
 
         NSError *error = nil;
