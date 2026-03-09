@@ -14,7 +14,7 @@
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *mainStack;
 
-// Status Containers
+// Status Indicators
 @property (nonatomic, strong) UIView *lockdownIndicator;
 @property (nonatomic, strong) UILabel *lockdownLabel;
 @property (nonatomic, strong) UILabel *lockdownDetail;
@@ -56,6 +56,14 @@
     if (self.currentPairingFile) { idevice_pairing_file_free(self.currentPairingFile); self.currentPairingFile = NULL; }
 }
 
+- (void)closeTapped {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[HeartbeatManager sharedManager] stopHeartbeat];
+        [self cleanupHandles];
+        [self dismissViewControllerAnimated:YES completion:nil];
+    });
+}
+
 - (void)setupUI {
     self.scrollView = [[UIScrollView alloc] init];
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -68,16 +76,18 @@
     self.mainStack.alignment = UIStackViewAlignmentFill;
     [self.scrollView addSubview:self.mainStack];
 
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [self.scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.scrollView.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
 
         [self.mainStack.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor constant:20],
-        [self.mainStack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [self.mainStack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [self.mainStack.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor constant:-20]
+        [self.mainStack.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor constant:20],
+        [self.mainStack.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor constant:-20],
+        [self.mainStack.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor constant:-20],
+        [self.mainStack.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor constant:-40]
     ]];
 
     UIView *li, *hi, *di; UILabel *ll, *hl, *dl, *ldt;
@@ -107,8 +117,9 @@
 
 - (UIButton *)createActionButtonWithTitle:(NSString *)title action:(SEL)selector {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
     [btn setTitle:title forState:UIControlStateNormal];
-    [btn setHeightAnchor:[btn.heightAnchor constraintEqualToConstant:50]];
+    [btn.heightAnchor constraintEqualToConstant:50].active = YES;
     [ThemeEngine applyLiquidStyleToView:btn cornerRadius:15];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [btn addTarget:self action:selector forControlEvents:UIControlEventTouchUpInside];
@@ -117,6 +128,7 @@
 
 - (UIView *)createStatusContainerWithTitle:(NSString *)title indicator:(UIView **)indicator label:(UILabel **)label detail:(UILabel **)detail {
     UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
     [container.heightAnchor constraintEqualToConstant:detail ? 140 : 100].active = YES;
     [ThemeEngine applyGlassStyleToView:container cornerRadius:20];
 
@@ -148,8 +160,10 @@
 }
 
 - (void)selectPairingFile {
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
-    picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
+        picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
+    });
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
