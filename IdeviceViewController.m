@@ -36,11 +36,6 @@
 @property (nonatomic, assign) struct IdeviceProviderHandle *currentProvider;
 @property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
 
-- (void)showAppList {
-    if (!self.currentProvider) { [self showAlertWithTitle:@"Error" message:@"Please connect to a device first."]; return; }
-    AppListViewController *vc = [[AppListViewController alloc] initWithProvider:self.currentProvider];
-    [self.navigationController pushViewController:vc animated:YES];
-}
 
 @end
 
