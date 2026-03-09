@@ -27,7 +27,9 @@
     self.title = @"iDevice Connection";
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Close" style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
     [self setupUI];
-    idevice_init_logger(IDEVICE_LOG_LEVEL_DEBUG, IDEVICE_LOG_LEVEL_DEBUG, NULL);
+
+    // Debug logging
+    idevice_init_logger(Debug, Debug, NULL);
 }
 
 - (void)closeTapped {
@@ -90,6 +92,7 @@
         self.statusLabel.text = status;
         self.statusIndicator.backgroundColor = color;
         [self.statusIndicator.layer removeAllAnimations];
+
         if (animating) {
             CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
             pulse.duration = 0.8; pulse.fromValue = @(1.0); pulse.toValue = @(0.3);
@@ -155,6 +158,7 @@
     }
 
     struct IdeviceHandle *device = NULL;
+    // Create connection to the lockdown port
     struct IdeviceFfiError *err = idevice_new_tcp_socket((const idevice_sockaddr *)&addr, sizeof(addr), "IdeviceManager", &device);
     if (err) {
         [self updateStatus:@"Socket Failed" color:[UIColor systemRedColor] animating:NO];
@@ -170,23 +174,18 @@
         idevice_error_free(err); idevice_free(device); [self reenableConnectButton]; return;
     }
 
-    [self updateStatus:@"Handshaking..." color:[UIColor systemOrangeColor] animating:YES];
-    struct IdeviceFfiError *tmp_err = idevice_rsd_checkin(device);
-    if (tmp_err) idevice_error_free(tmp_err);
-
-    // Optional TLS Start - some network devices need it before lockdown commands
-    tmp_err = idevice_start_session(device, pairing_file, NO);
-    if (tmp_err) idevice_error_free(tmp_err);
-
+    // 1. Create Lockdown Client (This uses the raw socket)
+    // NOTE: device handle is consumed by lockdownd_new
     struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_new(device, &lockdown); // device is consumed by lockdownd_new
+    err = lockdownd_new(device, &lockdown);
     if (err) {
         [self updateStatus:@"Lockdown Failed" color:[UIColor systemRedColor] animating:NO];
         [self showAlertWithTitle:@"Error" message:[NSString stringWithUTF8String:err->message]];
-        idevice_error_free(err); idevice_pairing_file_free(pairing_file);
+        idevice_error_free(err); idevice_pairing_file_free(pairing_file); idevice_free(device);
         [self reenableConnectButton]; return;
     }
 
+    // 2. Start Session (This initiates StartSession XML request AND handles TLS upgrade)
     [self updateStatus:@"Starting Session..." color:[UIColor systemOrangeColor] animating:YES];
     err = lockdownd_start_session(lockdown, pairing_file);
     if (err) {
@@ -198,6 +197,7 @@
         [self reenableConnectButton]; return;
     }
 
+    // 3. Verification - Get Device Name
     plist_t name_plist = NULL;
     err = lockdownd_get_value(lockdown, "DeviceName", NULL, &name_plist);
     NSString *deviceName = @"Connected Device";
@@ -211,6 +211,7 @@
     self.deviceInfoLabel.text = deviceName;
     [self showAlertWithTitle:@"Success" message:[NSString stringWithFormat:@"Connected to %@!", deviceName]];
 
+    // Cleanup handles
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
     [self reenableConnectButton];
