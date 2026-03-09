@@ -198,6 +198,13 @@
         return;
     }
 
+    // Perform RSD checkin (often required for newer iOS versions)
+    err = idevice_rsd_checkin(device);
+    if (err) {
+        // Log it but don't fail immediately, as it may not be required for all devices/scenarios
+        idevice_error_free(err);
+    }
+
     // Start TLS Session
     err = idevice_start_session(device, pairing_file, NO);
     if (err) {
