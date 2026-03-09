@@ -4,6 +4,7 @@
 #import "FileManagerCore.h"
 #import "HeartbeatManager.h"
 #import "DdiManager.h"
+#import "AppListViewController.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <netinet/in.h>
 #import <arpa/inet.h>
@@ -34,6 +35,12 @@
 // Persistent handles - Specification compliant
 @property (nonatomic, assign) struct IdeviceProviderHandle *currentProvider;
 @property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
+
+- (void)showAppList {
+    if (!self.currentProvider) { [self showAlertWithTitle:@"Error" message:@"Please connect to a device first."]; return; }
+    AppListViewController *vc = [[AppListViewController alloc] initWithProvider:self.currentProvider];
+    [self.navigationController pushViewController:vc animated:YES];
+}
 
 @end
 
@@ -105,6 +112,15 @@
     self.connectButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.connectButton.frame = CGRectMake(40, y, width - 40, 50); [self.connectButton setTitle:@"Establish Link" forState:UIControlStateNormal]; [ThemeEngine applyLiquidStyleToView:self.connectButton cornerRadius:15]; [self.connectButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal]; [self.connectButton addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.contentView addSubview:self.connectButton];
+    y += 70;
+
+    UIButton *appsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    appsButton.frame = CGRectMake(40, y, width - 40, 50);
+    [appsButton setTitle:@"Application List" forState:UIControlStateNormal];
+    [ThemeEngine applyLiquidStyleToView:appsButton cornerRadius:15];
+    [appsButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [appsButton addTarget:self action:@selector(showAppList) forControlEvents:UIControlEventTouchUpInside];
+    [self.contentView addSubview:appsButton];
     self.contentView.frame = CGRectMake(0, 0, self.view.bounds.size.width, y + 100);
 }
 
@@ -222,4 +238,10 @@
         [self presentViewController:alert animated:YES completion:nil];
     });
 }
+- (void)showAppList {
+    if (!self.currentProvider) { [self showAlertWithTitle:@"Error" message:@"Please connect to a device first."]; return; }
+    AppListViewController *vc = [[AppListViewController alloc] initWithProvider:self.currentProvider];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
 @end
