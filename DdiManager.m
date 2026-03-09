@@ -20,11 +20,39 @@
         struct IdeviceFfiError *err = image_mounter_connect(provider, &mounter);
         if (err) { completion(NO, [NSString stringWithFormat:@"Connect failed: %s", err->message]); idevice_error_free(err); return; }
 
-        uint8_t *sig = NULL; size_t sig_len = 0;
-        err = image_mounter_lookup_image(mounter, "Developer", &sig, &sig_len);
-        if (!err && sig) { completion(YES, @"DDI already mounted"); idevice_data_free(sig, sig_len); image_mounter_free(mounter); return; }
+        BOOL alreadyMounted = NO;
+
+        // 1. Check using copy_devices (modern way to check mount list)
+        plist_t *devices = NULL;
+        size_t devices_len = 0;
+        err = image_mounter_copy_devices(mounter, &devices, &devices_len);
+        if (!err && devices) {
+            // If we have any devices in the list, DDI is likely mounted
+            if (devices_len > 0) {
+                alreadyMounted = YES;
+            }
+            idevice_plist_array_free(devices, devices_len);
+        }
         if (err) idevice_error_free(err);
 
+        // 2. Fallback check using lookup_image
+        if (!alreadyMounted) {
+            uint8_t *sig = NULL; size_t sig_len = 0;
+            err = image_mounter_lookup_image(mounter, "Developer", &sig, &sig_len);
+            if (!err && sig) {
+                alreadyMounted = YES;
+                idevice_data_free(sig, sig_len);
+            }
+            if (err) idevice_error_free(err);
+        }
+
+        if (alreadyMounted) {
+            completion(YES, [NSString stringWithFormat:@"DDI already mounted (iOS %@)", version]);
+            image_mounter_free(mounter);
+            return;
+        }
+
+        // 3. Check Developer Mode
         int dev_mode = 0;
         err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
         if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", err->message]); idevice_error_free(err); image_mounter_free(mounter); return; }
