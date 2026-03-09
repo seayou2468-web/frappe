@@ -2,8 +2,6 @@
 #import "idevice.h"
 
 @interface DdiManager : NSObject
-
 + (instancetype)sharedManager;
-- (void)checkAndMountDdiWithLockdown:(struct LockdowndClientHandle *)lockdown ip:(NSString *)ip completion:(void (^)(BOOL success, NSString *message))completion;
-
+- (void)checkAndMountDdiWithProvider:(struct IdeviceProviderHandle *)provider lockdown:(struct LockdowndClientHandle *)lockdown completion:(void (^)(BOOL success, NSString *message))completion;
 @end
