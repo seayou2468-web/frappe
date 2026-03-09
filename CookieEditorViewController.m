@@ -65,7 +65,7 @@
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle == UITableViewCellEditingStyleDelete) {
         NSHTTPCookie *cookie = self.cookies[indexPath.row];
-        __weak typeof(self) weakSelf = self;
+        __unsafe_unretained typeof(self) weakSelf = self;
         [self.cookieStore deleteCookie:cookie completionHandler:^{
             dispatch_async(dispatch_get_main_queue(), ^{
                 [weakSelf.cookies removeObjectAtIndex:indexPath.row];
@@ -101,7 +101,7 @@
 
         NSHTTPCookie *newCookie = [NSHTTPCookie cookieWithProperties:props];
         if (newCookie) {
-            __weak typeof(self) weakSelf = self;
+            __unsafe_unretained typeof(self) weakSelf = self;
             [self.cookieStore setCookie:newCookie completionHandler:^{ [weakSelf loadCookies]; }];
         }
     }]];

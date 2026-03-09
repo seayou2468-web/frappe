@@ -17,7 +17,7 @@ typedef NS_ENUM(NSInteger, TabType) {
 @property (nonatomic, strong) UIViewController *viewController;
 @property (nonatomic, copy) NSString *password;
 @property (nonatomic, assign) BOOL useFaceID;
-@property (nonatomic, weak) TabGroup *group;
+@property (nonatomic, assign) TabGroup *group;
 @end
 
 @interface TabGroup : NSObject

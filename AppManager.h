@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import "idevice.h"
 
 @interface AppInfo : NSObject
@@ -6,7 +7,7 @@
 @property (nonatomic, copy) NSString *bundleId;
 @property (nonatomic, copy) NSString *version;
 @property (nonatomic, assign) BOOL isSystem;
-@property (nonatomic, strong) UIImage *icon;
+@property (nonatomic, retain) UIImage *icon;
 @end
 
 @interface AppManager : NSObject
