@@ -1,6 +1,7 @@
 #import "IdeviceViewController.h"
 #import "ThemeEngine.h"
 #import "idevice.h"
+#import "FileManagerCore.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <netinet/in.h>
 #import <arpa/inet.h>
@@ -12,7 +13,7 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *connectButton;
 @property (nonatomic, strong) UIButton *selectPairingFileButton;
-@property (nonatomic, strong) NSURL *selectedPairingFileURL;
+@property (nonatomic, strong) NSString *selectedPairingFilePath;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
 @property (nonatomic, strong) UILabel *deviceInfoLabel;
 
@@ -123,13 +124,25 @@
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (url) {
-        self.selectedPairingFileURL = url;
-        self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", url.lastPathComponent];
+        BOOL access = [url startAccessingSecurityScopedResource];
+        NSString *pairingDir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"PairingFiles"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
+
+        NSError *error = nil;
+        NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:nil error:&error];
+        if (access) [url stopAccessingSecurityScopedResource];
+
+        if (filename) {
+            self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
+            self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", filename];
+        } else {
+            [self showAlertWithTitle:@"Import Error" message:error.localizedDescription];
+        }
     }
 }
 
 - (void)connectTapped {
-    if (!self.selectedPairingFileURL) {
+    if (!self.selectedPairingFilePath) {
         [self showAlertWithTitle:@"Error" message:@"Please select a pairing file first."];
         return;
     }
@@ -168,9 +181,7 @@
     }
 
     struct IdevicePairingFile *pairing_file = NULL;
-    BOOL access = [self.selectedPairingFileURL startAccessingSecurityScopedResource];
-    err = idevice_pairing_file_read([self.selectedPairingFileURL.path UTF8String], &pairing_file);
-    if (access) [self.selectedPairingFileURL stopAccessingSecurityScopedResource];
+    err = idevice_pairing_file_read([self.selectedPairingFilePath UTF8String], &pairing_file);
 
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
