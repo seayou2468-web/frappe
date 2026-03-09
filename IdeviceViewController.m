@@ -187,7 +187,6 @@
 
     struct IdevicePairingFile *pairing_file = NULL;
     err = idevice_pairing_file_read([self.selectedPairingFilePath UTF8String], &pairing_file);
-
     if (err) {
         NSString *msg = [NSString stringWithUTF8String:err->message];
         idevice_error_free(err);
@@ -198,27 +197,13 @@
         return;
     }
 
-    // Perform RSD checkin (often required for newer iOS versions)
+    // Perform RSD checkin
     err = idevice_rsd_checkin(device);
     if (err) {
-        // Log it but don't fail immediately, as it may not be required for all devices/scenarios
         idevice_error_free(err);
     }
 
-    // Start TLS Session
-    err = idevice_start_session(device, pairing_file, NO);
-    if (err) {
-        NSString *msg = [NSString stringWithUTF8String:err->message];
-        idevice_error_free(err);
-        idevice_pairing_file_free(pairing_file);
-        idevice_free(device);
-        [self updateStatus:@"Session Error" color:[UIColor systemRedColor] animating:NO];
-        [self showAlertWithTitle:@"Session Error" message:msg];
-        [self reenableConnectButton];
-        return;
-    }
-
-    // Connect to lockdownd
+    // Connect to lockdownd FIRST (creating the client)
     struct LockdowndClientHandle *lockdown = NULL;
     err = lockdownd_new(device, &lockdown);
     if (err) {
@@ -230,6 +215,25 @@
         [self showAlertWithTitle:@"Lockdownd Error" message:msg];
         [self reenableConnectButton];
         return;
+    }
+
+    // Start TLS Session AFTER lockdownd client is ready
+    err = idevice_start_session(device, pairing_file, NO);
+    if (err) {
+        // Log TLS error but try to continue or report
+        NSString *msg = [NSString stringWithUTF8String:err->message];
+        idevice_error_free(err);
+
+        // If TLS Handshake EOF, maybe retry with legacy or report
+        if ([msg containsString:@"tls handshake eof"]) {
+             [self updateStatus:@"TLS Handshake EOF" color:[UIColor systemRedColor] animating:NO];
+             [self showAlertWithTitle:@"Session Error" message:@"TLS handshake failed (EOF). The device might have rejected the connection or requires a different pairing method."];
+             lockdownd_client_free(lockdown);
+             idevice_pairing_file_free(pairing_file);
+             idevice_free(device);
+             [self reenableConnectButton];
+             return;
+        }
     }
 
     // Start Lockdownd Session
