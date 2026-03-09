@@ -65,31 +65,24 @@
     CGFloat y = 20;
     CGFloat width = self.view.bounds.size.width - 40;
 
-    // Lockdown Section
-    UIView *li, *ld;
-    UILabel *ll, *ldt;
+    UIView *li, *hi, *di;
+    UILabel *ll, *hl, *dl, *ldt;
+
     self.lockdownContainer = [self createStatusContainerAtY:y title:@"Lockdown Connection" indicator:&li label:&ll detail:&ldt];
     self.lockdownIndicator = li; self.lockdownLabel = ll; self.lockdownDetail = ldt;
     [self.contentView addSubview:self.lockdownContainer];
     y += 160;
 
-    // Heartbeat Section
-    UIView *hi;
-    UILabel *hl;
     self.heartbeatContainer = [self createStatusContainerAtY:y title:@"Heartbeat Status" indicator:&hi label:&hl detail:NULL];
     self.heartbeatIndicator = hi; self.heartbeatLabel = hl;
     [self.contentView addSubview:self.heartbeatContainer];
     y += 130;
 
-    // DDI Section
-    UIView *di;
-    UILabel *dl;
     self.ddiContainer = [self createStatusContainerAtY:y title:@"DDI Image Status" indicator:&di label:&dl detail:NULL];
     self.ddiIndicator = di; self.ddiLabel = dl;
     [self.contentView addSubview:self.ddiContainer];
     y += 140;
 
-    // Selection UI
     self.pairingFileLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, y, width, 40)];
     self.pairingFileLabel.textColor = [UIColor lightGrayColor];
     self.pairingFileLabel.font = [UIFont systemFontOfSize:14];
@@ -122,71 +115,46 @@
 - (UIView *)createStatusContainerAtY:(CGFloat)y title:(NSString *)title indicator:(UIView **)indicator label:(UILabel **)label detail:(UILabel **)detail {
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(20, y, self.view.bounds.size.width - 40, detail ? 140 : 110)];
     [ThemeEngine applyGlassStyleToView:container cornerRadius:20];
-
     UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, container.bounds.size.width - 30, 20)];
-    header.text = title;
-    header.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    header.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    header.text = title; header.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6]; header.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     [container addSubview:header];
-
     UIView *ind = [[UIView alloc] initWithFrame:CGRectMake(15, 40, 40, 40)];
-    ind.layer.cornerRadius = 20;
-    ind.backgroundColor = [UIColor systemGrayColor];
-    [container addSubview:ind];
-    if (indicator) *indicator = ind;
-
+    ind.layer.cornerRadius = 20; ind.backgroundColor = [UIColor systemGrayColor];
+    [container addSubview:ind]; if (indicator) *indicator = ind;
     UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(70, 40, container.bounds.size.width - 85, 40)];
-    lbl.textColor = [UIColor whiteColor];
-    lbl.font = [UIFont boldSystemFontOfSize:16];
-    lbl.text = @"Inactive";
-    [container addSubview:lbl];
-    if (label) *label = lbl;
-
+    lbl.textColor = [UIColor whiteColor]; lbl.font = [UIFont boldSystemFontOfSize:16]; lbl.text = @"Inactive";
+    [container addSubview:lbl]; if (label) *label = lbl;
     if (detail) {
         UILabel *dtl = [[UILabel alloc] initWithFrame:CGRectMake(15, 90, container.bounds.size.width - 30, 40)];
-        dtl.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
-        dtl.font = [UIFont systemFontOfSize:13];
-        dtl.numberOfLines = 2;
-        [container addSubview:dtl];
-        *detail = dtl;
+        dtl.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5]; dtl.font = [UIFont systemFontOfSize:13]; dtl.numberOfLines = 2;
+        [container addSubview:dtl]; if (detail) *detail = dtl;
     }
-
     return container;
 }
 
 - (void)updateIndicator:(UIView *)indicator label:(UILabel *)label status:(NSString *)status color:(UIColor *)color animating:(BOOL)animating {
     dispatch_async(dispatch_get_main_queue(), ^{
-        label.text = status;
-        indicator.backgroundColor = color;
+        label.text = status; indicator.backgroundColor = color;
         [indicator.layer removeAllAnimations];
-
         if (animating) {
             CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
             pulse.duration = 1.0; pulse.fromValue = @(1.0); pulse.toValue = @(0.3);
-            pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
             [indicator.layer addAnimation:pulse forKey:@"pulse"];
-            indicator.layer.shadowColor = color.CGColor;
-            indicator.layer.shadowOffset = CGSizeZero;
-            indicator.layer.shadowOpacity = 1.0;
-            indicator.layer.shadowRadius = 10;
-        } else {
-            indicator.layer.shadowOpacity = 0;
-        }
+            indicator.layer.shadowColor = color.CGColor; indicator.layer.shadowOffset = CGSizeZero; indicator.layer.shadowOpacity = 1.0; indicator.layer.shadowRadius = 10;
+        } else { indicator.layer.shadowOpacity = 0; }
     });
 }
 
 - (void)selectPairingFile {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
-        picker.delegate = self;
-        [self presentViewController:picker animated:YES completion:nil];
+        picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
     });
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    NSURL *url = urls.firstObject;
-    if (!url) return;
+    NSURL *url = urls.firstObject; if (!url) return;
     BOOL access = [url startAccessingSecurityScopedResource];
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
@@ -199,18 +167,16 @@
     if (filename) {
         self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
         self.pairingFileLabel.text = [NSString stringWithFormat:@"Selected: %@", filename];
-    } else if (error) {
-        [self showAlertWithTitle:@"Import Error" message:error.localizedDescription];
-    }
+    } else if (error) { [self showAlertWithTitle:@"Import Error" message:error.localizedDescription]; }
 }
 
 - (void)connectTapped {
-    if (!self.selectedPairingFilePath) {
-        [self showAlertWithTitle:@"Error" message:@"Please select a pairing file first."];
-        return;
-    }
+    if (!self.selectedPairingFilePath) { [self showAlertWithTitle:@"Error" message:@"Please select a pairing file first."]; return; }
     self.connectButton.enabled = NO;
-    [self performConnection];
+    // CONNECTION MUST RUN IN BACKGROUND TO AVOID FREEZING AND HANDLE RACE CONDITIONS
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        [self performConnection];
+    });
 }
 
 - (void)performConnection {
@@ -239,7 +205,7 @@
     }
 
     struct LockdowndClientHandle *lockdown = NULL;
-    err = lockdownd_new(device, &lockdown);
+    err = lockdownd_new(device, &lockdown); // device is consumed by lockdownd_new
     if (err) {
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Lockdown New Failed" color:[UIColor systemRedColor] animating:NO];
         idevice_error_free(err); idevice_pairing_file_free(pairing_file); idevice_free(device);
@@ -259,36 +225,32 @@
     NSString *deviceName = @"iOS Device";
     if (name_plist) { char *val = NULL; plist_get_string_val(name_plist, &val); if (val) { deviceName = [NSString stringWithUTF8String:val]; plist_mem_free(val); } plist_free(name_plist); }
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connected" color:[UIColor systemGreenColor] animating:YES];
-    self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", deviceName];
+    dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", deviceName]; });
 
-    // Start Heartbeat
+    // Start Heartbeat and DDI - these take ownership of their own service start now or use cloned lockdown if possible.
+    // To avoid crash, we start them and WAIT for them to initiate their connection before freeing lockdown.
+
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Starting..." color:[UIColor systemOrangeColor] animating:YES];
     [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
 
-    // Start DDI Check/Mount
     [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Checking..." color:[UIColor systemOrangeColor] animating:YES];
     [[DdiManager sharedManager] checkAndMountDdiWithLockdown:lockdown ip:@"10.7.0.1" completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Mounted" color:[UIColor systemGreenColor] animating:NO];
-            } else {
-                [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Not Mounted" color:[UIColor systemRedColor] animating:NO];
-                NSLog(@"[DDI] Status: %@", message);
-            }
+            if (success) { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Mounted" color:[UIColor systemGreenColor] animating:NO]; }
+            else { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Not Mounted" color:[UIColor systemRedColor] animating:NO]; }
         });
     }];
+
+    // GIVE SERVICES SOME TIME TO INITIATE (Short delay to avoid immediate free of lockdown handle used in background blocks)
+    [NSThread sleepForTimeInterval:1.0];
 
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
     [self reenableConnectButton];
 }
 
-- (void)reenableConnectButton {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.connectButton.enabled = YES;
-    });
-}
+- (void)reenableConnectButton { dispatch_async(dispatch_get_main_queue(), ^{ self.connectButton.enabled = YES; }); }
 
 - (void)showAlertWithTitle:(NSString *)title message:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
