@@ -2,6 +2,7 @@
 #import "ThemeEngine.h"
 #import "idevice.h"
 #import "FileManagerCore.h"
+#import "HeartbeatManager.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <netinet/in.h>
 #import <arpa/inet.h>
@@ -34,6 +35,7 @@
 
 - (void)closeTapped {
     dispatch_async(dispatch_get_main_queue(), ^{
+        [[HeartbeatManager sharedManager] stopHeartbeat];
         [self dismissViewControllerAnimated:YES completion:nil];
     });
 }
@@ -220,7 +222,12 @@
     self.deviceInfoLabel.text = deviceName;
     [self showAlertWithTitle:@"Success" message:[NSString stringWithFormat:@"Connected to %@!", deviceName]];
 
-    // Cleanup handles
+    // Start Heartbeat
+    [[HeartbeatManager sharedManager] startHeartbeatWithLockdown:lockdown ip:@"10.7.0.1"];
+
+    // Cleanup handles (Wait, we need lockdown for heartbeat start, but heartbeat_new takes its own socket connection)
+    // Actually, HeartbeatManager starts its own connection using the port from lockdownd_start_service.
+    // So we can free lockdown here.
     lockdownd_client_free(lockdown);
     idevice_pairing_file_free(pairing_file);
     [self reenableConnectButton];
