@@ -1,5 +1,5 @@
 #import <UIKit/UIKit.h>
 
-@interface IdeviceViewController : UIViewController <UIDocumentPickerDelegate>
+@interface IdeviceViewController : UIViewController
 
 @end

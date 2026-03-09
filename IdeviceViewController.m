@@ -6,7 +6,7 @@
 #import <netinet/in.h>
 #import <arpa/inet.h>
 
-@interface IdeviceViewController ()
+@interface IdeviceViewController () <UIDocumentPickerDelegate>
 
 @property (nonatomic, strong) UIView *statusContainer;
 @property (nonatomic, strong) UIView *statusIndicator;
