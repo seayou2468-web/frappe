@@ -218,7 +218,7 @@
             if (jitMode == JitModeJS) {
                 [self activateUniversalJitSyncForPid:pid adapter:adapter handshake:handshake];
             } else if (jitMode == JitModeNative) {
-                [self activateNativeJitSyncForPid:pid adapter:adapter handshake:handshake];
+                [self activateGodSpeedJitSyncForPid:pid adapter:adapter handshake:handshake];
             }
             safeCompletion(YES, [NSString stringWithFormat:@"Launched with JIT (%@, PID: %llu).", (jitMode == JitModeJS ? @"JS" : @"God-Speed"), pid]);
         } else {
@@ -232,115 +232,48 @@
     });
 }
 
-// 0 <= val <= 15
-static char u8toHexChar(uint8_t val) {
-    if(val < 10) return val + '0';
-    else return val + 87;
+// God-Speed Core Utilities
+static uint64_t parseHex(const char *hex, int len) {
+    uint64_t val = 0;
+    for (int i = 0; i < len; i++) {
+        char c = hex[i];
+        int digit = 0;
+        if (c >= '0' && c <= '9') digit = c - '0';
+        else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+        else break;
+        val = (val << 4) | digit;
+    }
+    return val;
 }
 
-static void calcAndWriteCheckSum(char* commandStart) {
+static uint64_t parseLEHex(const char *hex, int len) {
+    uint64_t val = 0;
+    for (int i = 0; i < len; i += 2) {
+        uint32_t b = 0; sscanf(hex + i, "%2x", &b);
+        val |= ((uint64_t)b << (i * 4));
+    }
+    return val;
+}
+
+static char u8toHexChar(uint8_t val) {
+    return (val < 10) ? (val + '0') : (val + 87);
+}
+
+static void calcAndWriteCheckSum(char* start) {
     uint8_t sum = 0;
-    char* cur = commandStart;
+    char* cur = start;
     for(; *cur != '#'; ++cur) sum += *cur;
     cur[1] = u8toHexChar((sum & 0xf0) >> 4);
     cur[2] = u8toHexChar(sum & 0xf);
 }
 
-static void writeAddress(char* writeStart, uint64_t addr) {
-    writeStart[0] = u8toHexChar((addr & 0xf00000000) >> 32);
-    writeStart[1] = u8toHexChar((addr & 0xf0000000) >> 28);
-    writeStart[2] = u8toHexChar((addr & 0xf000000) >> 24);
-    writeStart[3] = u8toHexChar((addr & 0xf00000) >> 20);
-    writeStart[4] = u8toHexChar((addr & 0xf0000) >> 16);
-    writeStart[5] = u8toHexChar((addr & 0xf000) >> 12);
-    writeStart[6] = u8toHexChar((addr & 0xf00) >> 8);
-    writeStart[7] = u8toHexChar((addr & 0xf0) >> 4);
-    writeStart[8] = u8toHexChar((addr & 0xf));
+static void writeAddress(char* start, uint64_t addr) {
+    for(int i=0; i<9; i++) start[i] = u8toHexChar((addr >> ((8-i)*4)) & 0xF);
 }
 
-- (void)activateUniversalJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
-    struct DebugProxyHandle *debug_proxy = NULL;
-    struct IdeviceFfiError *err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
-    if (err || !debug_proxy) {
-        NSLog(@"[JIT] DebugProxy connect failed: %s", err ? err->message : "unknown");
-        if (err) idevice_error_free(err);
-        return;
-    }
-
-    JSContext *context = [[JSContext alloc] init];
-    context[@"get_pid"] = ^uint64_t { return pid; };
-    context[@"send_command"] = ^NSString *(NSString *cmdStr) {
-        struct DebugserverCommandHandle *cmd = debugserver_command_new([cmdStr UTF8String], NULL, 0);
-        char *resp_raw = NULL;
-        struct IdeviceFfiError *e = debug_proxy_send_command(debug_proxy, cmd, &resp_raw);
-        debugserver_command_free(cmd);
-        if (e) { NSLog(@"[JIT Bridge] cmd '%@' failed: %s", cmdStr, e->message); idevice_error_free(e); return nil; }
-        NSString *resp = resp_raw ? [NSString stringWithUTF8String:resp_raw] : nil;
-        if (resp_raw) free(resp_raw);
-        return resp;
-    };
-
-    context[@"import_script"] = ^(NSString *filename) {
-        NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        NSString *path = [docsDir stringByAppendingPathComponent:filename];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) path = [[NSBundle mainBundle] pathForResource:[filename stringByDeletingPathExtension] ofType:[filename pathExtension]];
-        NSError *e = nil;
-        NSString *content = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&e];
-        if (content) { [JSContext currentContext].exception = nil; [[JSContext currentContext] evaluateScript:content]; return @"OK"; }
-        else return [NSString stringWithFormat:@"ERROR: %@", e.localizedDescription];
-    };
-
-    context[@"prepare_memory_region"] = ^NSString *(uint64_t startAddr, uint64_t JITPagesSize) {
-        uint32_t commandCount = (uint32_t)(JITPagesSize >> 14);
-        uint32_t commandBufferSize = commandCount * 19;
-        char* commandBuffer = malloc(commandBufferSize + 1);
-        commandBuffer[commandBufferSize] = 0;
-        uint64_t curAddr = startAddr;
-        for(uint32_t i = 0; i < commandCount; i++) {
-            char *cur = commandBuffer + i * 19;
-            cur[0] = '$'; cur[1] = 'M'; cur[11] = ','; cur[12] = '1'; cur[13] = ':'; cur[14] = '6'; cur[15] = '9'; cur[16] = '#';
-            writeAddress(cur + 2, curAddr); calcAndWriteCheckSum(cur + 1);
-            curAddr += 16384;
-        }
-        for(uint32_t cur = 0; cur < commandCount; cur += 1024) {
-            uint32_t toSend = (commandCount - cur > 1024) ? 1024 : (commandCount - cur);
-            struct IdeviceFfiError *e = debug_proxy_send_raw(debug_proxy, (const uint8_t *)commandBuffer + cur * 19, toSend * 19);
-            if (e) { idevice_error_free(e); free(commandBuffer); return @"ERROR_SEND"; }
-            for(uint32_t j = 0; j < toSend; j++) {
-                char *r = NULL; struct IdeviceFfiError *e2 = debug_proxy_read_response(debug_proxy, &r);
-                if (r) free(r); if (e2) { idevice_error_free(e2); free(commandBuffer); return @"ERROR_READ"; }
-            }
-        }
-        free(commandBuffer);
-        return @"OK";
-    };
-
-    context[@"log"] = ^(NSString *msg) { NSLog(@"[JIT Script] %@", msg); };
-
-    NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *scriptPath = [docsDir stringByAppendingPathComponent:@"universal.js"];
-    NSString *script = nil;
-    if ([[NSFileManager defaultManager] fileExistsAtPath:scriptPath]) script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil];
-    if (!script) { scriptPath = [[NSBundle mainBundle] pathForResource:@"universal" ofType:@"js"]; if (scriptPath) script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil]; }
-    if (!script) { NSLog(@"[JIT] Using embedded universal script fallback."); script = kUniversalJitScript; }
-
-    [context evaluateScript:script];
-    debug_proxy_free(debug_proxy);
-}
-
-// Helper to parse little-endian hex strings (God-Speed optimization)
-static uint64_t parseLEHex(const char *hex, int len) {
-    uint64_t val = 0;
-    for (int i = 0; i < len; i += 2) {
-        uint8_t byte = 0;
-        sscanf(hex + i, "%2hhx", &byte);
-        val |= ((uint64_t)byte << (i * 4));
-    }
-    return val;
-}
-
-- (void)activateNativeJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
-    NSLog(@"[JIT] Initializing God-Speed Native Activation...");
+- (void)activateGodSpeedJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
+    NSLog(@"[God-Speed] Initializing Engine...");
     struct DebugProxyHandle *debug_proxy = NULL;
     struct IdeviceFfiError *err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
     if (err || !debug_proxy) { if (err) idevice_error_free(err); return; }
@@ -359,16 +292,21 @@ static uint64_t parseLEHex(const char *hex, int len) {
         debugserver_command_free(cmd);
         if (!resp) break;
 
-        // Optimized register extraction logic (replicating universal.js Regex)
         char *tid_ptr = strstr(resp, "thread:");
         char *pc_ptr = strstr(resp, "20:");
         char *x16_ptr = strstr(resp, "10:");
+        char *x0_ptr = strstr(resp, "00:");
+        char *x1_ptr = strstr(resp, "01:");
 
-        if (tid_ptr && pc_ptr && x16_ptr) {
+        if (tid_ptr && pc_ptr && x16_ptr && x0_ptr && x1_ptr) {
             uint64_t pc_val = parseLEHex(pc_ptr + 3, 16);
             uint64_t x16_val = parseLEHex(x16_ptr + 3, 16);
+            uint64_t x0_val = parseLEHex(x0_ptr + 3, 16);
+            uint64_t x1_val = parseLEHex(x1_ptr + 3, 16);
 
-            // Fetch instruction at PC
+            char tid_str[32] = {0};
+            sscanf(tid_ptr + 7, "%31[^;]", tid_str);
+
             char *instr_resp = NULL;
             NSString *mCmd = [NSString stringWithFormat:@"m%llx,4", pc_val];
             struct DebugserverCommandHandle *m_cmd = debugserver_command_new([mCmd UTF8String], NULL, 0);
@@ -376,46 +314,112 @@ static uint64_t parseLEHex(const char *hex, int len) {
             debugserver_command_free(m_cmd);
 
             if (instr_resp) {
-                uint32_t instr = 0;
-                sscanf(instr_resp, "%x", &instr); // Simple BE/LE handle might be needed but assuming standard
-                // Swap bytes for little-endian instr
-                instr = ((instr>>24)&0xff) | ((instr<<8)&0xff0000) | ((instr>>8)&0xff00) | ((instr<<24)&0xff000000);
-
+                uint32_t instr = (uint32_t)parseLEHex(instr_resp, 8);
                 uint32_t brk_imm = (instr >> 5) & 0xFFFF;
-                if ((instr & 0xFFE0001F) == 0xD4200000) {
-                    // Logic for JIT Preparation
-                    if (brk_imm == 0xf00d && x16_val == 1) { // CMD_PREPARE_REGION
-                         // Re-use bulk write logic from JS implementation if needed,
-                         // but for God-Speed we just skip or perform minimal check.
-                         NSLog(@"[God-Speed] Handling BRK 0xF00D (Prepare)");
-                    }
-                    // Skip BRK
+
+                if ((instr & 0xFFE0001F) == 0xD4200000) { // is brk
+                    NSLog(@"[God-Speed] BRK 0x%X at 0x%llX (x16: %llu)", brk_imm, pc_val, x16_val);
+
+                    // Jump over BRK
                     uint64_t next_pc = pc_val + 4;
-                    char next_pc_str[17];
-                    for(int i=0; i<8; i++) sprintf(next_pc_str + i*2, "%02x", (uint8_t)((next_pc >> (i*8)) & 0xFF));
-                    NSString *pCmd = [NSString stringWithFormat:@"P20=%s;thread:1;", next_pc_str];
+                    char next_pc_le[17] = {0};
+                    for(int i=0; i<8; i++) sprintf(next_pc_le + i*2, "%02x", (uint8_t)((next_pc >> (i*8)) & 0xFF));
+                    NSString *pCmd = [NSString stringWithFormat:@"P20=%s;thread:%s;", next_pc_le, tid_str];
                     struct DebugserverCommandHandle *p_cmd = debugserver_command_new([pCmd UTF8String], NULL, 0);
-                    char *p_resp = NULL; debug_proxy_send_command(debug_proxy, p_cmd, &p_resp);
-                    debugserver_command_free(p_cmd); if (p_resp) free(p_resp);
+                    char *p_r = NULL; debug_proxy_send_command(debug_proxy, p_cmd, &p_r);
+                    debugserver_command_free(p_cmd); if (p_r) free(p_r);
+
+                    if (brk_imm == 0xf00d) {
+                        if (x16_val == 0) detached = YES; // DETACH
+                        else if (x16_val == 1) { // PREPARE_REGION
+                            uint64_t addr = x0_val;
+                            if (addr == 0) {
+                                char *rx_resp = NULL;
+                                NSString *rxCmd = [NSString stringWithFormat:@"_M%llx,rx", x1_val];
+                                struct DebugserverCommandHandle *rx_c = debugserver_command_new([rxCmd UTF8String], NULL, 0);
+                                debug_proxy_send_command(debug_proxy, rx_c, &rx_resp);
+                                debugserver_command_free(rx_c);
+                                if (rx_resp) { addr = strtoull(rx_resp, NULL, 16); free(rx_resp); }
+                            }
+                            // Logic for prepare_memory_region (bulk write simulated)
+                            NSLog(@"[God-Speed] JIT Region: 0x%llX", addr);
+                            char addr_le[17] = {0};
+                            for(int i=0; i<8; i++) sprintf(addr_le + i*2, "%02x", (uint8_t)((addr >> (i*8)) & 0xFF));
+                            NSString *px0 = [NSString stringWithFormat:@"P00=%s;thread:%s;", addr_le, tid_str];
+                            struct DebugserverCommandHandle *px0_c = debugserver_command_new([px0 UTF8String], NULL, 0);
+                            char *px0_r = NULL; debug_proxy_send_command(debug_proxy, px0_c, &px0_r);
+                            debugserver_command_free(px0_c); if (px0_r) free(px0_r);
+                        }
+                    }
                 } else {
-                    // Not a BRK, handle signal or continue
+                    // Not a BRK, check signal
+                    char *sig_ptr = strchr(resp, 'T');
+                    if (sig_ptr && sig_ptr[1] && sig_ptr[2]) {
+                         NSString *vCont = [NSString stringWithFormat:@"vCont;S%c%c:%s", sig_ptr[1], sig_ptr[2], tid_str];
+                         struct DebugserverCommandHandle *vc = debugserver_command_new([vCont UTF8String], NULL, 0);
+                         char *vc_r = NULL; debug_proxy_send_command(debug_proxy, vc, &vc_r);
+                         debugserver_command_free(vc); if (vc_r) free(vc_r);
+                    }
                 }
                 free(instr_resp);
             }
         }
-
-        // For demonstration, we'll detach after one loop if it's "God-Speed" and we hit a limit
-        // In real use, this would loop until the app detaches itself.
-        if (detached) break;
         free(resp);
-        detached = YES; // Placeholder for loop exit
     }
 
     cmd = debugserver_command_new("D", NULL, 0);
     debug_proxy_send_command(debug_proxy, cmd, &resp);
     debugserver_command_free(cmd); if (resp) free(resp);
     debug_proxy_free(debug_proxy);
-    NSLog(@"[JIT] God-Speed Activation Complete.");
+    NSLog(@"[God-Speed] Engine Detached.");
+}
+
+- (void)activateUniversalJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
+    struct DebugProxyHandle *debug_proxy = NULL;
+    struct IdeviceFfiError *err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
+    if (err || !debug_proxy) { if (err) idevice_error_free(err); return; }
+    JSContext *context = [[JSContext alloc] init];
+    context[@"get_pid"] = ^uint64_t { return pid; };
+    context[@"send_command"] = ^NSString *(NSString *cmdStr) {
+        struct DebugserverCommandHandle *cmd = debugserver_command_new([cmdStr UTF8String], NULL, 0);
+        char *resp_raw = NULL; struct IdeviceFfiError *e = debug_proxy_send_command(debug_proxy, cmd, &resp_raw);
+        debugserver_command_free(cmd); if (e) { idevice_error_free(e); return nil; }
+        NSString *resp = resp_raw ? [NSString stringWithUTF8String:resp_raw] : nil;
+        if (resp_raw) free(resp_raw); return resp;
+    };
+    context[@"import_script"] = ^(NSString *filename) {
+        NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *path = [docsDir stringByAppendingPathComponent:filename];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) path = [[NSBundle mainBundle] pathForResource:[filename stringByDeletingPathExtension] ofType:[filename pathExtension]];
+        NSError *e = nil; NSString *content = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&e];
+        if (content) { [[JSContext currentContext] evaluateScript:content]; return @"OK"; }
+        else return [NSString stringWithFormat:@"ERROR: %@", e.localizedDescription];
+    };
+    context[@"prepare_memory_region"] = ^NSString *(uint64_t startAddr, uint64_t JITPagesSize) {
+        uint32_t commandCount = (uint32_t)(JITPagesSize >> 14); uint32_t commandBufferSize = commandCount * 19;
+        char* commandBuffer = malloc(commandBufferSize + 1); commandBuffer[commandBufferSize] = 0;
+        uint64_t curAddr = startAddr;
+        for(uint32_t i = 0; i < commandCount; i++) {
+            char *cur = commandBuffer + i * 19; cur[0] = '$'; cur[1] = 'M'; cur[11] = ','; cur[12] = '1'; cur[13] = ':'; cur[14] = '6'; cur[15] = '9'; cur[16] = '#';
+            writeAddress(cur + 2, curAddr); calcAndWriteCheckSum(cur + 1); curAddr += 16384;
+        }
+        for(uint32_t cur = 0; cur < commandCount; cur += 1024) {
+            uint32_t toSend = (commandCount - cur > 1024) ? 1024 : (commandCount - cur);
+            struct IdeviceFfiError *e = debug_proxy_send_raw(debug_proxy, (const uint8_t *)commandBuffer + cur * 19, toSend * 19);
+            if (e) { idevice_error_free(e); free(commandBuffer); return @"ERROR_SEND"; }
+            for(uint32_t j = 0; j < toSend; j++) { char *r = NULL; struct IdeviceFfiError *e2 = debug_proxy_read_response(debug_proxy, &r); if (r) free(r); if (e2) { idevice_error_free(e2); free(commandBuffer); return @"ERROR_READ"; } }
+        }
+        free(commandBuffer); return @"OK";
+    };
+    context[@"log"] = ^(NSString *msg) { NSLog(@"[JIT Script] %@", msg); };
+    NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *scriptPath = [docsDir stringByAppendingPathComponent:@"universal.js"];
+    NSString *script = nil;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:scriptPath]) script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil];
+    if (!script) { scriptPath = [[NSBundle mainBundle] pathForResource:@"universal" ofType:@"js"]; if (scriptPath) script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil]; }
+    if (!script) script = kUniversalJitScript;
+    [context evaluateScript:script];
+    debug_proxy_free(debug_proxy);
 }
 
 @end
