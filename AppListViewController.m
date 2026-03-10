@@ -8,6 +8,7 @@
 @property (nonatomic, strong) NSArray<AppInfo *> *apps;
 @property (nonatomic, strong) UISegmentedControl *filterControl;
 @property (nonatomic, assign) NSInteger currentFilter;
+@property (nonatomic, strong) UIActivityIndicatorView *loadingIndicator;
 @end
 
 @implementation AppListViewController
@@ -45,6 +46,12 @@
     self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.tableView];
 
+    self.loadingIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    self.loadingIndicator.color = [UIColor whiteColor];
+    self.loadingIndicator.hidesWhenStopped = YES;
+    self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.loadingIndicator];
+
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [self.filterControl.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
@@ -55,7 +62,10 @@
         [self.tableView.topAnchor constraintEqualToAnchor:self.filterControl.bottomAnchor constant:10],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+
+        [self.loadingIndicator.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
     ]];
 }
 
@@ -65,8 +75,10 @@
 }
 
 - (void)refreshApps {
+    [self.loadingIndicator startAnimating];
     [[AppManager sharedManager] fetchAppsWithProvider:self.provider completion:^(NSArray<AppInfo *> *apps, NSString *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            [self.loadingIndicator stopAnimating];
             if (apps) {
                 self.apps = apps;
                 [self.tableView reloadData];
@@ -134,12 +146,21 @@
 }
 
 - (void)launch:(NSString *)bid jit:(BOOL)jit {
+    self.view.userInteractionEnabled = NO;
+    [self.loadingIndicator startAnimating];
+
     [[AppManager sharedManager] launchApp:bid withJit:jit provider:self.provider completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            self.view.userInteractionEnabled = YES;
+            [self.loadingIndicator stopAnimating];
+
             if (!success) {
                 UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
                 [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
                 [self presentViewController:err animated:YES completion:nil];
+            } else {
+                // Success: optionally show a toast or just leave it
+                NSLog(@"[AppList] Launch success: %@", message);
             }
         });
     }];
