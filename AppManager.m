@@ -88,11 +88,10 @@
     };
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // 0. Pause Heartbeat to reduce interference
         [[HeartbeatManager sharedManager] pauseHeartbeat];
-        [NSThread sleepForTimeInterval:0.2]; // Give heartbeat time to finish current polo
+        [NSThread sleepForTimeInterval:0.2];
 
-        // 1. Warm-up: Perform a real value query to ensure Lockdown is active
+        // 1. Warm-up
         struct LockdowndClientHandle *warmup = NULL;
         struct IdeviceFfiError *warmup_err = lockdownd_connect(provider, &warmup);
         if (!warmup_err) {
@@ -105,7 +104,7 @@
             idevice_error_free(warmup_err);
         }
 
-        // 2. Fresh CoreDeviceProxy with more aggressive retries
+        // 2. Fresh CoreDeviceProxy with retries
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = NULL;
         int max_retries = 8;
@@ -116,7 +115,7 @@
                 NSLog(@"[Launch] Tunnel attempt %d failed: %s. Retrying in %.1f s...", i, err->message, delay);
                 idevice_error_free(err);
                 [NSThread sleepForTimeInterval:delay];
-                delay *= 1.5; // Exponential backoff for maximum stability
+                delay *= 1.5;
             }
             err = core_device_proxy_connect(provider, &proxy);
             if (!err) break;
@@ -169,30 +168,49 @@
         }
         rsd_stream = NULL;
 
-        // 7. Bind AppService
-        struct AppServiceHandle *appservice = NULL;
-        err = app_service_connect_rsd(adapter, handshake, &appservice);
+        // 7. Bind RemoteServer
+        struct RemoteServerHandle *remoteserver = NULL;
+        err = remote_server_connect_rsd(adapter, handshake, &remoteserver);
         if (err) {
-            safeCompletion(NO, [NSString stringWithFormat:@"Service Error: %s", err->message]);
+            safeCompletion(NO, [NSString stringWithFormat:@"RemoteServer Error: %s", err->message]);
             idevice_error_free(err);
             rsd_handshake_free(handshake);
             adapter_free(adapter);
             return;
         }
 
-        // 8. Launch Command
-        struct LaunchResponseC *response = NULL;
-        err = app_service_launch_app(appservice, [bid UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &response);
+        // 8. Bind ProcessControl
+        struct ProcessControlHandle *proc_control = NULL;
+        err = process_control_new(remoteserver, &proc_control);
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"ProcessControl Error: %s", err->message]);
+            idevice_error_free(err);
+            remote_server_free(remoteserver);
+            rsd_handshake_free(handshake);
+            adapter_free(adapter);
+            return;
+        }
+
+        // 9. Execute Launch with optional JIT setup
+        uint64_t pid = 0;
+        const char *const env[] = { "DEBUG_AUTOMATION_SCRIPTS=1", NULL };
+
+        err = process_control_launch_app(proc_control, [bid UTF8String], jit ? env : NULL, jit ? 1 : 0, NULL, 0, NO, YES, &pid);
+
+        if (!err && jit && pid > 0) {
+            // Optional: memory limit adjustment for JIT stability
+            process_control_disable_memory_limit(proc_control, pid);
+        }
 
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"Launch Error: %s", err->message]);
             idevice_error_free(err);
         } else {
-            if (response) app_service_free_launch_response(response);
-            safeCompletion(YES, @"Target launched successfully.");
+            safeCompletion(YES, [NSString stringWithFormat:@"Target launched successfully (PID: %llu).", pid]);
         }
 
-        app_service_free(appservice);
+        process_control_free(proc_control);
+        remote_server_free(remoteserver);
         rsd_handshake_free(handshake);
         adapter_free(adapter);
     });
