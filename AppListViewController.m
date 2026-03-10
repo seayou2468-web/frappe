@@ -146,23 +146,19 @@
 }
 
 - (void)launch:(NSString *)bid jit:(BOOL)jit {
-    self.view.userInteractionEnabled = NO;
     [self.loadingIndicator startAnimating];
+    self.view.userInteractionEnabled = NO;
 
     [[AppManager sharedManager] launchApp:bid withJit:jit provider:self.provider completion:^(BOOL success, NSString *message) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.view.userInteractionEnabled = YES;
-            [self.loadingIndicator stopAnimating];
+        // AppManager's completion is now guaranteed to be on the main thread
+        [self.loadingIndicator stopAnimating];
+        self.view.userInteractionEnabled = YES;
 
-            if (!success) {
-                UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
-                [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:err animated:YES completion:nil];
-            } else {
-                // Success: optionally show a toast or just leave it
-                NSLog(@"[AppList] Launch success: %@", message);
-            }
-        });
+        if (!success) {
+            UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
+            [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:err animated:YES completion:nil];
+        }
     }];
 }
 

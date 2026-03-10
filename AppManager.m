@@ -75,82 +75,114 @@
 }
 
 - (void)launchApp:(NSString *)bundleId withJit:(BOOL)jit provider:(struct IdeviceProviderHandle *)provider completion:(void (^)(BOOL success, NSString *message))completion {
+    // 1. Immutable copy for block capture safety
+    NSString *bundleIdFixed = [bundleId copy];
+
+    // 2. Safe completion wrapper ensuring main-thread execution for UI-bound responses
+    void (^safeCompletion)(BOOL, NSString *) = ^(BOOL success, NSString *msg) {
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(success, msg);
+            });
+        }
+    };
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // 1. Warm-up: Ensure the provider is still responsive by attempting a quick lockdown connection
-        struct LockdowndClientHandle *warmup_lockdown = NULL;
-        struct IdeviceFfiError *warmup_err = lockdownd_connect(provider, &warmup_lockdown);
+        // 1. Warm-up connection check
+        struct LockdowndClientHandle *warmup = NULL;
+        struct IdeviceFfiError *warmup_err = lockdownd_connect(provider, &warmup);
         if (!warmup_err) {
-            lockdownd_client_free(warmup_lockdown);
+            lockdownd_client_free(warmup);
         } else {
-            NSLog(@"[Launch] Warm-up lockdown failed: %s. Proceeding anyway...", warmup_err->message);
+            NSLog(@"[Launch] Warmup error: %s", warmup_err->message);
             idevice_error_free(warmup_err);
         }
 
-        // 2. Establish fresh CoreDeviceProxy tunnel with robust retries
+        // 2. Fresh CoreDeviceProxy with retries
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = NULL;
-        int max_retries = 4;
-        NSTimeInterval delay = 0.5;
-
-        for (int i = 0; i <= max_retries; i++) {
-            if (i > 0) {
-                NSLog(@"[Launch] Tunnel attempt %d failed: %s. Retrying in %.1f s...", i, err->message, delay);
-                idevice_error_free(err);
-                [NSThread sleepForTimeInterval:delay];
-                delay += 0.5; // Linear backoff for wireless stability
-            }
+        int retries = 5;
+        for (int i = 0; i < retries; i++) {
+            if (i > 0) [NSThread sleepForTimeInterval:0.5 + (i * 0.2)];
             err = core_device_proxy_connect(provider, &proxy);
             if (!err) break;
+            if (i < retries - 1) idevice_error_free(err);
         }
 
         if (err) {
-            completion(NO, [NSString stringWithFormat:@"Launch Failed G cd C Proxy failed: %s (after %d attempts)", err->message, max_retries + 1]);
+            safeCompletion(NO, [NSString stringWithFormat:@"Tunnel Error: %s", err->message]);
             idevice_error_free(err);
             return;
         }
 
-        // 3. Create Adapter for software TCP stack
+        // 3. Negotiate RSD port BEFORE consuming proxy
+        uint16_t port = 0;
+        err = core_device_proxy_get_server_rsd_port(proxy, &port);
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"RSD Port Error: %s", err->message]);
+            idevice_error_free(err);
+            core_device_proxy_free(proxy);
+            return;
+        }
+
+        // 4. Create Adapter (CONSUMES proxy)
         struct AdapterHandle *adapter = NULL;
         err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
-        if (err) { completion(NO, [NSString stringWithFormat:@"Adapter failed: %s", err->message]); idevice_error_free(err); core_device_proxy_free(proxy); return; }
-
-        // 4. Negotiate RSD (Remote Service Discovery) port
-        uint16_t rsd_port = 0;
-        err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
-        if (err) { completion(NO, [NSString stringWithFormat:@"RSD port discovery failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"Adapter Error: %s", err->message]);
+            idevice_error_free(err);
+            return;
+        }
+        proxy = NULL; // Do not use or free proxy again
 
         // 5. Connect to RSD stream via adapter
         struct ReadWriteOpaque *rsd_stream = NULL;
-        err = adapter_connect(adapter, rsd_port, &rsd_stream);
-        if (err) { completion(NO, [NSString stringWithFormat:@"RSD stream failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
-
-        // 6. Perform RSD handshake
-        struct RsdHandshakeHandle *handshake = NULL;
-        err = rsd_handshake_new(rsd_stream, &handshake);
-        if (err) { completion(NO, [NSString stringWithFormat:@"RSD handshake failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
-
-        // 7. Bind AppService to the RSD session
-        struct AppServiceHandle *appservice = NULL;
-        err = app_service_connect_rsd(adapter, handshake, &appservice);
-        if (err) { completion(NO, [NSString stringWithFormat:@"AppService binding failed: %s", err->message]); idevice_error_free(err); rsd_handshake_free(handshake); adapter_free(adapter); core_device_proxy_free(proxy); return; }
-
-        // 8. Execute Launch Command
-        struct LaunchResponseC *response = NULL;
-        err = app_service_launch_app(appservice, [bundleId UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &response);
-
+        err = adapter_connect(adapter, port, &rsd_stream);
         if (err) {
-            completion(NO, [NSString stringWithFormat:@"Execution failed: %s", err->message]);
+            safeCompletion(NO, [NSString stringWithFormat:@"Stream Error: %s", err->message]);
             idevice_error_free(err);
-        } else {
-            if (response) app_service_free_launch_response(response);
-            completion(YES, jit ? @"Target launched with JIT (PID active)." : @"Target launched successfully.");
+            adapter_free(adapter);
+            return;
         }
 
-        // Final cleanup of strictly managed handles
-        app_service_free(appservice);
+        // 6. RSD Handshake (CONSUMES rsd_stream)
+        struct RsdHandshakeHandle *handshake = NULL;
+        err = rsd_handshake_new(rsd_stream, &handshake);
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"Handshake Error: %s", err->message]);
+            idevice_error_free(err);
+            adapter_free(adapter);
+            return;
+        }
+        rsd_stream = NULL; // Do not use or free stream again
+
+        // 7. Bind AppService
+        struct AppServiceHandle *app_service = NULL;
+        err = app_service_connect_rsd(adapter, handshake, &app_service);
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"Service Error: %s", err->message]);
+            idevice_error_free(err);
+            rsd_handshake_free(handshake);
+            adapter_free(adapter);
+            return;
+        }
+
+        // 8. Launch App
+        struct LaunchResponseC *resp = NULL;
+        err = app_service_launch_app(app_service, [bundleIdFixed UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &resp);
+
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"Launch Error: %s", err->message]);
+            idevice_error_free(err);
+        } else {
+            if (resp) app_service_free_launch_response(resp);
+            safeCompletion(YES, @"Target launched successfully.");
+        }
+
+        // Final Cleanup
+        app_service_free(app_service);
         rsd_handshake_free(handshake);
         adapter_free(adapter);
-        core_device_proxy_free(proxy);
     });
 }
 
