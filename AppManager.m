@@ -1,5 +1,6 @@
 #import "AppManager.h"
 #import <UIKit/UIKit.h>
+#import "HeartbeatManager.h"
 
 @implementation AppInfo
 @end
@@ -75,11 +76,10 @@
 }
 
 - (void)launchApp:(NSString *)bundleId withJit:(BOOL)jit provider:(struct IdeviceProviderHandle *)provider completion:(void (^)(BOOL success, NSString *message))completion {
-    // 1. Immutable copy for block capture safety
-    NSString *bundleIdFixed = [bundleId copy];
+    NSString *bid = [bundleId copy];
 
-    // 2. Safe completion wrapper ensuring main-thread execution for UI-bound responses
     void (^safeCompletion)(BOOL, NSString *) = ^(BOOL success, NSString *msg) {
+        [[HeartbeatManager sharedManager] resumeHeartbeat];
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(success, msg);
@@ -88,25 +88,38 @@
     };
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // 1. Warm-up connection check
+        // 0. Pause Heartbeat to reduce interference
+        [[HeartbeatManager sharedManager] pauseHeartbeat];
+        [NSThread sleepForTimeInterval:0.2]; // Give heartbeat time to finish current polo
+
+        // 1. Warm-up: Perform a real value query to ensure Lockdown is active
         struct LockdowndClientHandle *warmup = NULL;
         struct IdeviceFfiError *warmup_err = lockdownd_connect(provider, &warmup);
         if (!warmup_err) {
+            plist_t udid = NULL;
+            lockdownd_get_value(warmup, "UniqueDeviceID", NULL, &udid);
+            if (udid) plist_free(udid);
             lockdownd_client_free(warmup);
         } else {
             NSLog(@"[Launch] Warmup error: %s", warmup_err->message);
             idevice_error_free(warmup_err);
         }
 
-        // 2. Fresh CoreDeviceProxy with retries
+        // 2. Fresh CoreDeviceProxy with more aggressive retries
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = NULL;
-        int retries = 5;
-        for (int i = 0; i < retries; i++) {
-            if (i > 0) [NSThread sleepForTimeInterval:0.5 + (i * 0.2)];
+        int max_retries = 8;
+        NSTimeInterval delay = 1.0;
+
+        for (int i = 0; i < max_retries; i++) {
+            if (i > 0) {
+                NSLog(@"[Launch] Tunnel attempt %d failed: %s. Retrying in %.1f s...", i, err->message, delay);
+                idevice_error_free(err);
+                [NSThread sleepForTimeInterval:delay];
+                delay *= 1.5; // Exponential backoff for maximum stability
+            }
             err = core_device_proxy_connect(provider, &proxy);
             if (!err) break;
-            if (i < retries - 1) idevice_error_free(err);
         }
 
         if (err) {
@@ -115,17 +128,17 @@
             return;
         }
 
-        // 3. Negotiate RSD port BEFORE consuming proxy
-        uint16_t port = 0;
-        err = core_device_proxy_get_server_rsd_port(proxy, &port);
+        // 3. RSD Port
+        uint16_t rsd_port = 0;
+        err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
         if (err) {
-            safeCompletion(NO, [NSString stringWithFormat:@"RSD Port Error: %s", err->message]);
+            safeCompletion(NO, [NSString stringWithFormat:@"RSD Error: %s", err->message]);
             idevice_error_free(err);
             core_device_proxy_free(proxy);
             return;
         }
 
-        // 4. Create Adapter (CONSUMES proxy)
+        // 4. Adapter (CONSUMES proxy)
         struct AdapterHandle *adapter = NULL;
         err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
         if (err) {
@@ -133,11 +146,11 @@
             idevice_error_free(err);
             return;
         }
-        proxy = NULL; // Do not use or free proxy again
+        proxy = NULL;
 
-        // 5. Connect to RSD stream via adapter
+        // 5. RSD Stream
         struct ReadWriteOpaque *rsd_stream = NULL;
-        err = adapter_connect(adapter, port, &rsd_stream);
+        err = adapter_connect(adapter, rsd_port, &rsd_stream);
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"Stream Error: %s", err->message]);
             idevice_error_free(err);
@@ -154,11 +167,11 @@
             adapter_free(adapter);
             return;
         }
-        rsd_stream = NULL; // Do not use or free stream again
+        rsd_stream = NULL;
 
         // 7. Bind AppService
-        struct AppServiceHandle *app_service = NULL;
-        err = app_service_connect_rsd(adapter, handshake, &app_service);
+        struct AppServiceHandle *appservice = NULL;
+        err = app_service_connect_rsd(adapter, handshake, &appservice);
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"Service Error: %s", err->message]);
             idevice_error_free(err);
@@ -167,20 +180,19 @@
             return;
         }
 
-        // 8. Launch App
-        struct LaunchResponseC *resp = NULL;
-        err = app_service_launch_app(app_service, [bundleIdFixed UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &resp);
+        // 8. Launch Command
+        struct LaunchResponseC *response = NULL;
+        err = app_service_launch_app(appservice, [bid UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &response);
 
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"Launch Error: %s", err->message]);
             idevice_error_free(err);
         } else {
-            if (resp) app_service_free_launch_response(resp);
+            if (response) app_service_free_launch_response(response);
             safeCompletion(YES, @"Target launched successfully.");
         }
 
-        // Final Cleanup
-        app_service_free(app_service);
+        app_service_free(appservice);
         rsd_handshake_free(handshake);
         adapter_free(adapter);
     });

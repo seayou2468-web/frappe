@@ -5,4 +5,6 @@
 + (instancetype)sharedManager;
 - (void)startHeartbeatWithProvider:(struct IdeviceProviderHandle *)provider;
 - (void)stopHeartbeat;
+- (void)pauseHeartbeat;
+- (void)resumeHeartbeat;
 @end
