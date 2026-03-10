@@ -130,15 +130,19 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     AppInfo *app = [self filteredApps][indexPath.row];
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:@"Select launch mode" preferredStyle:UIAlertControllerStyleActionSheet];
     [ThemeEngine applyGlassStyleToView:alert.view cornerRadius:20];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Launch Normal" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self launch:app.bundleId jit:NO];
+        [self launch:app.bundleId jitMode:JitModeNone];
     }]];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"Launch with JIT" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        [self launch:app.bundleId jit:YES];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Launch with JIT (God-Speed)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self launch:app.bundleId jitMode:JitModeNative];
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Launch with JIT (JavaScript)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self launch:app.bundleId jitMode:JitModeJS];
     }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -146,13 +150,11 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)launch:(NSString *)bid jit:(BOOL)jit {
+- (void)launch:(NSString *)bid jitMode:(JitMode)jitMode {
     [self.loadingIndicator startAnimating];
     self.view.userInteractionEnabled = NO;
 
-    if (jit) {
-        // For JIT launches, we must ensure DDI is still active before proceeding
-        // We need a lockdown handle to verify. Let's create one temporarily.
+    if (jitMode != JitModeNone) {
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             struct LockdowndClientHandle *lockdown = NULL;
             struct IdeviceFfiError *err = lockdownd_connect(self.provider, &lockdown);
@@ -165,7 +167,7 @@
             [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
                 lockdownd_client_free(lockdown);
                 if (success) {
-                    [[AppManager sharedManager] launchApp:bid withJit:YES provider:self.provider completion:^(BOOL success, NSString *message) {
+                    [[AppManager sharedManager] launchApp:bid jitMode:jitMode provider:self.provider completion:^(BOOL success, NSString *message) {
                         [self finishLaunch:success message:message];
                     }];
                 } else {
@@ -174,7 +176,7 @@
             }];
         });
     } else {
-        [[AppManager sharedManager] launchApp:bid withJit:NO provider:self.provider completion:^(BOOL success, NSString *message) {
+        [[AppManager sharedManager] launchApp:bid jitMode:JitModeNone provider:self.provider completion:^(BOOL success, NSString *message) {
             [self finishLaunch:success message:message];
         }];
     }
@@ -189,8 +191,6 @@
             UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
             [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [self presentViewController:err animated:YES completion:nil];
-        } else {
-            NSLog(@"[AppList] Launch successful: %@", message);
         }
     });
 }

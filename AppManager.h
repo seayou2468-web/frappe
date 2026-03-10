@@ -2,6 +2,12 @@
 #import <UIKit/UIKit.h>
 #import "idevice.h"
 
+typedef NS_ENUM(NSInteger, JitMode) {
+    JitModeNone,
+    JitModeJS,
+    JitModeNative
+};
+
 @interface AppInfo : NSObject
 @property (nonatomic, copy) NSString *name;
 @property (nonatomic, copy) NSString *bundleId;
@@ -14,6 +20,6 @@
 
 + (instancetype)sharedManager;
 - (void)fetchAppsWithProvider:(struct IdeviceProviderHandle *)provider completion:(void (^)(NSArray<AppInfo *> *apps, NSString *error))completion;
-- (void)launchApp:(NSString *)bundleId withJit:(BOOL)jit provider:(struct IdeviceProviderHandle *)provider completion:(void (^)(BOOL success, NSString *message))completion;
+- (void)launchApp:(NSString *)bundleId jitMode:(JitMode)jitMode provider:(struct IdeviceProviderHandle *)provider completion:(void (^)(BOOL success, NSString *message))completion;
 
 @end
