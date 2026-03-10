@@ -193,13 +193,60 @@
 
         // 9. Execute Launch with optional JIT setup
         uint64_t pid = 0;
-        const char *const env[] = { "DEBUG_AUTOMATION_SCRIPTS=1", NULL };
+        NSMutableArray *envArray = [NSMutableArray array];
+        if (jit) {
+            [envArray addObject:@"DEBUG_AUTOMATION_SCRIPTS=1"];
+            // STIK Debug Script path - always use the local one we created
+            NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+            NSString *scriptPath = [docsDir stringByAppendingPathComponent:@"stikdebug.js"];
+            // If not in documents, check bundle
+            if (![[NSFileManager defaultManager] fileExistsAtPath:scriptPath]) {
+                scriptPath = [[NSBundle mainBundle] pathForResource:@"stikdebug" ofType:@"js"];
+            }
+            if (scriptPath) {
+                [envArray addObject:[NSString stringWithFormat:@"STIK_DEBUG_SCRIPT=%@", scriptPath]];
+            }
+        }
 
-        err = process_control_launch_app(proc_control, [bid UTF8String], jit ? env : NULL, jit ? 1 : 0, NULL, 0, NO, YES, &pid);
+        const char **env = NULL;
+        if (envArray.count > 0) {
+            env = (const char **)malloc((envArray.count + 1) * sizeof(char *));
+            for (NSUInteger i = 0; i < envArray.count; i++) {
+                env[i] = strdup([envArray[i] UTF8String]);
+            }
+            env[envArray.count] = NULL;
+        }
+
+        err = process_control_launch_app(proc_control, [bid UTF8String], env, envArray.count, NULL, 0, NO, YES, &pid);
+
+        if (env) {
+            for (NSUInteger i = 0; i < envArray.count; i++) free((void *)env[i]);
+            free(env);
+        }
 
         if (!err && jit && pid > 0) {
-            // Optional: memory limit adjustment for JIT stability
             process_control_disable_memory_limit(proc_control, pid);
+
+            // JIT Activation via DebugProxy
+            struct DebugProxyHandle *debug_proxy = NULL;
+            err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
+            if (!err && debug_proxy) {
+                char *resp = NULL;
+                // vAttach is more reliable for JIT
+                const char *attach_args[] = { [[NSString stringWithFormat:@"%llu", pid] UTF8String] };
+                struct DebugserverCommandHandle *cmd = debugserver_command_new("vAttach", attach_args, 1);
+                debug_proxy_send_command(debug_proxy, cmd, &resp);
+                if (resp) free(resp);
+                debugserver_command_free(cmd);
+
+                // Continue execution to trigger stikdebug
+                cmd = debugserver_command_new("c", NULL, 0);
+                debug_proxy_send_command(debug_proxy, cmd, &resp);
+                if (resp) free(resp);
+                debugserver_command_free(cmd);
+
+                debug_proxy_free(debug_proxy);
+            }
         }
 
         if (err) {
