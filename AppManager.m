@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <JavaScriptCore/JavaScriptCore.h>
 #import "HeartbeatManager.h"
+#import "JITScripts.h"
 
 @implementation AppInfo
 @end
@@ -282,7 +283,25 @@ static void writeAddress(char* writeStart, uint64_t addr) {
         return resp;
     };
 
-    // Advanced Bulk Write Bridge (from IDeviceJSBridgeDebugProxy.m)
+    // Script Import Logic
+    context[@"import_script"] = ^(NSString *filename) {
+        NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *path = [docsDir stringByAppendingPathComponent:filename];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+            path = [[NSBundle mainBundle] pathForResource:[filename stringByDeletingPathExtension] ofType:[filename pathExtension]];
+        }
+
+        NSError *e = nil;
+        NSString *content = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&e];
+        if (content) {
+            [JSContext currentContext].exception = nil;
+            [[JSContext currentContext] evaluateScript:content];
+            return @"OK";
+        } else {
+            return [NSString stringWithFormat:@"ERROR: %@", e.localizedDescription];
+        }
+    };
+
     context[@"prepare_memory_region"] = ^NSString *(uint64_t startAddr, uint64_t JITPagesSize) {
         uint32_t commandCount = (uint32_t)(JITPagesSize >> 14);
         uint32_t commandBufferSize = commandCount * 19;
@@ -318,21 +337,26 @@ static void writeAddress(char* writeStart, uint64_t addr) {
 
     context[@"log"] = ^(NSString *msg) { NSLog(@"[JIT Script] %@", msg); };
 
-    // Load and execute script
-    NSString *scriptPath = [[NSBundle mainBundle] pathForResource:@"universal" ofType:@"js"];
-    if (!scriptPath) {
-         NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-         scriptPath = [docsDir stringByAppendingPathComponent:@"universal.js"];
+    // Primary execution with embedded fallback
+    NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *scriptPath = [docsDir stringByAppendingPathComponent:@"universal.js"];
+    NSString *script = nil;
+
+    if ([[NSFileManager defaultManager] fileExistsAtPath:scriptPath]) {
+        script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil];
     }
 
-    NSError *sError = nil;
-    NSString *script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:&sError];
-    if (script) {
-        [context evaluateScript:script];
-    } else {
-        NSLog(@"[JIT] Failed to load universal.js: %@", sError);
+    if (!script) {
+        scriptPath = [[NSBundle mainBundle] pathForResource:@"universal" ofType:@"js"];
+        if (scriptPath) script = [NSString stringWithContentsOfFile:scriptPath encoding:NSUTF8StringEncoding error:nil];
     }
 
+    if (!script) {
+        NSLog(@"[JIT] Using embedded universal script fallback.");
+        script = kUniversalJitScript;
+    }
+
+    [context evaluateScript:script];
     debug_proxy_free(debug_proxy);
 }
 
