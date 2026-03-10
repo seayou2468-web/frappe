@@ -108,9 +108,17 @@
     [self.mainStack addArrangedSubview:self.selectPairingFileButton];
 
     // Status Section
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"LOCKDOWN SESSION" indicator:&_lockdownIndicator label:&_lockdownLabel detail:&_lockdownDetail]];
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"HEARTBEAT RELAY" indicator:&_heartbeatIndicator label:&_heartbeatLabel detail:nil]];
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"DDI MOUNT STATUS" indicator:&_ddiIndicator label:&_ddiLabel detail:nil]];
+    UIView *li, *hi, *di;
+    UILabel *ll, *ld, *hl, *dl;
+
+    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"LOCKDOWN SESSION" indicator:&li label:&ll detail:&ld]];
+    self.lockdownIndicator = li; self.lockdownLabel = ll; self.lockdownDetail = ld;
+
+    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"HEARTBEAT RELAY" indicator:&hi label:&hl detail:nil]];
+    self.heartbeatIndicator = hi; self.heartbeatLabel = hl;
+
+    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"DDI MOUNT STATUS" indicator:&di label:&dl detail:nil]];
+    self.ddiIndicator = di; self.ddiLabel = dl;
 
     // Device Info Section (Initially Hidden)
     self.infoContainer = [[UIView alloc] init];
