@@ -10,13 +10,11 @@
 }
 
 - (void)checkAndMountDdiWithLockdown:(struct LockdowndClientHandle *)lockdown ip:(NSString *)ip completion:(void (^)(BOOL success, NSString *message))completion {
-    // This method is now legacy, using checkAndMountDdiWithProvider instead
 }
 
 - (void)checkAndMountDdiWithProvider:(struct IdeviceProviderHandle *)provider lockdown:(struct LockdowndClientHandle *)lockdown completion:(void (^)(BOOL success, NSString *message))completion {
     if (!provider || !lockdown) { completion(NO, @"Missing provider or lockdown handle"); return; }
 
-    // Get Device Info for reporting
     plist_t version_plist = NULL;
     lockdownd_get_value(lockdown, "ProductVersion", NULL, &version_plist);
     NSString *version = @"Unknown";
@@ -25,14 +23,20 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct ImageMounterHandle *mounter = NULL;
         struct IdeviceFfiError *err = image_mounter_connect(provider, &mounter);
-        if (err) { completion(NO, [NSString stringWithFormat:@"Connect failed: %s", err->message]); idevice_error_free(err); return; }
+        if (err) { completion(NO, [NSString stringWithFormat:@"DDI Service Connect failed: %s", err->message]); idevice_error_free(err); return; }
 
         BOOL alreadyMounted = NO;
+
+        // 1. Check mounted devices list
         plist_t *devices = NULL; size_t devices_len = 0;
         err = image_mounter_copy_devices(mounter, &devices, &devices_len);
-        if (!err && devices) { if (devices_len > 0) alreadyMounted = YES; idevice_plist_array_free(devices, devices_len); }
-        if (err) idevice_error_free(err);
+        if (!err && devices) {
+            if (devices_len > 0) alreadyMounted = YES;
+            idevice_plist_array_free(devices, devices_len);
+        }
+        if (err) { NSLog(@"[DDI] copy_devices error: %s", err->message); idevice_error_free(err); }
 
+        // 2. Double-check with image lookup if list was empty but service says otherwise
         if (!alreadyMounted) {
             uint8_t *sig = NULL; size_t sig_len = 0;
             err = image_mounter_lookup_image(mounter, "Developer", &sig, &sig_len);
@@ -40,7 +44,19 @@
             if (err) idevice_error_free(err);
         }
 
-        if (alreadyMounted) { completion(YES, [NSString stringWithFormat:@"DDI already mounted (iOS %@)", version]); image_mounter_free(mounter); return; }
+        if (alreadyMounted) {
+            // Verify developer mode status even if already mounted
+            int dev_mode = 0;
+            err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
+            if (!err && dev_mode == 1) {
+                completion(YES, [NSString stringWithFormat:@"DDI Active (iOS %@)", version]);
+            } else {
+                if (err) idevice_error_free(err);
+                completion(NO, [NSString stringWithFormat:@"DDI state inconsistent (Mode: %d)", dev_mode]);
+            }
+            image_mounter_free(mounter);
+            return;
+        }
 
         int dev_mode = 0;
         err = image_mounter_query_developer_mode_status(mounter, &dev_mode);

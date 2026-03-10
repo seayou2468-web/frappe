@@ -1,6 +1,7 @@
 #import "AppListViewController.h"
 #import "AppManager.h"
 #import "ThemeEngine.h"
+#import "DdiManager.h"
 
 @interface AppListViewController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
@@ -149,8 +150,38 @@
     [self.loadingIndicator startAnimating];
     self.view.userInteractionEnabled = NO;
 
-    [[AppManager sharedManager] launchApp:bid withJit:jit provider:self.provider completion:^(BOOL success, NSString *message) {
-        // AppManager's completion is now guaranteed to be on the main thread
+    if (jit) {
+        // For JIT launches, we must ensure DDI is still active before proceeding
+        // We need a lockdown handle to verify. Let's create one temporarily.
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            struct LockdowndClientHandle *lockdown = NULL;
+            struct IdeviceFfiError *err = lockdownd_connect(self.provider, &lockdown);
+            if (err) {
+                [self finishLaunch:NO message:[NSString stringWithFormat:@"Pre-launch lockdown failed: %s", err->message]];
+                idevice_error_free(err);
+                return;
+            }
+
+            [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
+                lockdownd_client_free(lockdown);
+                if (success) {
+                    [[AppManager sharedManager] launchApp:bid withJit:YES provider:self.provider completion:^(BOOL success, NSString *message) {
+                        [self finishLaunch:success message:message];
+                    }];
+                } else {
+                    [self finishLaunch:NO message:[NSString stringWithFormat:@"DDI required for JIT: %@", message]];
+                }
+            }];
+        });
+    } else {
+        [[AppManager sharedManager] launchApp:bid withJit:NO provider:self.provider completion:^(BOOL success, NSString *message) {
+            [self finishLaunch:success message:message];
+        }];
+    }
+}
+
+- (void)finishLaunch:(BOOL)success message:(NSString *)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
         [self.loadingIndicator stopAnimating];
         self.view.userInteractionEnabled = YES;
 
@@ -158,8 +189,10 @@
             UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
             [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [self presentViewController:err animated:YES completion:nil];
+        } else {
+            NSLog(@"[AppList] Launch successful: %@", message);
         }
-    }];
+    });
 }
 
 @end
