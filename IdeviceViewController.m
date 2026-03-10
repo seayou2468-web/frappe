@@ -12,22 +12,16 @@
 
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *mainStack;
+@property (nonatomic, strong) UITextView *consoleView;
 @property (nonatomic, strong) UITextField *ipTextField;
 @property (nonatomic, strong) UITextField *portTextField;
 @property (nonatomic, strong) UILabel *pairingFileLabel;
-@property (nonatomic, strong) UIButton *selectPairingFileButton;
 @property (nonatomic, strong) UIButton *connectButton;
 @property (nonatomic, strong) UIButton *retryButton;
 
-@property (nonatomic, strong) UIView *lockdownIndicator;
-@property (nonatomic, strong) UILabel *lockdownLabel;
-@property (nonatomic, strong) UILabel *lockdownDetail;
-
-@property (nonatomic, strong) UIView *heartbeatIndicator;
-@property (nonatomic, strong) UILabel *heartbeatLabel;
-
-@property (nonatomic, strong) UIView *ddiIndicator;
-@property (nonatomic, strong) UILabel *ddiLabel;
+@property (nonatomic, strong) UILabel *lockdownStatus;
+@property (nonatomic, strong) UILabel *heartbeatStatus;
+@property (nonatomic, strong) UILabel *ddiStatus;
 
 @property (nonatomic, strong) UIView *infoContainer;
 @property (nonatomic, strong) UIStackView *infoStack;
@@ -44,9 +38,10 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor blackColor];
-    self.title = @"iDevice Manager";
+    self.title = @"TERMINAL@IDEVICE";
     [self setupUI];
     [self loadSettings];
+    [self logToConsole:@"SYSTEM_BOOT: Initializing idevice subsystem..."];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -71,7 +66,7 @@
 
     self.mainStack = [[UIStackView alloc] init];
     self.mainStack.axis = UILayoutConstraintAxisVertical;
-    self.mainStack.spacing = 20;
+    self.mainStack.spacing = 15;
     self.mainStack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.scrollView addSubview:self.mainStack];
 
@@ -82,127 +77,126 @@
         [self.mainStack.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor constant:-20]
     ]];
 
-    // Connection Settings
-    UIView *configContainer = [[UIView alloc] init];
-    [ThemeEngine applyGlassStyleToView:configContainer cornerRadius:20];
-    [configContainer.heightAnchor constraintEqualToConstant:120].active = YES;
-    [self.mainStack addArrangedSubview:configContainer];
+    UILabel *header = [[UILabel alloc] init];
+    header.text = @"[ IDEVICE INTEGRATED TERMINAL ]";
+    header.textColor = [UIColor systemGreenColor];
+    header.font = [UIFont fontWithName:@"Courier-Bold" size:16];
+    header.textAlignment = NSTextAlignmentCenter;
+    [self.mainStack addArrangedSubview:header];
 
-    UILabel *cfgHeader = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, 200, 20)];
-    cfgHeader.text = @"NETWORK CONFIGURATION"; cfgHeader.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6]; cfgHeader.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
-    [configContainer addSubview:cfgHeader];
+    self.consoleView = [[UITextView alloc] init];
+    self.consoleView.backgroundColor = [[UIColor greenColor] colorWithAlphaComponent:0.05];
+    self.consoleView.layer.borderColor = [[UIColor systemGreenColor] colorWithAlphaComponent:0.3].CGColor;
+    self.consoleView.layer.borderWidth = 1;
+    self.consoleView.textColor = [UIColor systemGreenColor];
+    self.consoleView.font = [UIFont fontWithName:@"Courier" size:12];
+    self.consoleView.editable = NO;
+    [self.consoleView.heightAnchor constraintEqualToConstant:150].active = YES;
+    [self.mainStack addArrangedSubview:self.consoleView];
 
-    self.ipTextField = [self createTextFieldWithPlaceholder:@"IP Address (e.g. 10.7.0.1)" frame:CGRectMake(15, 40, 200, 30)];
-    [configContainer addSubview:self.ipTextField];
+    UIView *configView = [[UIView alloc] init];
+    configView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+    configView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2].CGColor;
+    configView.layer.borderWidth = 1;
+    [configView.heightAnchor constraintEqualToConstant:100].active = YES;
+    [self.mainStack addArrangedSubview:configView];
 
-    self.portTextField = [self createTextFieldWithPlaceholder:@"Port" frame:CGRectMake(225, 40, 80, 30)];
-    self.portTextField.keyboardType = UIKeyboardTypeNumberPad;
-    [configContainer addSubview:self.portTextField];
+    UILabel *ipLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 100, 30)];
+    ipLabel.text = @"HOST_ADDR:"; ipLabel.textColor = [UIColor lightGrayColor]; ipLabel.font = [UIFont fontWithName:@"Courier-Bold" size:12];
+    [configView addSubview:ipLabel];
 
-    self.pairingFileLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 80, 290, 30)];
-    self.pairingFileLabel.textColor = [UIColor lightGrayColor]; self.pairingFileLabel.font = [UIFont systemFontOfSize:12];
-    self.pairingFileLabel.text = @"No pairing file selected";
-    [configContainer addSubview:self.pairingFileLabel];
+    self.ipTextField = [[UITextField alloc] initWithFrame:CGRectMake(110, 10, 150, 30)];
+    self.ipTextField.textColor = [UIColor whiteColor]; self.ipTextField.font = [UIFont fontWithName:@"Courier" size:14];
+    self.ipTextField.backgroundColor = [UIColor clearColor];
+    [configView addSubview:self.ipTextField];
 
-    self.selectPairingFileButton = [self createActionButtonWithTitle:@"Select Pairing File" action:@selector(selectPairingFile)];
-    [self.mainStack addArrangedSubview:self.selectPairingFileButton];
+    UILabel *portLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 50, 100, 30)];
+    portLabel.text = @"HOST_PORT:"; portLabel.textColor = [UIColor lightGrayColor]; portLabel.font = [UIFont fontWithName:@"Courier-Bold" size:12];
+    [configView addSubview:portLabel];
 
-    // Status Section
-    UIView *li, *hi, *di;
-    UILabel *ll, *ld, *hl, *dl;
+    self.portTextField = [[UITextField alloc] initWithFrame:CGRectMake(110, 50, 80, 30)];
+    self.portTextField.textColor = [UIColor whiteColor]; self.portTextField.font = [UIFont fontWithName:@"Courier" size:14];
+    self.portTextField.backgroundColor = [UIColor clearColor]; self.portTextField.keyboardType = UIKeyboardTypeNumberPad;
+    [configView addSubview:self.portTextField];
 
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"LOCKDOWN SESSION" indicator:&li label:&ll detail:&ld]];
-    self.lockdownIndicator = li; self.lockdownLabel = ll; self.lockdownDetail = ld;
+    self.pairingFileLabel = [[UILabel alloc] init];
+    self.pairingFileLabel.textColor = [UIColor yellowColor]; self.pairingFileLabel.font = [UIFont fontWithName:@"Courier" size:12];
+    self.pairingFileLabel.text = @"STATUS: PAIR_FILE_MISSING";
+    [self.mainStack addArrangedSubview:self.pairingFileLabel];
 
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"HEARTBEAT RELAY" indicator:&hi label:&hl detail:nil]];
-    self.heartbeatIndicator = hi; self.heartbeatLabel = hl;
+    [self.mainStack addArrangedSubview:[self createTerminalButtonWithTitle:@"EXEC SELECT_PAIR_FILE" action:@selector(selectPairingFile)]];
 
-    [self.mainStack addArrangedSubview:[self createStatusContainerWithTitle:@"DDI MOUNT STATUS" indicator:&di label:&dl detail:nil]];
-    self.ddiIndicator = di; self.ddiLabel = dl;
+    UIStackView *statusStack = [[UIStackView alloc] init];
+    statusStack.axis = UILayoutConstraintAxisHorizontal;
+    statusStack.distribution = UIStackViewDistributionFillEqually;
+    statusStack.spacing = 10;
+    [self.mainStack addArrangedSubview:statusStack];
 
-    // Device Info Section (Initially Hidden)
+    self.lockdownStatus = [self createStatusLabelWithTitle:@"LOCKDOWN"]; [statusStack addArrangedSubview:self.lockdownStatus];
+    self.heartbeatStatus = [self createStatusLabelWithTitle:@"HEARTBEAT"]; [statusStack addArrangedSubview:self.heartbeatStatus];
+    self.ddiStatus = [self createStatusLabelWithTitle:@"DDI_IMAGE"]; [statusStack addArrangedSubview:self.ddiStatus];
+
     self.infoContainer = [[UIView alloc] init];
-    [ThemeEngine applyGlassStyleToView:self.infoContainer cornerRadius:20];
+    self.infoContainer.backgroundColor = [[UIColor blueColor] colorWithAlphaComponent:0.05];
+    self.infoContainer.layer.borderColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.3].CGColor;
+    self.infoContainer.layer.borderWidth = 1;
     self.infoContainer.hidden = YES;
     [self.mainStack addArrangedSubview:self.infoContainer];
 
     self.infoStack = [[UIStackView alloc] init];
     self.infoStack.axis = UILayoutConstraintAxisVertical;
-    self.infoStack.spacing = 10;
+    self.infoStack.spacing = 5;
     self.infoStack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.infoContainer addSubview:self.infoStack];
     [NSLayoutConstraint activateConstraints:@[
-        [self.infoStack.topAnchor constraintEqualToAnchor:self.infoContainer.topAnchor constant:15],
-        [self.infoStack.leadingAnchor constraintEqualToAnchor:self.infoContainer.leadingAnchor constant:15],
-        [self.infoStack.trailingAnchor constraintEqualToAnchor:self.infoContainer.trailingAnchor constant:-15],
-        [self.infoStack.bottomAnchor constraintEqualToAnchor:self.infoContainer.bottomAnchor constant:-15]
+        [self.infoStack.topAnchor constraintEqualToAnchor:self.infoContainer.topAnchor constant:10],
+        [self.infoStack.leadingAnchor constraintEqualToAnchor:self.infoContainer.leadingAnchor constant:10],
+        [self.infoStack.trailingAnchor constraintEqualToAnchor:self.infoContainer.trailingAnchor constant:-10],
+        [self.infoStack.bottomAnchor constraintEqualToAnchor:self.infoContainer.bottomAnchor constant:-10]
     ]];
 
-    self.connectButton = [self createActionButtonWithTitle:@"Establish Link" action:@selector(connectTapped)];
+    self.connectButton = [self createTerminalButtonWithTitle:@"INITIATE_CONNECTION" action:@selector(connectTapped)];
     [self.mainStack addArrangedSubview:self.connectButton];
 
-    self.retryButton = [self createActionButtonWithTitle:@"Retry Connection" action:@selector(connectTapped)];
+    self.retryButton = [self createTerminalButtonWithTitle:@"RETRY_HANDSHAKE" action:@selector(connectTapped)];
     self.retryButton.hidden = YES;
     [self.mainStack addArrangedSubview:self.retryButton];
 
-    UIButton *appsButton = [self createActionButtonWithTitle:@"Application List" action:@selector(showAppList)];
-    [self.mainStack addArrangedSubview:appsButton];
+    [self.mainStack addArrangedSubview:[self createTerminalButtonWithTitle:@"BROWSE_APPLICATIONS" action:@selector(showAppList)]];
 }
 
-- (UITextField *)createTextFieldWithPlaceholder:(NSString *)placeholder frame:(CGRect)frame {
-    UITextField *tf = [[UITextField alloc] initWithFrame:frame];
-    tf.placeholder = placeholder;
-    tf.textColor = [UIColor whiteColor];
-    tf.font = [UIFont systemFontOfSize:14];
-    tf.borderStyle = UITextBorderStyleNone;
-    tf.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
-    tf.layer.cornerRadius = 8;
-    UIView *paddingView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 20)];
-    tf.leftView = paddingView; tf.leftViewMode = UITextFieldViewModeAlways;
-    return tf;
+- (UILabel *)createStatusLabelWithTitle:(NSString *)title {
+    UILabel *lbl = [[UILabel alloc] init];
+    lbl.text = [NSString stringWithFormat:@"%@: [---]", title];
+    lbl.textColor = [UIColor grayColor];
+    lbl.font = [UIFont fontWithName:@"Courier-Bold" size:10];
+    lbl.textAlignment = NSTextAlignmentCenter;
+    return lbl;
 }
 
-- (UIButton *)createActionButtonWithTitle:(NSString *)title action:(SEL)selector {
+- (UIButton *)createTerminalButtonWithTitle:(NSString *)title action:(SEL)selector {
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    [btn setTitle:title forState:UIControlStateNormal];
-    [btn.heightAnchor constraintEqualToConstant:50].active = YES;
-    [ThemeEngine applyLiquidStyleToView:btn cornerRadius:15];
+    [btn setTitle:[NSString stringWithFormat:@"> %@", title] forState:UIControlStateNormal];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btn.titleLabel.font = [UIFont fontWithName:@"Courier-Bold" size:14];
+    btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    btn.layer.borderWidth = 1; btn.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.3].CGColor;
+    [btn.heightAnchor constraintEqualToConstant:44].active = YES;
     [btn addTarget:self action:selector forControlEvents:UIControlEventTouchUpInside];
     return btn;
 }
 
-- (UIView *)createStatusContainerWithTitle:(NSString *)title indicator:(UIView **)indicator label:(UILabel **)label detail:(UILabel **)detail {
-    UIView *container = [[UIView alloc] init];
-    container.translatesAutoresizingMaskIntoConstraints = NO;
-    [container.heightAnchor constraintEqualToConstant:detail ? 120 : 80].active = YES;
-    [ThemeEngine applyGlassStyleToView:container cornerRadius:20];
-
-    UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(15, 10, 300, 20)];
-    header.text = title; header.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6]; header.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
-    [container addSubview:header];
-
-    UIView *ind = [[UIView alloc] initWithFrame:CGRectMake(15, 35, 30, 30)]; ind.layer.cornerRadius = 15; ind.backgroundColor = [UIColor systemGrayColor];
-    [container addSubview:ind]; if (indicator) *indicator = ind;
-
-    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(55, 35, 250, 30)]; lbl.textColor = [UIColor whiteColor]; lbl.font = [UIFont boldSystemFontOfSize:15]; lbl.text = @"Inactive";
-    [container addSubview:lbl]; if (label) *label = lbl;
-
-    if (detail) {
-        UILabel *dtl = [[UILabel alloc] initWithFrame:CGRectMake(15, 75, 300, 35)]; dtl.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5]; dtl.font = [UIFont systemFontOfSize:12]; dtl.numberOfLines = 2;
-        [container addSubview:dtl]; if (detail) *detail = dtl;
-    }
-    return container;
+- (void)logToConsole:(NSString *)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.consoleView.text = [self.consoleView.text stringByAppendingFormat:@"\n[%@] %@", [[NSDate date] descriptionWithLocale:nil], message];
+        [self.consoleView scrollRangeToVisible:NSMakeRange(self.consoleView.text.length - 1, 1)];
+    });
 }
 
-- (void)updateIndicator:(UIView *)indicator label:(UILabel *)label status:(NSString *)status color:(UIColor *)color animating:(BOOL)animating {
+- (void)updateStatus:(UILabel *)label title:(NSString *)title status:(NSString *)status color:(UIColor *)color {
     dispatch_async(dispatch_get_main_queue(), ^{
-        label.text = status; indicator.backgroundColor = color; [indicator.layer removeAllAnimations];
-        if (animating) {
-            CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"]; pulse.duration = 1.0; pulse.fromValue = @(1.0); pulse.toValue = @(0.3); pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut]; pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF; [indicator.layer addAnimation:pulse forKey:@"pulse"];
-            indicator.layer.shadowColor = color.CGColor; indicator.layer.shadowOffset = CGSizeZero; indicator.layer.shadowOpacity = 1.0; indicator.layer.shadowRadius = 10;
-        } else { indicator.layer.shadowOpacity = 0; }
+        label.text = [NSString stringWithFormat:@"%@: [%@]", title, status];
+        label.textColor = color;
     });
 }
 
@@ -213,25 +207,24 @@
     NSString *pairingPath = [docsDir stringByAppendingPathComponent:@"PairingFiles/pairfile.plist"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:pairingPath]) {
         self.selectedPairingFilePath = pairingPath;
-        self.pairingFileLabel.text = @"pairfile.plist";
+        self.pairingFileLabel.text = @"STATUS: PAIR_FILE_LOADED";
+        self.pairingFileLabel.textColor = [UIColor systemGreenColor];
     }
 }
 
 - (void)saveSettings {
     [[NSUserDefaults standardUserDefaults] setObject:self.ipTextField.text forKey:@"IdeviceIP"];
     [[NSUserDefaults standardUserDefaults] setObject:self.portTextField.text forKey:@"IdevicePort"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 - (void)selectPairingFile {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
-        picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
-    });
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeItem] asCopy:YES];
+    picker.delegate = self; [self presentViewController:picker animated:YES completion:nil];
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject; if (!url) return;
+    [self logToConsole:@"FS_EVENT: Importing pairing file..."];
     BOOL access = [url startAccessingSecurityScopedResource];
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
@@ -243,21 +236,20 @@
     if (access) [url stopAccessingSecurityScopedResource];
     if (filename) {
         self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
-        self.pairingFileLabel.text = filename;
+        self.pairingFileLabel.text = @"STATUS: PAIR_FILE_UPDATED";
+        self.pairingFileLabel.textColor = [UIColor systemGreenColor];
+        [self logToConsole:@"FS_EVENT: pairfile.plist successfully registered."];
     }
 }
 
 - (void)connectTapped {
     if (!self.selectedPairingFilePath) {
-        self.lockdownLabel.text = @"Pairing File Required";
-        self.lockdownIndicator.backgroundColor = [UIColor systemRedColor];
+        [self logToConsole:@"ERR: Cannot initiate link without PAIR_FILE."];
         return;
     }
-    self.connectButton.hidden = YES;
-    self.retryButton.hidden = YES;
-    self.infoContainer.hidden = YES;
+    self.connectButton.hidden = YES; self.retryButton.hidden = YES; self.infoContainer.hidden = YES;
     [self cleanupHandles];
-    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connecting..." color:[UIColor systemOrangeColor] animating:YES];
+    [self logToConsole:@"NET_INIT: Connecting to remote target..."];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{ [self performConnection]; });
 }
 
@@ -268,32 +260,43 @@
     addr.sin_family = AF_INET; addr.sin_port = htons(port);
     inet_pton(AF_INET, ipStr, &addr.sin_addr);
 
+    [self logToConsole:@"FFI_CALL: idevice_pairing_file_read..."];
     struct IdevicePairingFile *pairing_file = NULL;
     struct IdeviceFfiError *err = idevice_pairing_file_read([self.selectedPairingFilePath UTF8String], &pairing_file);
-    if (err) { [self handleError:err phase:@"Pairing"]; return; }
+    if (err) { [self handleError:err phase:@"PAIRING"]; return; }
     self.currentPairingFile = pairing_file;
 
+    [self logToConsole:@"FFI_CALL: idevice_tcp_provider_new..."];
     struct IdeviceProviderHandle *provider = NULL;
-    err = idevice_tcp_provider_new((const idevice_sockaddr *)&addr, pairing_file, "IdeviceManager", &provider);
-    if (err) { [self handleError:err phase:@"Provider"]; return; }
+    err = idevice_tcp_provider_new((const idevice_sockaddr *)&addr, pairing_file, "TERMINAL", &provider);
+    if (err) { [self handleError:err phase:@"PROVIDER"]; return; }
     self.currentProvider = provider;
-    self.currentPairingFile = NULL; // Consumed
+    self.currentPairingFile = NULL;
 
+    [self logToConsole:@"FFI_CALL: lockdownd_connect..."];
     struct LockdowndClientHandle *lockdown = NULL;
     err = lockdownd_connect(provider, &lockdown);
-    if (err) { [self handleError:err phase:@"Lockdown"]; return; }
+    if (err) { [self handleError:err phase:@"LOCKDOWN"]; return; }
     self.currentLockdown = lockdown;
 
-    [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"Connected" color:[UIColor systemGreenColor] animating:NO];
+    [self logToConsole:@"LINK_ESTABLISHED: Session verified."];
+    [self updateStatus:self.lockdownStatus title:@"LOCKDOWN" status:@"ACTIVE" color:[UIColor systemGreenColor]];
     [self fetchDeviceInfo:lockdown];
 
+    [self logToConsole:@"HB_INIT: Starting heartbeat relay..."];
     [[HeartbeatManager sharedManager] startHeartbeatWithProvider:provider];
-    [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"Active" color:[UIColor systemGreenColor] animating:YES];
+    [self updateStatus:self.heartbeatStatus title:@"HEARTBEAT" status:@"ACTIVE" color:[UIColor systemGreenColor]];
 
+    [self logToConsole:@"DDI_SCAN: Checking developer disk image..."];
     [[DdiManager sharedManager] checkAndMountDdiWithProvider:provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Mounted" color:[UIColor systemGreenColor] animating:NO]; }
-            else { [self updateIndicator:self.ddiIndicator label:self.ddiLabel status:@"Not Mounted" color:[UIColor systemRedColor] animating:NO]; }
+            if (success) {
+                [self logToConsole:[NSString stringWithFormat:@"DDI_SUCCESS: %@", message]];
+                [self updateStatus:self.ddiStatus title:@"DDI_IMAGE" status:@"MOUNTED" color:[UIColor systemGreenColor]];
+            } else {
+                [self logToConsole:[NSString stringWithFormat:@"DDI_WARN: %@", message]];
+                [self updateStatus:self.ddiStatus title:@"DDI_IMAGE" status:@"FAILED" color:[UIColor systemRedColor]];
+            }
         });
     }];
 
@@ -302,14 +305,11 @@
 
 - (void)handleError:(struct IdeviceFfiError *)err phase:(NSString *)phase {
     NSString *msg = [NSString stringWithUTF8String:err->message];
+    [self logToConsole:[NSString stringWithFormat:@"FFI_ERR: [%@] %@", phase, msg]];
     idevice_error_free(err);
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.lockdownLabel.text = [NSString stringWithFormat:@"%@ Error", phase];
-        self.lockdownDetail.text = msg;
-        self.lockdownIndicator.backgroundColor = [UIColor systemRedColor];
-        [self.lockdownIndicator.layer removeAllAnimations];
-        self.retryButton.hidden = NO;
-        self.connectButton.hidden = YES;
+        [self updateStatus:self.lockdownStatus title:@"LOCKDOWN" status:@"ERR" color:[UIColor systemRedColor]];
+        self.retryButton.hidden = NO; self.connectButton.hidden = YES;
     });
 }
 
@@ -328,9 +328,6 @@
             if (val) {
                 NSString *nsVal = [NSString stringWithUTF8String:val];
                 dispatch_async(dispatch_get_main_queue(), ^{ [self addInfoRow:key value:nsVal]; });
-                if ([key isEqualToString:@"DeviceName"]) {
-                    dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = [NSString stringWithFormat:@"Verified with %@", nsVal]; });
-                }
                 plist_mem_free(val);
             }
             plist_free(val_plist);
@@ -340,15 +337,13 @@
 
 - (void)addInfoRow:(NSString *)key value:(NSString *)value {
     UILabel *row = [[UILabel alloc] init];
-    row.numberOfLines = 0;
-    NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@: ", key] attributes:@{NSFontAttributeName: [UIFont boldSystemFontOfSize:12], NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.6]}];
-    [str appendAttributedString:[[NSAttributedString alloc] initWithString:value attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:12], NSForegroundColorAttributeName: [UIColor whiteColor]}]];
-    row.attributedText = str;
+    row.textColor = [UIColor whiteColor]; row.font = [UIFont fontWithName:@"Courier" size:11];
+    row.text = [NSString stringWithFormat:@"%-15s: %s", [key UTF8String], [value UTF8String]];
     [self.infoStack addArrangedSubview:row];
 }
 
 - (void)showAppList {
-    if (!self.currentProvider) return;
+    if (!self.currentProvider) { [self logToConsole:@"ERR: No active link to target."]; return; }
     AppListViewController *vc = [[AppListViewController alloc] initWithProvider:self.currentProvider];
     [self.navigationController pushViewController:vc animated:YES];
 }
