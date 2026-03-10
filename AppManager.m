@@ -75,23 +75,17 @@
 }
 
 - (void)launchApp:(NSString *)bundleId withJit:(BOOL)jit provider:(struct IdeviceProviderHandle *)provider completion:(void (^)(BOOL success, NSString *message))completion {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // 1. Establish fresh CoreDeviceProxy tunnel
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
 
-        // Handle iOS 17+ CoreDevice UnexpectedEof or failing TLS handshake
+        // Handle potential TLS/EOF issues by retrying once with a slight delay
         if (err) {
-            NSLog(@"[Launch] CoreDeviceProxy failed: %s. Attempting fallback...", err->message);
+            NSLog(@"[Launch] Tunnel initialization failed: %s. Retrying...", err->message);
             idevice_error_free(err);
-
-            // Fallback: Use direct RSD port if available in provider
-            struct IdevicePairingFile *pairing = NULL;
-            idevice_provider_get_pairing_file(provider, &pairing);
-
-            // Logic to re-establish tunnel if provider is unstable
-            // We assume provider handle remains valid but the CoreDevice tunnel needs a fresh start
+            [NSThread sleepForTimeInterval:0.5];
             err = core_device_proxy_connect(provider, &proxy);
-            if (pairing) idevice_pairing_file_free(pairing);
         }
 
         if (err) {
@@ -100,37 +94,44 @@
             return;
         }
 
+        // 2. Create Adapter for software TCP stack
         struct AdapterHandle *adapter = NULL;
         err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
         if (err) { completion(NO, [NSString stringWithFormat:@"Adapter failed: %s", err->message]); idevice_error_free(err); core_device_proxy_free(proxy); return; }
 
+        // 3. Negotiate RSD (Remote Service Discovery) port
         uint16_t rsd_port = 0;
         err = core_device_proxy_get_server_rsd_port(proxy, &rsd_port);
-        if (err) { completion(NO, [NSString stringWithFormat:@"RSD port failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
+        if (err) { completion(NO, [NSString stringWithFormat:@"RSD port discovery failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
 
+        // 4. Connect to RSD stream via adapter
         struct ReadWriteOpaque *rsd_stream = NULL;
         err = adapter_connect(adapter, rsd_port, &rsd_stream);
         if (err) { completion(NO, [NSString stringWithFormat:@"RSD stream failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
 
+        // 5. Perform RSD handshake
         struct RsdHandshakeHandle *handshake = NULL;
         err = rsd_handshake_new(rsd_stream, &handshake);
         if (err) { completion(NO, [NSString stringWithFormat:@"RSD handshake failed: %s", err->message]); idevice_error_free(err); adapter_free(adapter); core_device_proxy_free(proxy); return; }
 
+        // 6. Bind AppService to the RSD session
         struct AppServiceHandle *appservice = NULL;
         err = app_service_connect_rsd(adapter, handshake, &appservice);
-        if (err) { completion(NO, [NSString stringWithFormat:@"AppService failed: %s", err->message]); idevice_error_free(err); rsd_handshake_free(handshake); adapter_free(adapter); core_device_proxy_free(proxy); return; }
+        if (err) { completion(NO, [NSString stringWithFormat:@"AppService binding failed: %s", err->message]); idevice_error_free(err); rsd_handshake_free(handshake); adapter_free(adapter); core_device_proxy_free(proxy); return; }
 
+        // 7. Execute Launch Command
         struct LaunchResponseC *response = NULL;
         err = app_service_launch_app(appservice, [bundleId UTF8String], NULL, 0, 1, jit ? 1 : 0, NULL, &response);
 
         if (err) {
-            completion(NO, [NSString stringWithFormat:@"Launch failed: %s", err->message]);
+            completion(NO, [NSString stringWithFormat:@"Execution failed: %s", err->message]);
             idevice_error_free(err);
         } else {
             if (response) app_service_free_launch_response(response);
-            completion(YES, jit ? @"Launched with JIT (Suspended)" : @"Launched successfully");
+            completion(YES, jit ? @"Target launched with JIT (PID active)." : @"Target launched successfully.");
         }
 
+        // Final cleanup of strictly managed handles
         app_service_free(appservice);
         rsd_handshake_free(handshake);
         adapter_free(adapter);

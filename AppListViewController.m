@@ -20,19 +20,19 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"APP_MANIFEST";
+    self.title = @"Applications";
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self refreshApps];
 }
 
 - (void)setupUI {
-    self.filterControl = [[UISegmentedControl alloc] initWithItems:@[@"USER", @"SYSTEM", @"ALL"]];
+    self.filterControl = [[UISegmentedControl alloc] initWithItems:@[@"User", @"System", @"Mixed"]];
     self.filterControl.selectedSegmentIndex = 0;
     self.filterControl.translatesAutoresizingMaskIntoConstraints = NO;
-    self.filterControl.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
-    self.filterControl.selectedSegmentTintColor = [UIColor systemGreenColor];
-    [self.filterControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor], NSFontAttributeName: [UIFont fontWithName:@"Courier-Bold" size:12]} forState:UIControlStateNormal];
+    self.filterControl.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+    self.filterControl.selectedSegmentTintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2];
+    [self.filterControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]} forState:UIControlStateNormal];
     [self.filterControl addTarget:self action:@selector(filterChanged:) forControlEvents:UIControlEventValueChanged];
     [self.view addSubview:self.filterControl];
 
@@ -40,16 +40,16 @@
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.backgroundColor = [UIColor blackColor];
+    self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    self.tableView.separatorColor = [[UIColor systemGreenColor] colorWithAlphaComponent:0.2];
+    self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.tableView];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [self.filterControl.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
-        [self.filterControl.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
-        [self.filterControl.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
+        [self.filterControl.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:15],
+        [self.filterControl.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-15],
         [self.filterControl.heightAnchor constraintEqualToConstant:35],
 
         [self.tableView.topAnchor constraintEqualToAnchor:self.filterControl.bottomAnchor constant:10],
@@ -71,7 +71,7 @@
                 self.apps = apps;
                 [self.tableView reloadData];
             } else if (error) {
-                NSLog(@"[TERMINAL] APP_FETCH_ERR: %@", error);
+                NSLog(@"[AppList] Fetch error: %@", error);
             }
         });
     }];
@@ -95,35 +95,40 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"AppCell"];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"AppCell"];
-        cell.backgroundColor = [UIColor blackColor];
-        cell.textLabel.font = [UIFont fontWithName:@"Courier-Bold" size:14];
-        cell.detailTextLabel.font = [UIFont fontWithName:@"Courier" size:10];
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        cell.backgroundColor = [UIColor clearColor];
+        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+
+        UIView *bg = [[UIView alloc] init];
+        bg.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
+        cell.selectedBackgroundView = bg;
     }
 
     AppInfo *app = [self filteredApps][indexPath.row];
-    cell.textLabel.text = [NSString stringWithFormat:@"> %@", app.name];
-    cell.textLabel.textColor = [UIColor systemGreenColor];
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"  ID: %@", app.bundleId];
-    cell.detailTextLabel.textColor = [[UIColor systemGreenColor] colorWithAlphaComponent:0.6];
+    cell.textLabel.text = app.name;
+    cell.detailTextLabel.text = app.bundleId;
 
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
     AppInfo *app = [self filteredApps][indexPath.row];
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"EXEC_CMD" message:[NSString stringWithFormat:@"Target: %@", app.bundleId] preferredStyle:UIAlertControllerStyleActionSheet];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [ThemeEngine applyGlassStyleToView:alert.view cornerRadius:20];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"RUN (NORMAL)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"Launch Normal" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self launch:app.bundleId jit:NO];
     }]];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"RUN (WITH_JIT)" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+    [alert addAction:[UIAlertAction actionWithTitle:@"Launch with JIT" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self launch:app.bundleId jit:YES];
     }]];
 
-    [alert addAction:[UIAlertAction actionWithTitle:@"CANCEL" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     alert.popoverPresentationController.sourceView = [tableView cellForRowAtIndexPath:indexPath];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -132,8 +137,8 @@
     [[AppManager sharedManager] launchApp:bid withJit:jit provider:self.provider completion:^(BOOL success, NSString *message) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!success) {
-                UIAlertController *err = [UIAlertController alertControllerWithTitle:@"EXEC_FAILED" message:message preferredStyle:UIAlertControllerStyleAlert];
-                [err addAction:[UIAlertAction actionWithTitle:@"ACK" style:UIAlertActionStyleDefault handler:nil]];
+                UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Launch Failed" message:message preferredStyle:UIAlertControllerStyleAlert];
+                [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
                 [self presentViewController:err animated:YES completion:nil];
             }
         });
