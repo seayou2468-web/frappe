@@ -593,6 +593,44 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     dispatch_semaphore_t _launchSemaphore;
 }
 
+- (BOOL)launchViaAppService:(NSString *)bundleId
+                    adapter:(struct AdapterHandle *)adapter
+                  handshake:(struct RsdHandshakeHandle *)handshake
+                     pidOut:(uint64_t *)pidOut
+                    errorOut:(NSString **)errorOut
+{
+    if (pidOut) *pidOut = 0;
+
+    struct AppServiceHandle *appService = NULL;
+    struct IdeviceFfiError *err = app_service_connect_rsd(adapter, handshake, &appService);
+    if (err) {
+        if (errorOut) *errorOut = [NSString stringWithFormat:@"AppService Connect Error: %@", omegaErrNSString(err)];
+        idevice_error_free(err);
+        return NO;
+    }
+
+    struct LaunchResponseC *response = NULL;
+    err = app_service_launch_app(appService,
+                                 [bundleId UTF8String],
+                                 NULL, 0,
+                                 1, 0,
+                                 NULL,
+                                 &response);
+    if (err) {
+        if (errorOut) *errorOut = [NSString stringWithFormat:@"AppService Launch Error: %@", omegaErrNSString(err)];
+        idevice_error_free(err);
+        app_service_free(appService);
+        return NO;
+    }
+
+    if (response) {
+        if (pidOut) *pidOut = response->pid;
+        app_service_free_launch_response(response);
+    }
+    app_service_free(appService);
+    return YES;
+}
+
 + (instancetype)sharedManager {
     static AppManager *shared = nil;
     static dispatch_once_t onceToken;
@@ -834,6 +872,27 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             }
         }
 
+        // ── 通常起動は AppService 経由を優先 (ProcessControl 非依存) ──
+        if (jitMode == JitModeNone) {
+            uint64_t pid = 0;
+            NSString *launchErr = nil;
+            BOOL launched = [self launchViaAppService:bid
+                                              adapter:adapter
+                                            handshake:handshake
+                                               pidOut:&pid
+                                             errorOut:&launchErr];
+            rsd_handshake_free(handshake);
+            adapter_free(adapter);
+
+            if (!launched) {
+                safeCompletion(NO, launchErr ?: @"App launch failed");
+                return;
+            }
+
+            safeCompletion(YES, [NSString stringWithFormat:@"Launched successfully (PID: %llu).", pid]);
+            return;
+        }
+
         // ── RemoteServer ──────────────────────────────────────
         struct RemoteServerHandle *remoteServer = NULL;
         {
@@ -892,12 +951,25 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"Launch Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
-                process_control_free(procControl);
-                remote_server_free(remoteServer);
-                rsd_handshake_free(handshake);
-                adapter_free(adapter);
-                safeCompletion(NO, msg);
-                return;
+
+                uint64_t fallbackPid = 0;
+                NSString *fallbackErr = nil;
+                BOOL fallbackLaunched = [self launchViaAppService:bid
+                                                          adapter:adapter
+                                                        handshake:handshake
+                                                           pidOut:&fallbackPid
+                                                         errorOut:&fallbackErr];
+                if (!fallbackLaunched) {
+                    process_control_free(procControl);
+                    remote_server_free(remoteServer);
+                    rsd_handshake_free(handshake);
+                    adapter_free(adapter);
+                    safeCompletion(NO, [NSString stringWithFormat:@"%@ (fallback failed: %@)", msg, fallbackErr ?: @"unknown"]);
+                    return;
+                }
+
+                NSLog(@"[Launch] ProcessControl launch failed, AppService fallback succeeded. PID=%llu", fallbackPid);
+                pid = fallbackPid;
             }
         }
 
@@ -924,13 +996,12 @@ static BOOL omegaWriteMemory(OmegaSession *s,
                 @"Launched with JIT (%@, PID: %llu).", modeStr, pid]);
 
         } else {
-            // JitModeNone または pid == 0
+            // JIT要求時に PID が取得できなかったケース
             process_control_free(procControl);
             remote_server_free(remoteServer);
             rsd_handshake_free(handshake);
             adapter_free(adapter);
-            safeCompletion(YES, [NSString stringWithFormat:
-                @"Launched successfully (PID: %llu).", pid]);
+            safeCompletion(NO, @"Launched but PID was not available for JIT attach.");
         }
     });
 }
