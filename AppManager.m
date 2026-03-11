@@ -701,11 +701,18 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
     NSString *bid = [bundleId copy];
 
-    __block atomic_flag completionFired = ATOMIC_FLAG_INIT;
+    __block BOOL completionFired = NO;
+    dispatch_queue_t completionGuardQueue = dispatch_queue_create("omega.appmanager.launch.completion", DISPATCH_QUEUE_SERIAL);
     dispatch_semaphore_t launchSem = _launchSemaphore;
 
     void (^safeCompletion)(BOOL, NSString *) = ^(BOOL success, NSString *msg) {
-        if (atomic_flag_test_and_set(&completionFired)) return;
+        __block BOOL alreadyCompleted = NO;
+        dispatch_sync(completionGuardQueue, ^{
+            alreadyCompleted = completionFired;
+            if (!completionFired) completionFired = YES;
+        });
+        if (alreadyCompleted) return;
+
         [[HeartbeatManager sharedManager] resumeHeartbeat];
         dispatch_semaphore_signal(launchSem);
         if (completion) {
