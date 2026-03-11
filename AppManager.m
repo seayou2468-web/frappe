@@ -3,6 +3,8 @@
 #import <JavaScriptCore/JavaScriptCore.h>
 #import "HeartbeatManager.h"
 #import "JITScripts.h"
+#include <arm_neon.h>
+#include <stdarg.h>
 
 @implementation AppInfo
 @end
@@ -130,7 +132,7 @@
         if (jitMode != JitModeNone && pid > 0) {
             process_control_disable_memory_limit(proc_control, pid);
             if (jitMode == JitModeJS) { [self activateUniversalJitSyncForPid:pid adapter:adapter handshake:handshake]; }
-            else if (jitMode == JitModeNative) { [self activateGodSpeedJitSyncForPid:pid adapter:adapter handshake:handshake]; }
+            else if (jitMode == JitModeNative) { [self activateGodlyNativeJitSyncForPid:pid adapter:adapter handshake:handshake]; }
             safeCompletion(YES, [NSString stringWithFormat:@"Launched with JIT (%@, PID: %llu).", (jitMode == JitModeJS ? @"JS" : @"God-Speed"), pid]);
         } else { safeCompletion(YES, [NSString stringWithFormat:@"Launched successfully (PID: %llu).", pid]); }
 
@@ -138,7 +140,7 @@
     });
 }
 
-// Godly High-Performance Utilities (V6 - Final & Hardened)
+// Godly Optimized High-Performance Utilities (V10 - Final Mastery)
 static const uint8_t kH[256] = {
     ['0']=0,['1']=1,['2']=2,['3']=3,['4']=4,['5']=5,['6']=6,['7']=7,['8']=8,['9']=9,
     ['a']=10,['b']=11,['c']=12,['d']=13,['e']=14,['f']=15,
@@ -147,7 +149,7 @@ static const uint8_t kH[256] = {
 
 static inline char uToH(uint8_t v) { return (v < 10) ? (v + '0') : (v + 87); }
 
-static uint64_t decLE64(const char *p) {
+static inline uint64_t godDecLE64(const char *p) {
     uint64_t v = 0;
     for (int i=0; i<8; i++) {
         uint64_t b = (kH[(uint8_t)p[i*2]] << 4) | kH[(uint8_t)p[i*2+1]];
@@ -156,7 +158,7 @@ static uint64_t decLE64(const char *p) {
     return v;
 }
 
-static uint32_t decLE32(const char *p) {
+static inline uint32_t godDecLE32(const char *p) {
     uint32_t v = 0;
     for (int i=0; i<4; i++) {
         uint32_t b = (kH[(uint8_t)p[i*2]] << 4) | kH[(uint8_t)p[i*2+1]];
@@ -165,27 +167,32 @@ static uint32_t decLE32(const char *p) {
     return v;
 }
 
-static void setGdbCS(const char *s, char *o) {
-    uint8_t sum = 0; while (*s != '#') sum += (uint8_t)*s++;
-    o[0] = uToH(sum >> 4); o[1] = uToH(sum & 0xF);
+static int godBuildGdbPkt(char *b, int m, const char *fmt, ...) {
+    b[0] = '$'; va_list a; va_start(a, fmt);
+    int l = vsnprintf(b + 1, m - 5, fmt, a); va_end(a);
+    uint8_t s = 0; for (int i=0; i<l; i++) s += (uint8_t)b[i+1];
+    b[l+1] = '#'; b[l+2] = uToH(s >> 4); b[l+3] = uToH(s & 0xF); b[l+4] = 0;
+    return l + 4;
 }
 
-typedef struct { uint64_t x0, x1, x16, pc; char tid[64]; } StopCtx;
+static char* godGdbCall(struct DebugProxyHandle *proxy, const char *pkt) {
+    debug_proxy_send_raw(proxy, (const uint8_t*)pkt, strlen(pkt));
+    char *r = NULL; debug_proxy_read_response(proxy, &r); return r;
+}
 
-static void fastParseStop(const char *s, StopCtx *ctx) {
+typedef struct { uint64_t x0, x1, x16, pc; char tid[64]; } GodState;
+
+static void godParseStopPacket(const char *s, GodState *st) {
     const char *p = s; if (*p == 'T') p += 3;
     while (*p) {
         if (p[0] == 't' && p[1] == 'h') { // thread:
-            p += 7; int i = 0; while (*p && *p != ';' && i < 63) ctx->tid[i++] = *p++;
-            ctx->tid[i] = 0;
+            p += 7; int i = 0; while (*p && *p != ';' && i < 63) st->tid[i++] = *p++;
+            st->tid[i] = 0;
         } else if (p[2] == ':') {
-            uint64_t v = decLE64(p + 3);
-            if (p[0] == '2' && p[1] == '0') ctx->pc = v;
-            else if (p[0] == '1' && p[1] == '0') ctx->x16 = v;
-            else if (p[0] == '0') {
-                if (p[1] == '0') ctx->x0 = v;
-                else if (p[1] == '1') ctx->x1 = v;
-            }
+            uint64_t v = godDecLE64(p + 3);
+            if (p[0] == '2' && p[1] == '0') st->pc = v;
+            else if (p[0] == '1' && p[1] == '0') st->x16 = v;
+            else if (p[0] == '0') { if (p[1] == '0') st->x0 = v; else if (p[1] == '1') st->x1 = v; }
             p += 19;
         }
         while (*p && *p != ';') p++;
@@ -193,23 +200,17 @@ static void fastParseStop(const char *s, StopCtx *ctx) {
     }
 }
 
-// Private Variadic GDB helper (Bypasses debugserver_command_new overhead)
-static char* gdbSend(struct DebugProxyHandle *proxy, const char *fmt, ...) {
-    char pkt[2048]; va_list args; va_start(args, fmt);
-    int len = vsnprintf(pkt, sizeof(pkt), fmt, args); va_end(args);
-    debug_proxy_send_raw(proxy, (const uint8_t*)pkt, len);
-    char *r = NULL; debug_proxy_read_response(proxy, &r); return r;
-}
+typedef struct { uint64_t pc; uint32_t instr; } CacheEntry;
+static __thread CacheEntry g_god_cache[4]; static __thread int g_god_cp = 0;
 
-- (void)activateGodSpeedJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
+- (void)activateGodlyNativeJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
+    NSLog(@"[God-Speed] Godly Native Engine Activated.");
     struct DebugProxyHandle *proxy = NULL;
     if (debug_proxy_connect_rsd(adapter, handshake, &proxy)) return;
 
-    char buf[1024]; sprintf(buf, "$vAttach;%llx#", pid);
-    char cs[3]; setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-    char *resp = gdbSend(proxy, "%s", buf); if (resp) free(resp);
-
-    static struct { uint64_t pc; uint32_t instr; } cache[4]; static int cp = 0;
+    char pkt[2048];
+    godBuildGdbPkt(pkt, sizeof(pkt), "vAttach;%llx", pid);
+    char *resp = godGdbCall(proxy, pkt); if (resp) free(resp);
 
     JSContext *jsCtx = [[JSContext alloc] init];
     jsCtx[@"log"] = ^(NSString *m){ NSLog(@"[God Script] %@", m); };
@@ -219,75 +220,81 @@ static char* gdbSend(struct DebugProxyHandle *proxy, const char *fmt, ...) {
         NSString *ns = dr ? @(dr) : nil; if(dr) free(dr); return ns;
     };
 
-    BOOL detached = NO; int loop = 0;
-    while (!detached && loop++ < 10000) {
-        resp = gdbSend(proxy, "$c#63"); if (!resp) break;
+    BOOL detached = NO; int loop_limit = 0;
+    while (!detached && loop_limit++ < 10000) {
+        godBuildGdbPkt(pkt, sizeof(pkt), "vCont;c");
+        resp = godGdbCall(proxy, pkt); if (!resp) break;
 
-        StopCtx ctx = {0}; fastParseStop(resp, &ctx);
-        if (ctx.tid[0] && ctx.pc > 0) {
+        GodState st = {0}; godParseStopPacket(resp, &st);
+        if (st.tid[0] && st.pc > 0) {
             uint32_t instr = 0;
-            for(int i=0; i<4; i++) if(cache[i].pc == ctx.pc) { instr = cache[i].instr; break; }
+            for(int i=0; i<4; i++) if(g_god_cache[i].pc == st.pc) { instr = g_god_cache[i].instr; break; }
             if (!instr) {
-                sprintf(buf, "$m%llx,4#", ctx.pc); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                char *ir = gdbSend(proxy, "%s", buf);
-                if (ir) { instr = decLE32(ir); cache[cp].pc = ctx.pc; cache[cp].instr = instr; cp = (cp+1)%4; free(ir); }
+                godBuildGdbPkt(pkt, sizeof(pkt), "m%llx,4", st.pc);
+                char *ir = godGdbCall(proxy, pkt);
+                if (ir) { instr = godDecLE32(ir); g_god_cache[g_god_cp].pc = st.pc; g_god_cache[g_god_cp].instr = instr; g_god_cp = (g_god_cp+1)%4; free(ir); }
             }
 
             if (instr) {
-                if ((instr & 0xFFFFFC1F) == 0xD4200000) { // Precise ARM64 BRK Mask
+                if ((instr & 0xFFFFFC1F) == 0xD4200000) { // High-Precision BRK Identification
                     uint32_t imm = (instr >> 5) & 0xFFFF;
-                    uint64_t npc = ctx.pc + 4; char nle[17];
+                    uint64_t npc = st.pc + 4; char nle[17];
                     for(int i=0; i<8; i++) sprintf(nle+i*2, "%02x", (uint8_t)((npc>>(i*8))&0xFF));
-                    sprintf(buf, "$P20=%s;thread:%s#", nle, ctx.tid); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                    char *pr = gdbSend(proxy, "%s", buf); if (pr) free(pr);
+                    godBuildGdbPkt(pkt, sizeof(pkt), "P20=%s;thread:%s", nle, st.tid);
+                    char *pr = godGdbCall(proxy, pkt); if (pr) free(pr);
 
                     if (imm == 0xf00d) {
-                        if (ctx.x16 == 0) detached = YES;
-                        else if (ctx.x16 == 1) { // PREPARE (Streaming implementation)
-                            uint64_t addr = ctx.x0;
+                        if (st.x16 == 0) detached = YES;
+                        else if (st.x16 == 1) { // God-Speed PREPARE (Streaming implementation)
+                            uint64_t addr = st.x0;
                             if (!addr) {
-                                sprintf(buf, "$_M%llx,rx#", ctx.x1); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                                char *xr = gdbSend(proxy, "%s", buf); if (xr) { addr = strtoull(xr, NULL, 16); free(xr); }
+                                godBuildGdbPkt(pkt, sizeof(pkt), "_M%llx,rx", st.x1);
+                                char *xr = godGdbCall(proxy, pkt); if (xr) { addr = strtoull(xr, NULL, 16); free(xr); }
                             }
                             if (addr) {
-                                uint32_t total = (uint32_t)ctx.x1; uint32_t sent = 0;
-                                char mpkt[64];
+                                uint32_t total = (uint32_t)st.x1; uint32_t sent = 0;
+                                char m_pkt[32];
                                 while (sent < total) {
                                     uint64_t ca = addr + sent;
-                                    sprintf(mpkt, "$M");
-                                    for(int j=0; j<9; j++) mpkt[j+2] = uToH((ca >> ((8-j)*4)) & 0xF);
-                                    sprintf(mpkt+11, ",1:69#"); setGdbCS(mpkt+1, mpkt+17);
-                                    debug_proxy_send_raw(proxy, (const uint8_t*)mpkt, 19);
+                                    m_pkt[0]='$'; m_pkt[1]='M';
+                                    for(int j=0; j<9; j++) m_pkt[j+2] = uToH((ca >> ((8-j)*4)) & 0xF);
+                                    memcpy(m_pkt+11, ",1:69#", 6);
+                                    uint8_t sum = 0; for(int j=1; j<17; j++) sum += (uint8_t)m_pkt[j];
+                                    m_pkt[17] = uToH(sum >> 4); m_pkt[18] = uToH(sum & 0xF); m_pkt[19] = 0;
+                                    debug_proxy_send_raw(proxy, (const uint8_t*)m_pkt, 19);
                                     char *r = NULL; debug_proxy_read_response(proxy, &r); if(r) free(r);
                                     sent += 16384;
                                 }
                                 char ale[17]; for(int i=0; i<8; i++) sprintf(ale+i*2, "%02x", (uint8_t)((addr>>(i*8))&0xFF));
-                                sprintf(buf, "$P00=%s;thread:%s#", ale, ctx.tid); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                                char *xr = gdbSend(proxy, "%s", buf); if (xr) free(xr);
+                                godBuildGdbPkt(pkt, sizeof(pkt), "P00=%s;thread:%s", ale, st.tid);
+                                char *xr = godGdbCall(proxy, pkt); if (xr) free(xr);
                             }
                         }
                     } else if (imm == 0x68) {
-                        sprintf(buf, "$m%llx,%llx#", ctx.x0, ctx.x1); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                        char *mr = gdbSend(proxy, "%s", buf);
+                        godBuildGdbPkt(pkt, sizeof(pkt), "m%llx,%llx", st.x0, st.x1);
+                        char *mr = godGdbCall(proxy, pkt);
                         if (mr) {
                             @autoreleasepool {
                                 int sl = (int)strlen(mr)/2; char *sc = (char*)malloc(sl+1);
-                                for(int i=0; i<sl; i++) { uint8_t b=(kH[(uint8_t)mr[i*2]]<<4)|kH[(uint8_t)mr[i*2+1]]; sc[i]=(char)b; } sc[sl]=0;
-                                jsCtx[@"x0"]=@(ctx.x0); jsCtx[@"x1"]=@(ctx.x1); jsCtx[@"pc"]=@(ctx.pc); [jsCtx evaluateScript:@(sc)];
+                                for(int i=0; i<sl; i++) { uint8_t b=(kHex[(uint8_t)mr[i*2]]<<4)|kHex[(uint8_t)mr[i*2+1]]; sc[i]=(char)b; } sc[sl]=0;
+                                jsCtx[@"x0"]=@(st.x0); jsCtx[@"x1"]=@(st.x1); jsCtx[@"pc"]=@(st.pc); [jsCtx evaluateScript:@(sc)];
                                 free(sc);
                             }
                             free(mr);
                         }
                     }
                 } else if (resp[0] == 'T') {
-                    sprintf(buf, "$vCont;S%c%c:%s#", resp[1], resp[2], ctx.tid); setGdbCS(buf+1, cs); sprintf(buf+strlen(buf), "%s", cs);
-                    char *vr = gdbSend(proxy, "%s", buf); if (vr) free(vr);
+                    godBuildGdbPkt(pkt, sizeof(pkt), "vCont;S%c%c:%s", resp[1], resp[2], st.tid);
+                    char *vr = godGdbCall(proxy, pkt); if (vr) free(vr);
                 }
             }
         }
         free(resp);
     }
-    gdbSend(proxy, "$vCont;c#a8"); gdbSend(proxy, "$D#44"); debug_proxy_free(proxy);
+    godBuildGdbPkt(pkt, sizeof(pkt), "vCont;c"); godGdbCall(proxy, pkt);
+    godBuildGdbPkt(pkt, sizeof(pkt), "D"); godGdbCall(proxy, pkt);
+    debug_proxy_free(proxy);
+    NSLog(@"[God-Speed] Godly Native Engine Detached.");
 }
 
 - (void)activateUniversalJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
@@ -316,8 +323,10 @@ static char* gdbSend(struct DebugProxyHandle *proxy, const char *fmt, ...) {
         uint64_t curAddr = startAddr;
         for(uint32_t i = 0; i < commandCount; i++) {
             char *cur = commandBuffer + i * 19; cur[0] = '$'; cur[1] = 'M'; cur[11] = ','; cur[12] = '1'; cur[13] = ':'; cur[14] = '6'; cur[15] = '9'; cur[16] = '#';
-            for(int j=0; j<9; j++) cur[j+2] = uToH((curAddr >> ((8-j)*4)) & 0xF);
-            setGdbCS(cur + 1, cur + 17); curAddr += 16384;
+            for(int j=0; j<9; j++) cur[j+2] = uToHex((curAddr >> ((8-j)*4)) & 0xF);
+            uint8_t sum = 0; for(int j=1; j<17; j++) sum += (uint8_t)cur[j];
+            cur[17] = uToHex(sum >> 4); cur[18] = uToHex(sum & 0xF);
+            curAddr += 16384;
         }
         for(uint32_t cur = 0; cur < commandCount; cur += 1024) {
             uint32_t toSend = (commandCount - cur > 1024) ? 1024 : (commandCount - cur);
