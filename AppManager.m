@@ -9,6 +9,14 @@
 @implementation AppInfo
 @end
 
+// Omega JIT Session State
+typedef struct {
+    struct DebugProxyHandle *proxy;
+    char *pktBuf;
+    size_t pktBufSize;
+    BOOL noAck;
+} OmegaSession;
+
 @implementation AppManager
 
 + (instancetype)sharedManager {
@@ -120,7 +128,7 @@
             for (NSUInteger i = 0; i < envArray.count; i++) env[i] = strdup([envArray[i] UTF8String]);
             env[envArray.count] = NULL;
         }
-        err = process_control_launch_app(proc_control, [bid UTF8String], env, envArray.count, NULL, 0, NO, YES, &pid);
+        err = process_control_launch_app(proc_control, [bid UTF8String], env, (uint32_t)envArray.count, NULL, 0, NO, YES, &pid);
         if (env) { for (NSUInteger i = 0; i < envArray.count; i++) free((void *)env[i]); free(env); }
 
         if (err) {
@@ -140,7 +148,7 @@
     });
 }
 
-// Godly Performance Utilities (V15 - Ultra God-Speed with NEON)
+// Omega-God GDB Utilities
 static const uint8_t kHex[256] = {
     ['0']=0,['1']=1,['2']=2,['3']=3,['4']=4,['5']=5,['6']=6,['7']=7,['8']=8,['9']=9,
     ['a']=10,['b']=11,['c']=12,['d']=13,['e']=14,['f']=15,
@@ -149,7 +157,8 @@ static const uint8_t kHex[256] = {
 
 static inline char vToH(uint8_t v) { return "0123456789abcdef"[v & 0xF]; }
 
-static inline uint8_t neon_sum(const uint8_t *p, size_t l) {
+static inline uint8_t omega_neon_sum(const uint8_t *p, size_t l) {
+    if (l == 0) return 0;
     uint8x16_t vsum = vdupq_n_u8(0); size_t i = 0;
     for (; i + 16 <= l; i += 16) vsum = vaddq_u8(vsum, vld1q_u8(p + i));
     uint8_t a[16]; vst1q_u8(a, vsum); uint8_t s = 0;
@@ -184,22 +193,37 @@ static inline uint32_t decodeLE32(const char *p) {
     return v;
 }
 
-static int buildGdbPkt(char *b, int m, const char *fmt, ...) {
-    b[0] = '$'; va_list a; va_start(a, fmt);
-    int l = vsnprintf(b + 1, m - 5, fmt, a); va_end(a);
-    uint8_t s = neon_sum((uint8_t*)b + 1, l);
-    b[l+1] = '#'; b[l+2] = vToH(s >> 4); b[l+3] = vToH(s & 0xF); b[l+4] = 0;
-    return l + 4;
+static char* omegaExchange(OmegaSession *s, const char *pkt) {
+    int retries = 3; size_t len = strlen(pkt);
+    while (retries--) {
+        debug_proxy_send_raw(s->proxy, (const uint8_t*)pkt, len);
+        char *r = NULL; struct IdeviceFfiError *err = debug_proxy_read_response(s->proxy, &r);
+        if (err) { idevice_error_free(err); continue; }
+        if (!r) continue;
+        if (!s->noAck) {
+            if (r[0] == '-') { free(r); continue; }
+            if (r[0] == '+') {
+                if (strlen(r) == 1) { free(r); r = NULL; debug_proxy_read_response(s->proxy, &r); if (!r) continue; }
+                else { char *old = r; r = strdup(old + 1); free(old); }
+            }
+        }
+        return r;
+    }
+    return NULL;
 }
 
-static char* exchangeGdb(struct DebugProxyHandle *proxy, const char *pkt) {
-    debug_proxy_send_raw(proxy, (const uint8_t*)pkt, strlen(pkt));
-    char *r = NULL; debug_proxy_read_response(proxy, &r); return r;
+static int omegaBuildPkt(OmegaSession *s, const char *fmt, ...) {
+    s->pktBuf[0] = '$'; va_list a; va_start(a, fmt);
+    int l = vsnprintf(s->pktBuf + 1, (int)s->pktBufSize - 5, fmt, a); va_end(a);
+    uint8_t sum = omega_neon_sum((uint8_t*)s->pktBuf + 1, (size_t)l);
+    s->pktBuf[l+1] = '#'; s->pktBuf[l+2] = vToH(sum >> 4); s->pktBuf[l+3] = vToH(sum & 0xF); s->pktBuf[l+4] = 0;
+    return l + 4;
 }
 
 typedef struct { uint64_t x0, x1, x16, pc; char tid[64]; } GodState;
 
 static void scanStopPkt(const char *s, GodState *st) {
+    if (!s) return;
     const char *p = s; if (*p == 'T') p += 3;
     while (*p) {
         if (p[0] == 't' && p[1] == 'h') { // thread:
@@ -224,75 +248,76 @@ typedef struct { uint64_t pc; uint32_t instr; } GCache;
 static __thread GCache g_tl_cache[16]; static __thread int g_tl_p = 0;
 
 - (void)activateGodlyNativeJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
-    NSLog(@"[God-Speed] Godly Native JIT Engine starting...");
+    NSLog(@"[Omega-God] Starting Synchronized Session...");
     struct DebugProxyHandle *proxy = NULL;
     if (debug_proxy_connect_rsd(adapter, handshake, &proxy)) return;
 
-    char pkt[2048];
-    buildGdbPkt(pkt, sizeof(pkt), "vAttach;%llx", pid);
-    char *resp = exchangeGdb(proxy, pkt); if (resp) free(resp);
+    OmegaSession s = { .proxy = proxy, .pktBufSize = 65536, .noAck = NO };
+    s.pktBuf = (char*)malloc(s.pktBufSize);
+
+    omegaBuildPkt(&s, "vAttach;%llx", pid);
+    char *resp = omegaExchange(&s, s.pktBuf); if (resp) free(resp);
+
+    // Try to enable No-Ack mode for speed
+    omegaBuildPkt(&s, "QStartNoAckMode");
+    resp = omegaExchange(&s, s.pktBuf); if (resp && strcmp(resp, "OK") == 0) s.noAck = YES; if (resp) free(resp);
 
     JSContext *jsCtx = [[JSContext alloc] init];
-    jsCtx[@"log"] = ^(NSString *m){ NSLog(@"[God Script] %@", m); };
-    jsCtx[@"send_command"] = ^NSString*(NSString *c){
-        struct DebugserverCommandHandle *d = debugserver_command_new([c UTF8String], NULL, 0);
-        char *dr=NULL; debug_proxy_send_command(proxy, d, &dr); debugserver_command_free(d);
-        NSString *ns = dr ? @(dr) : nil; if(dr) free(dr); return ns;
-    };
+    jsCtx[@"log"] = ^(NSString *m){ NSLog(@"[Omega Script] %@", m); };
 
-    static const char *kVCont = "$vCont;c#a8";
     BOOL detached = NO;
+    const char *kVCont = "$vCont;c#a8";
+
     while (!detached) {
-        resp = exchangeGdb(proxy, kVCont); if (!resp) break;
+        resp = omegaExchange(&s, kVCont);
+        if (!resp) { NSLog(@"[Omega] Connection Lost."); break; }
 
         GodState st = {0}; scanStopPkt(resp, &st);
         if (st.tid[0] && st.pc > 0) {
             uint32_t instr = 0;
             for(int i=0; i<16; i++) if(g_tl_cache[i].pc == st.pc) { instr = g_tl_cache[i].instr; break; }
             if (!instr) {
-                buildGdbPkt(pkt, sizeof(pkt), "m%llx,4", st.pc);
-                char *ir = exchangeGdb(proxy, pkt);
+                omegaBuildPkt(&s, "m%llx,4", st.pc);
+                char *ir = omegaExchange(&s, s.pktBuf);
                 if (ir) { instr = decodeLE32(ir); g_tl_cache[g_tl_p].pc = st.pc; g_tl_cache[g_tl_p].instr = instr; g_tl_p = (g_tl_p+1)%16; free(ir); }
             }
 
             if (instr) {
-                if ((instr & 0xFFE0001F) == 0xD4200000) { // Precise ARM64 BRK Filter
+                if ((instr & 0xFFE0001F) == 0xD4200000) { // ARM64 BRK
                     uint32_t imm = (instr >> 5) & 0xFFFF;
                     uint64_t npc = st.pc + 4; char nle[17]; writeLE64Hex(nle, npc);
-                    buildGdbPkt(pkt, sizeof(pkt), "P20=%s;thread:%s", nle, st.tid);
-                    char *pr = exchangeGdb(proxy, pkt); if (pr) free(pr);
+                    omegaBuildPkt(&s, "P20=%s;thread:%s", nle, st.tid);
+                    char *pr = omegaExchange(&s, s.pktBuf); if (pr) free(pr);
 
                     if (imm == 0xf00d) {
                         if (st.x16 == 0) detached = YES;
-                        else if (st.x16 == 1) { // Ultra-God PREPARE (16KB Chunks)
+                        else if (st.x16 == 1) { // Omega PREPARE
                             uint64_t addr = st.x0;
                             if (!addr) {
-                                buildGdbPkt(pkt, sizeof(pkt), "_M%llx,rx", st.x1);
-                                char *xr = exchangeGdb(proxy, pkt); if (xr) { addr = strtoull(xr, NULL, 16); free(xr); }
+                                omegaBuildPkt(&s, "_M%llx,rx", st.x1);
+                                char *xr = omegaExchange(&s, s.pktBuf); if (xr) { addr = strtoull(xr, NULL, 16); free(xr); }
                             }
                             if (addr) {
                                 uint32_t total = (uint32_t)st.x1; uint32_t sent = 0;
-                                size_t mpkt_size = 64 + 32768; char *mpkt = (char*)malloc(mpkt_size);
                                 while (sent < total) {
                                     uint32_t chunk = (total - sent > 16384) ? 16384 : (total - sent);
-                                    int l = sprintf(mpkt + 1, "M%llx,%x:", addr + sent, chunk);
-                                    for(uint32_t j=0; j<chunk; j++) { mpkt[l+1+j*2] = '6'; mpkt[l+1+j*2+1] = '9'; }
-                                    mpkt[0] = '$'; size_t payload_len = l + chunk * 2;
-                                    uint8_t sum = neon_sum((uint8_t*)mpkt + 1, payload_len);
-                                    mpkt[payload_len + 1] = '#'; mpkt[payload_len + 2] = vToH(sum >> 4); mpkt[payload_len + 3] = vToH(sum & 0xF); mpkt[payload_len + 4] = 0;
-                                    debug_proxy_send_raw(proxy, (const uint8_t*)mpkt, payload_len + 4);
+                                    int l = sprintf(s.pktBuf + 1, "M%llx,%x:", addr + sent, chunk);
+                                    for(uint32_t j=0; j<chunk; j++) { s.pktBuf[l+1+j*2] = '6'; s.pktBuf[l+1+j*2+1] = '9'; }
+                                    s.pktBuf[0] = '$'; size_t payload_len = (size_t)(l + chunk * 2);
+                                    uint8_t sum = omega_neon_sum((uint8_t*)s.pktBuf + 1, payload_len);
+                                    s.pktBuf[payload_len + 1] = '#'; s.pktBuf[payload_len + 2] = vToH(sum >> 4); s.pktBuf[payload_len + 3] = vToH(sum & 0xF); s.pktBuf[payload_len + 4] = 0;
+                                    debug_proxy_send_raw(proxy, (const uint8_t*)s.pktBuf, payload_len + 4);
                                     char *r = NULL; debug_proxy_read_response(proxy, &r); if(r) free(r);
                                     sent += chunk;
                                 }
-                                free(mpkt);
                                 char ale[17]; writeLE64Hex(ale, addr);
-                                buildGdbPkt(pkt, sizeof(pkt), "P00=%s;thread:%s", ale, st.tid);
-                                char *xr = exchangeGdb(proxy, pkt); if (xr) free(xr);
+                                omegaBuildPkt(&s, "P00=%s;thread:%s", ale, st.tid);
+                                char *xr = omegaExchange(&s, s.pktBuf); if (xr) free(xr);
                             }
                         }
                     } else if (imm == 0x68) {
-                        buildGdbPkt(pkt, sizeof(pkt), "m%llx,%llx", st.x0, st.x1);
-                        char *mr = exchangeGdb(proxy, pkt);
+                        omegaBuildPkt(&s, "m%llx,%llx", st.x0, st.x1);
+                        char *mr = omegaExchange(&s, s.pktBuf);
                         if (mr) {
                             @autoreleasepool {
                                 int sl = (int)strlen(mr)/2; char *sc = (char*)malloc(sl+1);
@@ -304,17 +329,20 @@ static __thread GCache g_tl_cache[16]; static __thread int g_tl_p = 0;
                         }
                     }
                 } else if (resp[0] == 'T') {
-                    buildGdbPkt(pkt, sizeof(pkt), "vCont;S%c%c:%s", resp[1], resp[2], st.tid);
-                    char *vr = exchangeGdb(proxy, pkt); if (vr) free(vr);
+                    omegaBuildPkt(&s, "vCont;S%c%c:%s", resp[1], resp[2], st.tid);
+                    char *vr = omegaExchange(&s, s.pktBuf); if (vr) free(vr);
                 }
             }
         }
         free(resp);
     }
-    buildGdbPkt(pkt, sizeof(pkt), "vCont;c"); exchangeGdb(proxy, pkt);
-    buildGdbPkt(pkt, sizeof(pkt), "D"); exchangeGdb(proxy, pkt);
+    // Safe Detach Sequence
+    omegaBuildPkt(&s, "vCont;c"); omegaExchange(&s, s.pktBuf);
+    omegaBuildPkt(&s, "D"); omegaExchange(&s, s.pktBuf);
+
+    free(s.pktBuf);
     debug_proxy_free(proxy);
-    NSLog(@"[God-Speed] Godly Native JIT Engine Complete.");
+    NSLog(@"[Omega-God] Engine Shutdown Cleanly.");
 }
 
 - (void)activateUniversalJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
@@ -338,21 +366,22 @@ static __thread GCache g_tl_cache[16]; static __thread int g_tl_p = 0;
         else return [NSString stringWithFormat:@"ERROR: %@", e.localizedDescription];
     };
     context[@"prepare_memory_region"] = ^NSString *(uint64_t startAddr, uint64_t JITPagesSize) {
+        OmegaSession os = { .proxy = proxy, .pktBufSize = 65536, .noAck = YES };
+        os.pktBuf = (char*)malloc(os.pktBufSize);
         uint32_t total = (uint32_t)JITPagesSize; uint32_t sent = 0;
-        size_t mpkt_size = 64 + 32768; char *mpkt = (char*)malloc(mpkt_size);
         while (sent < total) {
             uint32_t chunk = (total - sent > 16384) ? 16384 : (total - sent);
-            int l = sprintf(mpkt + 1, "M%llx,%x:", startAddr + sent, chunk);
-            for(uint32_t j=0; j<chunk; j++) { mpkt[l+1+j*2] = '6'; mpkt[l+1+j*2+1] = '9'; }
-            mpkt[0] = '$'; size_t payload_len = l + chunk * 2;
-            uint8_t sum = neon_sum((uint8_t*)mpkt + 1, payload_len);
-            mpkt[payload_len + 1] = '#'; mpkt[payload_len + 2] = vToH(sum >> 4); mpkt[payload_len + 3] = vToH(sum & 0xF); mpkt[payload_len + 4] = 0;
-            struct IdeviceFfiError *e = debug_proxy_send_raw(proxy, (const uint8_t *)mpkt, payload_len + 4);
-            if (e) { idevice_error_free(e); free(mpkt); return @"ERROR_SEND"; }
+            int l = sprintf(os.pktBuf + 1, "M%llx,%x:", startAddr + sent, chunk);
+            for(uint32_t j=0; j<chunk; j++) { os.pktBuf[l+1+j*2] = '6'; os.pktBuf[l+1+j*2+1] = '9'; }
+            os.pktBuf[0] = '$'; size_t payload_len = (size_t)(l + chunk * 2);
+            uint8_t sum = omega_neon_sum((uint8_t*)os.pktBuf + 1, payload_len);
+            os.pktBuf[payload_len + 1] = '#'; os.pktBuf[payload_len + 2] = vToH(sum >> 4); os.pktBuf[payload_len + 3] = vToH(sum & 0xF); os.pktBuf[payload_len + 4] = 0;
+            struct IdeviceFfiError *e = debug_proxy_send_raw(proxy, (const uint8_t *)os.pktBuf, (size_t)(payload_len + 4));
+            if (e) { idevice_error_free(e); free(os.pktBuf); return @"ERROR_SEND"; }
             char *r = NULL; debug_proxy_read_response(proxy, &r); if (r) free(r);
             sent += chunk;
         }
-        free(mpkt); return @"OK";
+        free(os.pktBuf); return @"OK";
     };
     context[@"log"] = ^(NSString *msg) { NSLog(@"[JIT Script] %@", msg); };
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
