@@ -170,12 +170,13 @@ static inline NSString *appListSafeErrorMessage(struct IdeviceFfiError *err) {
             }
 
             [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
-                lockdownd_client_free(lockdown);
                 if (success) {
+                    lockdownd_client_free(lockdown);
                     [[AppManager sharedManager] launchApp:bid jitMode:jitMode provider:self.provider completion:^(BOOL success, NSString *message) {
                         [self finishLaunch:success message:message];
                     }];
                 } else {
+                    lockdownd_client_free(lockdown);
                     [self finishLaunch:NO message:[NSString stringWithFormat:@"DDI required for JIT: %@", message]];
                 }
             }];

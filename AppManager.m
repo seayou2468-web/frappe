@@ -797,7 +797,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         struct AdapterHandle *adapter = NULL;
         {
             struct IdeviceFfiError *err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
-            core_device_proxy_free(proxy); proxy = NULL;
+            proxy = NULL;
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"Adapter Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
@@ -838,11 +838,12 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         {
             struct IdeviceFfiError *err =
                 remote_server_connect_rsd(adapter, handshake, &remoteServer);
+            if (!err) { adapter = NULL; handshake = NULL; }
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"RemoteServer Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
-                rsd_handshake_free(handshake);
-                adapter_free(adapter);
+                if (handshake) rsd_handshake_free(handshake);
+                if (adapter) adapter_free(adapter);
                 safeCompletion(NO, msg);
                 return;
             }
@@ -852,12 +853,13 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         struct ProcessControlHandle *procControl = NULL;
         {
             struct IdeviceFfiError *err = process_control_new(remoteServer, &procControl);
+            if (!err) { remoteServer = NULL; }
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"ProcessControl Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
-                remote_server_free(remoteServer);
-                rsd_handshake_free(handshake);
-                adapter_free(adapter);
+                if (remoteServer) remote_server_free(remoteServer);
+                if (handshake) rsd_handshake_free(handshake);
+                if (adapter) adapter_free(adapter);
                 safeCompletion(NO, msg);
                 return;
             }
@@ -891,10 +893,10 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"Launch Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
-                process_control_free(procControl);
-                remote_server_free(remoteServer);
-                rsd_handshake_free(handshake);
-                adapter_free(adapter);
+                if (procControl) process_control_free(procControl);
+            if (remoteServer) remote_server_free(remoteServer);
+            if (handshake) rsd_handshake_free(handshake);
+            if (adapter) adapter_free(adapter);
                 safeCompletion(NO, msg);
                 return;
             }
@@ -903,8 +905,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         // ── JIT 有効化 ────────────────────────────────────────
         if (jitMode != JitModeNone && pid > 0) {
             process_control_disable_memory_limit(procControl, pid);
-            process_control_free(procControl);
-            remote_server_free(remoteServer);
+            if (procControl) process_control_free(procControl);
+            if (remoteServer) remote_server_free(remoteServer);
             procControl  = NULL;
             remoteServer = NULL;
 
@@ -914,8 +916,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
                 [self activateGodlyNativeJitSyncForPid:pid adapter:adapter handshake:handshake];
             } else {
                 NSLog(@"[Launch] Unknown jitMode %d — freeing handles.", (int)jitMode);
-                rsd_handshake_free(handshake);
-                adapter_free(adapter);
+                if (handshake) rsd_handshake_free(handshake);
+                if (adapter) adapter_free(adapter);
             }
 
             NSString *modeStr = (jitMode == JitModeJS) ? @"JS" : @"God-Speed";
@@ -924,10 +926,10 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
         } else {
             // JitModeNone または pid == 0
-            process_control_free(procControl);
-            remote_server_free(remoteServer);
-            rsd_handshake_free(handshake);
-            adapter_free(adapter);
+            if (procControl) process_control_free(procControl);
+            if (remoteServer) remote_server_free(remoteServer);
+            if (handshake) rsd_handshake_free(handshake);
+            if (adapter) adapter_free(adapter);
             safeCompletion(YES, [NSString stringWithFormat:
                 @"Launched successfully (PID: %llu).", pid]);
         }
@@ -947,11 +949,12 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     struct DebugProxyHandle *proxy = NULL;
     {
         struct IdeviceFfiError *dbgErr = debug_proxy_connect_rsd(adapter, handshake, &proxy);
+        if (!dbgErr) { adapter = NULL; handshake = NULL; }
         if (dbgErr) {
             NSLog(@"[Omega-God] debug_proxy_connect_rsd failed: %s", omegaSafeErrCString(dbgErr));
             idevice_error_free(dbgErr);
-            rsd_handshake_free(handshake);
-            adapter_free(adapter);
+            if (handshake) rsd_handshake_free(handshake);
+            if (adapter) adapter_free(adapter);
             return;
         }
     }
@@ -960,8 +963,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     if (!pktBuf) {
         NSLog(@"[Omega-God] malloc failed.");
         debug_proxy_free(proxy);
-        rsd_handshake_free(handshake);
-        adapter_free(adapter);
+    if (handshake) rsd_handshake_free(handshake);
+    if (adapter) adapter_free(adapter);
         return;
     }
 
@@ -990,8 +993,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         NSLog(@"[Omega-God] gcache alloc failed — aborting.");
         free(s.pktBuf);
         debug_proxy_free(proxy);
-        rsd_handshake_free(handshake);
-        adapter_free(adapter);
+    if (handshake) rsd_handshake_free(handshake);
+    if (adapter) adapter_free(adapter);
         return;
     }
     memset(gcStore->cache, 0, sizeof(gcStore->cache));
@@ -1129,8 +1132,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
     free(s.pktBuf);
     debug_proxy_free(proxy);
-    rsd_handshake_free(handshake);
-    adapter_free(adapter);
+    if (handshake) rsd_handshake_free(handshake);
+    if (adapter) adapter_free(adapter);
 
     NSLog(@"[Omega-God] Engine shut down cleanly.");
 }
@@ -1146,11 +1149,12 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     struct DebugProxyHandle *proxy = NULL;
     {
         struct IdeviceFfiError *dbgErr = debug_proxy_connect_rsd(adapter, handshake, &proxy);
+        if (!dbgErr) { adapter = NULL; handshake = NULL; }
         if (dbgErr) {
             NSLog(@"[JIT-JS] debug_proxy_connect_rsd failed: %s", omegaSafeErrCString(dbgErr));
             idevice_error_free(dbgErr);
-            rsd_handshake_free(handshake);
-            adapter_free(adapter);
+            if (handshake) rsd_handshake_free(handshake);
+            if (adapter) adapter_free(adapter);
             return;
         }
     }
@@ -1267,8 +1271,8 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     capturedProxy = NULL;
 
     debug_proxy_free(proxy);
-    rsd_handshake_free(handshake);
-    adapter_free(adapter);
+    if (handshake) rsd_handshake_free(handshake);
+    if (adapter) adapter_free(adapter);
 
     NSLog(@"[JIT-JS] Session complete.");
 }
