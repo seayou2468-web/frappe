@@ -90,6 +90,15 @@ static const size_t kTlCacheMask = 15; // kTlCacheSize - 1
 /// これ以下のペイロードはスタックで完結 (heap アクセスゼロ)
 #define OMEGA_STACK_BUF_SIZE  512u
 
+static inline const char *omegaSafeErrCString(const struct IdeviceFfiError *err) {
+    if (!err || !err->message || err->message[0] == '\0') return "(no detail)";
+    return err->message;
+}
+
+static inline NSString *omegaErrNSString(const struct IdeviceFfiError *err) {
+    return [NSString stringWithUTF8String:omegaSafeErrCString(err)];
+}
+
 // ─────────────────────────────────────────────
 // MARK: - Omega JIT セッション型
 // ─────────────────────────────────────────────
@@ -615,7 +624,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         struct InstallationProxyClientHandle *instproxy = NULL;
         struct IdeviceFfiError *err = installation_proxy_connect(provider, &instproxy);
         if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message];
+            NSString *msg = omegaErrNSString(err);
             idevice_error_free(err);
             if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
             return;
@@ -647,7 +656,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     plist_free(options);
 
     if (err) {
-        NSLog(@"[Apps] Browse error for %s: %s", type, err->message);
+        NSLog(@"[Apps] Browse error for %s: %s", type, omegaSafeErrCString(err));
         idevice_error_free(err);
         return;
     }
@@ -741,7 +750,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
                 if (udid) plist_free(udid);
                 lockdownd_client_free(warmup);
             } else {
-                NSLog(@"[Launch] Warmup warning: %s", we->message);
+                NSLog(@"[Launch] Warmup warning: %s", omegaSafeErrCString(we));
                 idevice_error_free(we);
             }
         }
@@ -755,7 +764,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             for (int i = 0; i < kMaxRetries; i++) {
                 if (i > 0) {
                     NSLog(@"[Launch] Tunnel attempt %d failed: %s. Retry in %.1fs…",
-                          i, err->message, delay);
+                          i, omegaSafeErrCString(err), delay);
                     idevice_error_free(err);
                     err = NULL;
                     [NSThread sleepForTimeInterval:delay];
@@ -765,7 +774,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
                 if (!err) break;
             }
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"Tunnel Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"Tunnel Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 safeCompletion(NO, msg);
                 return;
@@ -777,7 +786,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         {
             struct IdeviceFfiError *err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"RSD Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"RSD Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 core_device_proxy_free(proxy);
                 safeCompletion(NO, msg);
@@ -791,7 +800,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             struct IdeviceFfiError *err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
             core_device_proxy_free(proxy); proxy = NULL;
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"Adapter Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"Adapter Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 safeCompletion(NO, msg);
                 return;
@@ -803,7 +812,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         {
             struct IdeviceFfiError *err = adapter_connect(adapter, rsdPort, &rsdStream);
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"Stream Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"Stream Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 adapter_free(adapter);
                 safeCompletion(NO, msg);
@@ -817,7 +826,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             struct IdeviceFfiError *err = rsd_handshake_new(rsdStream, &handshake);
             rsdStream = NULL; // 所有権移譲
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"Handshake Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"Handshake Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 adapter_free(adapter);
                 safeCompletion(NO, msg);
@@ -831,7 +840,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             struct IdeviceFfiError *err =
                 remote_server_connect_rsd(adapter, handshake, &remoteServer);
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"RemoteServer Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"RemoteServer Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 rsd_handshake_free(handshake);
                 adapter_free(adapter);
@@ -845,7 +854,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         {
             struct IdeviceFfiError *err = process_control_new(remoteServer, &procControl);
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"ProcessControl Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"ProcessControl Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 remote_server_free(remoteServer);
                 rsd_handshake_free(handshake);
@@ -881,7 +890,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             }
 
             if (err) {
-                NSString *msg = [NSString stringWithFormat:@"Launch Error: %s", err->message];
+                NSString *msg = [NSString stringWithFormat:@"Launch Error: %@", omegaErrNSString(err)];
                 idevice_error_free(err);
                 process_control_free(procControl);
                 remote_server_free(remoteServer);
@@ -940,7 +949,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     {
         struct IdeviceFfiError *dbgErr = debug_proxy_connect_rsd(adapter, handshake, &proxy);
         if (dbgErr) {
-            NSLog(@"[Omega-God] debug_proxy_connect_rsd failed: %s", dbgErr->message);
+            NSLog(@"[Omega-God] debug_proxy_connect_rsd failed: %s", omegaSafeErrCString(dbgErr));
             idevice_error_free(dbgErr);
             rsd_handshake_free(handshake);
             adapter_free(adapter);
@@ -1139,7 +1148,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     {
         struct IdeviceFfiError *dbgErr = debug_proxy_connect_rsd(adapter, handshake, &proxy);
         if (dbgErr) {
-            NSLog(@"[JIT-JS] debug_proxy_connect_rsd failed: %s", dbgErr->message);
+            NSLog(@"[JIT-JS] debug_proxy_connect_rsd failed: %s", omegaSafeErrCString(dbgErr));
             idevice_error_free(dbgErr);
             rsd_handshake_free(handshake);
             adapter_free(adapter);

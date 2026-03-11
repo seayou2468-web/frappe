@@ -14,6 +14,11 @@
 
 @implementation AppListViewController
 
+static inline NSString *appListSafeErrorMessage(struct IdeviceFfiError *err) {
+    if (!err || !err->message || err->message[0] == '\0') return @"(no detail)";
+    return [NSString stringWithUTF8String:err->message];
+}
+
 - (instancetype)initWithProvider:(struct IdeviceProviderHandle *)provider {
     self = [super init];
     if (self) { _provider = provider; }
@@ -159,7 +164,7 @@
             struct LockdowndClientHandle *lockdown = NULL;
             struct IdeviceFfiError *err = lockdownd_connect(self.provider, &lockdown);
             if (err) {
-                [self finishLaunch:NO message:[NSString stringWithFormat:@"Pre-launch lockdown failed: %s", err->message]];
+                [self finishLaunch:NO message:[NSString stringWithFormat:@"Pre-launch lockdown failed: %@", appListSafeErrorMessage(err)]];
                 idevice_error_free(err);
                 return;
             }
