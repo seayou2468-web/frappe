@@ -140,7 +140,7 @@
     });
 }
 
-// Godly Performance Utilities (V14 - Full 64-bit Addressing & SIMD Optimized)
+// Godly Performance Utilities (V15 - Ultra God-Speed with NEON)
 static const uint8_t kHex[256] = {
     ['0']=0,['1']=1,['2']=2,['3']=3,['4']=4,['5']=5,['6']=6,['7']=7,['8']=8,['9']=9,
     ['a']=10,['b']=11,['c']=12,['d']=13,['e']=14,['f']=15,
@@ -148,6 +148,15 @@ static const uint8_t kHex[256] = {
 };
 
 static inline char vToH(uint8_t v) { return "0123456789abcdef"[v & 0xF]; }
+
+static inline uint8_t neon_sum(const uint8_t *p, size_t l) {
+    uint8x16_t vsum = vdupq_n_u8(0); size_t i = 0;
+    for (; i + 16 <= l; i += 16) vsum = vaddq_u8(vsum, vld1q_u8(p + i));
+    uint8_t a[16]; vst1q_u8(a, vsum); uint8_t s = 0;
+    for (int j = 0; j < 16; j++) s += a[j];
+    for (; i < l; i++) s += p[i];
+    return s;
+}
 
 static inline void writeLE64Hex(char *out, uint64_t v) {
     for (int i=0; i<8; i++) {
@@ -178,7 +187,7 @@ static inline uint32_t decodeLE32(const char *p) {
 static int buildGdbPkt(char *b, int m, const char *fmt, ...) {
     b[0] = '$'; va_list a; va_start(a, fmt);
     int l = vsnprintf(b + 1, m - 5, fmt, a); va_end(a);
-    uint8_t s = 0; for (int i=0; i<l; i++) s += (uint8_t)b[i+1];
+    uint8_t s = neon_sum((uint8_t*)b + 1, l);
     b[l+1] = '#'; b[l+2] = vToH(s >> 4); b[l+3] = vToH(s & 0xF); b[l+4] = 0;
     return l + 4;
 }
@@ -212,7 +221,7 @@ static void scanStopPkt(const char *s, GodState *st) {
 }
 
 typedef struct { uint64_t pc; uint32_t instr; } GCache;
-static __thread GCache g_tl_cache[4]; static __thread int g_tl_p = 0;
+static __thread GCache g_tl_cache[16]; static __thread int g_tl_p = 0;
 
 - (void)activateGodlyNativeJitSyncForPid:(uint64_t)pid adapter:(struct AdapterHandle *)adapter handshake:(struct RsdHandshakeHandle *)handshake {
     NSLog(@"[God-Speed] Godly Native JIT Engine starting...");
@@ -231,18 +240,19 @@ static __thread GCache g_tl_cache[4]; static __thread int g_tl_p = 0;
         NSString *ns = dr ? @(dr) : nil; if(dr) free(dr); return ns;
     };
 
-    BOOL detached = NO; int loops = 0;
-    while (!detached && loops++ < 100000) {
-        resp = exchangeGdb(proxy, "$vCont;c#a8"); if (!resp) break;
+    static const char *kVCont = "$vCont;c#a8";
+    BOOL detached = NO;
+    while (!detached) {
+        resp = exchangeGdb(proxy, kVCont); if (!resp) break;
 
         GodState st = {0}; scanStopPkt(resp, &st);
         if (st.tid[0] && st.pc > 0) {
             uint32_t instr = 0;
-            for(int i=0; i<4; i++) if(g_tl_cache[i].pc == st.pc) { instr = g_tl_cache[i].instr; break; }
+            for(int i=0; i<16; i++) if(g_tl_cache[i].pc == st.pc) { instr = g_tl_cache[i].instr; break; }
             if (!instr) {
                 buildGdbPkt(pkt, sizeof(pkt), "m%llx,4", st.pc);
                 char *ir = exchangeGdb(proxy, pkt);
-                if (ir) { instr = decodeLE32(ir); g_tl_cache[g_tl_p].pc = st.pc; g_tl_cache[g_tl_p].instr = instr; g_tl_p = (g_tl_p+1)%4; free(ir); }
+                if (ir) { instr = decodeLE32(ir); g_tl_cache[g_tl_p].pc = st.pc; g_tl_cache[g_tl_p].instr = instr; g_tl_p = (g_tl_p+1)%16; free(ir); }
             }
 
             if (instr) {
@@ -254,7 +264,7 @@ static __thread GCache g_tl_cache[4]; static __thread int g_tl_p = 0;
 
                     if (imm == 0xf00d) {
                         if (st.x16 == 0) detached = YES;
-                        else if (st.x16 == 1) { // Godly Streaming PREPARE (No Malloc)
+                        else if (st.x16 == 1) { // Ultra-God PREPARE (16KB Chunks)
                             uint64_t addr = st.x0;
                             if (!addr) {
                                 buildGdbPkt(pkt, sizeof(pkt), "_M%llx,rx", st.x1);
@@ -262,18 +272,19 @@ static __thread GCache g_tl_cache[4]; static __thread int g_tl_p = 0;
                             }
                             if (addr) {
                                 uint32_t total = (uint32_t)st.x1; uint32_t sent = 0;
-                                char mpkt[48];
+                                size_t mpkt_size = 64 + 32768; char *mpkt = (char*)malloc(mpkt_size);
                                 while (sent < total) {
-                                    uint64_t ca = addr + sent;
-                                    mpkt[0]='$'; mpkt[1]='M';
-                                    for(int j=0; j<16; j++) mpkt[j+2] = vToH((ca >> ((15-j)*4)) & 0xF);
-                                    memcpy(mpkt+18, ",1:69#", 6);
-                                    uint8_t sum = 0; for(int j=1; j<23; j++) sum += (uint8_t)mpkt[j];
-                                    mpkt[24] = vToH(sum >> 4); mpkt[25] = vToH(sum & 0xF); mpkt[26] = 0;
-                                    debug_proxy_send_raw(proxy, (const uint8_t*)mpkt, 26);
+                                    uint32_t chunk = (total - sent > 16384) ? 16384 : (total - sent);
+                                    int l = sprintf(mpkt + 1, "M%llx,%x:", addr + sent, chunk);
+                                    for(uint32_t j=0; j<chunk; j++) { mpkt[l+1+j*2] = '6'; mpkt[l+1+j*2+1] = '9'; }
+                                    mpkt[0] = '$'; size_t payload_len = l + chunk * 2;
+                                    uint8_t sum = neon_sum((uint8_t*)mpkt + 1, payload_len);
+                                    mpkt[payload_len + 1] = '#'; mpkt[payload_len + 2] = vToH(sum >> 4); mpkt[payload_len + 3] = vToH(sum & 0xF); mpkt[payload_len + 4] = 0;
+                                    debug_proxy_send_raw(proxy, (const uint8_t*)mpkt, payload_len + 4);
                                     char *r = NULL; debug_proxy_read_response(proxy, &r); if(r) free(r);
-                                    sent += 16384;
+                                    sent += chunk;
                                 }
+                                free(mpkt);
                                 char ale[17]; writeLE64Hex(ale, addr);
                                 buildGdbPkt(pkt, sizeof(pkt), "P00=%s;thread:%s", ale, st.tid);
                                 char *xr = exchangeGdb(proxy, pkt); if (xr) free(xr);
@@ -327,20 +338,21 @@ static __thread GCache g_tl_cache[4]; static __thread int g_tl_p = 0;
         else return [NSString stringWithFormat:@"ERROR: %@", e.localizedDescription];
     };
     context[@"prepare_memory_region"] = ^NSString *(uint64_t startAddr, uint64_t JITPagesSize) {
-        uint32_t count = (uint32_t)(JITPagesSize >> 14);
-        char pkt[48]; uint64_t curAddr = startAddr;
-        for(uint32_t i = 0; i < count; i++) {
-            pkt[0] = '$'; pkt[1] = 'M';
-            for(int j=0; j<16; j++) pkt[j+2] = vToH((curAddr >> ((15-j)*4)) & 0xF);
-            memcpy(pkt+18, ",1:69#", 6);
-            uint8_t sum = 0; for(int j=1; j<23; j++) sum += (uint8_t)pkt[j];
-            pkt[24] = vToH(sum >> 4); pkt[25] = vToH(sum & 0xF); pkt[26] = 0;
-            struct IdeviceFfiError *e = debug_proxy_send_raw(proxy, (const uint8_t *)pkt, 26);
-            if (e) { idevice_error_free(e); return @"ERROR_SEND"; }
+        uint32_t total = (uint32_t)JITPagesSize; uint32_t sent = 0;
+        size_t mpkt_size = 64 + 32768; char *mpkt = (char*)malloc(mpkt_size);
+        while (sent < total) {
+            uint32_t chunk = (total - sent > 16384) ? 16384 : (total - sent);
+            int l = sprintf(mpkt + 1, "M%llx,%x:", startAddr + sent, chunk);
+            for(uint32_t j=0; j<chunk; j++) { mpkt[l+1+j*2] = '6'; mpkt[l+1+j*2+1] = '9'; }
+            mpkt[0] = '$'; size_t payload_len = l + chunk * 2;
+            uint8_t sum = neon_sum((uint8_t*)mpkt + 1, payload_len);
+            mpkt[payload_len + 1] = '#'; mpkt[payload_len + 2] = vToH(sum >> 4); mpkt[payload_len + 3] = vToH(sum & 0xF); mpkt[payload_len + 4] = 0;
+            struct IdeviceFfiError *e = debug_proxy_send_raw(proxy, (const uint8_t *)mpkt, payload_len + 4);
+            if (e) { idevice_error_free(e); free(mpkt); return @"ERROR_SEND"; }
             char *r = NULL; debug_proxy_read_response(proxy, &r); if (r) free(r);
-            curAddr += 16384;
+            sent += chunk;
         }
-        return @"OK";
+        free(mpkt); return @"OK";
     };
     context[@"log"] = ^(NSString *msg) { NSLog(@"[JIT Script] %@", msg); };
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
