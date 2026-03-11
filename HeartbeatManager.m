@@ -9,6 +9,8 @@ static inline const char *heartbeatSafeErrCString(const struct IdeviceFfiError *
 @property (nonatomic, assign) struct HeartbeatClientHandle *heartbeatClient;
 @property (nonatomic, assign) BOOL running;
 @property (nonatomic, assign) BOOL paused;
+@property (nonatomic, assign) BOOL loopActive;
+@property (nonatomic, assign) uint64_t epoch;
 @end
 
 @implementation HeartbeatManager
@@ -24,6 +26,12 @@ static inline const char *heartbeatSafeErrCString(const struct IdeviceFfiError *
     [self stopHeartbeat];
     if (!provider) return;
 
+    __block uint64_t launchEpoch = 0;
+    @synchronized (self) {
+        self.epoch += 1;
+        launchEpoch = self.epoch;
+    }
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct HeartbeatClientHandle *hb = NULL;
         struct IdeviceFfiError *err = heartbeat_connect(provider, &hb);
@@ -34,9 +42,14 @@ static inline const char *heartbeatSafeErrCString(const struct IdeviceFfiError *
         }
 
         @synchronized (self) {
+            if (self.epoch != launchEpoch) {
+                heartbeat_client_free(hb);
+                return;
+            }
             self.heartbeatClient = hb;
             self.running = YES;
             self.paused = NO;
+            self.loopActive = YES;
         }
         NSLog(@"[Heartbeat] Started via provider");
         [self heartbeatLoop];
@@ -83,16 +96,30 @@ static inline const char *heartbeatSafeErrCString(const struct IdeviceFfiError *
         [NSThread sleepForTimeInterval:1.0];
     }
 
-    [self stopHeartbeat];
+    struct HeartbeatClientHandle *hb = NULL;
+    @synchronized (self) {
+        hb = self.heartbeatClient;
+        self.heartbeatClient = NULL;
+        self.running = NO;
+        self.paused = NO;
+        self.loopActive = NO;
+    }
+    if (hb) {
+        heartbeat_client_free(hb);
+        NSLog(@"[Heartbeat] Stopped");
+    }
 }
 
 - (void)stopHeartbeat {
     struct HeartbeatClientHandle *hb = NULL;
     @synchronized (self) {
+        self.epoch += 1;
         self.running = NO;
-        hb = self.heartbeatClient;
-        self.heartbeatClient = NULL;
         self.paused = NO;
+        if (!self.loopActive) {
+            hb = self.heartbeatClient;
+            self.heartbeatClient = NULL;
+        }
     }
 
     if (hb) {
