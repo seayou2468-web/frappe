@@ -1,5 +1,10 @@
 #import "DdiManager.h"
 
+static inline const char *ddiSafeErrCString(const struct IdeviceFfiError *err) {
+    if (!err || !err->message || err->message[0] == '\0') return "(no detail)";
+    return err->message;
+}
+
 @implementation DdiManager
 
 + (instancetype)sharedManager {
@@ -23,7 +28,7 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct ImageMounterHandle *mounter = NULL;
         struct IdeviceFfiError *err = image_mounter_connect(provider, &mounter);
-        if (err) { completion(NO, [NSString stringWithFormat:@"DDI Service Connect failed: %s", err->message]); idevice_error_free(err); return; }
+        if (err) { completion(NO, [NSString stringWithFormat:@"DDI Service Connect failed: %s", ddiSafeErrCString(err)]); idevice_error_free(err); return; }
 
         BOOL alreadyMounted = NO;
 
@@ -34,7 +39,7 @@
             if (devices_len > 0) alreadyMounted = YES;
             idevice_plist_array_free(devices, devices_len);
         }
-        if (err) { NSLog(@"[DDI] copy_devices error: %s", err->message); idevice_error_free(err); }
+        if (err) { NSLog(@"[DDI] copy_devices error: %s", ddiSafeErrCString(err)); idevice_error_free(err); }
 
         // 2. Double-check with image lookup if list was empty but service says otherwise
         if (!alreadyMounted) {
@@ -60,7 +65,7 @@
 
         int dev_mode = 0;
         err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
-        if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", err->message]); idevice_error_free(err); image_mounter_free(mounter); return; }
+        if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", ddiSafeErrCString(err)]); idevice_error_free(err); image_mounter_free(mounter); return; }
 
         if (dev_mode == 0) { completion(NO, @"Developer Mode is disabled."); image_mounter_free(mounter); return; }
 

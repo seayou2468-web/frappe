@@ -324,7 +324,7 @@
 }
 
 - (void)handleError:(struct IdeviceFfiError *)err phase:(NSString *)phase {
-    NSString *msg = [NSString stringWithUTF8String:err->message];
+    NSString *msg = (err && err->message && err->message[0] != '\0') ? [NSString stringWithUTF8String:err->message] : @"(no detail)";
     [self log:[NSString stringWithFormat:@"FAIL [%@]: %@", phase, msg]];
     idevice_error_free(err);
     dispatch_async(dispatch_get_main_queue(), ^{
