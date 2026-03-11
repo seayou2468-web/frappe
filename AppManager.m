@@ -239,7 +239,7 @@ static void scanStopPkt(const char *s, GodState *st) {
             }
             p += 19;
         }
-        while (*p && *p != ';') p++;
+        while (*p && *p != ';' ) p++;
         if (*p == ';') p++;
     }
 }
@@ -337,8 +337,10 @@ static __thread GCache g_tl_cache[16]; static __thread int g_tl_p = 0;
         free(resp);
     }
     // Safe Detach Sequence
-    omegaBuildPkt(&s, "vCont;c"); omegaExchange(&s, s.pktBuf);
-    omegaBuildPkt(&s, "D"); omegaExchange(&s, s.pktBuf);
+    omegaBuildPkt(&s, "vCont;c");
+    char *dr1 = omegaExchange(&s, s.pktBuf); if(dr1) free(dr1);
+    omegaBuildPkt(&s, "D");
+    char *dr2 = omegaExchange(&s, s.pktBuf); if(dr2) free(dr2);
 
     free(s.pktBuf);
     debug_proxy_free(proxy);
