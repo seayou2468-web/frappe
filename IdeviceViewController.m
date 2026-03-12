@@ -5,6 +5,7 @@
 #import "HeartbeatManager.h"
 #import "DdiManager.h"
 #import "AppListViewController.h"
+#import "LocationSimulationViewController.h"
 #import <arpa/inet.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -159,7 +160,9 @@
     [self.mainStack addArrangedSubview:self.retryButton];
 
     UIButton *appsButton = [self createActionButtonWithTitle:@"BROWSE APPLICATIONS" action:@selector(showAppList)];
+    UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];
     [self.mainStack addArrangedSubview:appsButton];
+    [self.mainStack addArrangedSubview:simButton];
 }
 
 - (UITextField *)createStyledTextFieldWithFrame:(CGRect)frame placeholder:(NSString *)placeholder {
@@ -364,6 +367,12 @@
     row.textColor = [UIColor whiteColor]; row.font = [UIFont systemFontOfSize:13 weight:UIFontWeightLight];
     row.text = [NSString stringWithFormat:@"%@: %@", key, value];
     [self.infoStack addArrangedSubview:row];
+}
+
+- (void)showLocationSim {
+    if (!self.currentProvider) { [self log:@"Link required."]; return; }
+    LocationSimulationViewController *vc = [[LocationSimulationViewController alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)showAppList {
