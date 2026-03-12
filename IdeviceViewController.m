@@ -300,7 +300,9 @@
     NSData *p12Data = [NSData dataWithContentsOfURL:url];
     if (!p12Data) { [self log:@"Failed to read certificate"]; return; }
 
+    self.isDeviceBusy = YES;
     [self ensureMobileConfig:^(BOOL success) {
+        if (!success) { self.isDeviceBusy = NO; return; }
         if (!success) return;
 
         NSDictionary *options = @{(__bridge id)kSecImportExportPassphrase: @""};
@@ -317,8 +319,8 @@
 
             [self.mobileConfig escalateWithCertificate:cert privateKey:key completion:^(BOOL s, id res, NSString *err) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (s) [self log:@"Escalation successful!"];
-                    else [self log:[NSString stringWithFormat:@"Escalation failed: %@", err]];
+                    if (s) [self log:@"Escalation successful!"]; dispatch_async(dispatch_get_main_queue(), ^{ self.isDeviceBusy = NO; });
+                    else [self log:[NSString stringWithFormat:@"Escalation failed: %@", err]]; dispatch_async(dispatch_get_main_queue(), ^{ self.isDeviceBusy = NO; });
                     if (cert) CFRelease(cert);
                     if (key) CFRelease(key);
                 });
@@ -334,7 +336,10 @@
     if (!self.selectedPairingFilePath) { [self log:@"ABORT: Identity missing."]; return; }
     self.connectButton.hidden = YES; self.retryButton.hidden = YES; self.infoContainer.hidden = YES;
     [self cleanupHandles];
+    if (self.isDeviceBusy) return;
+    self.isDeviceBusy = YES;
     [self log:@"Initiating handshake..."];
+    self.isDeviceBusy = YES;
     [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"CONNECTING" color:[UIColor systemOrangeColor] animating:YES];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{ [self performConnection]; });
 }
@@ -373,6 +378,7 @@
     [self log:@"Analyzing disk images..."];
     [[HeartbeatManager sharedManager] pauseHeartbeat];
     [[DdiManager sharedManager] checkAndMountDdiWithProvider:provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
+            self.isDeviceBusy = NO;
         [[HeartbeatManager sharedManager] resumeHeartbeat];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
@@ -395,7 +401,7 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         [self updateIndicator:self.lockdownIndicator label:self.lockdownLabel status:@"ERROR" color:[UIColor systemRedColor] animating:NO];
         self.lockdownDetail.text = msg;
-        self.retryButton.hidden = NO; self.connectButton.hidden = YES;
+        self.retryButton.hidden = NO; self.connectButton.hidden = YES; self.isDeviceBusy = NO;
     });
 }
 
@@ -491,8 +497,11 @@
 
 - (void)listProfiles {
     if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
+    self.isDeviceBusy = YES;
     [self ensureMobileConfig:^(BOOL success) {
+        if (!success) { self.isDeviceBusy = NO; return; }
         if (!success) return;
+        [self log:@"Fetching profile list..."];
         [self.mobileConfig getProfileListWithCompletion:^(BOOL s, id res, NSString *err) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (s && [res isKindOfClass:[NSDictionary class]]) {
@@ -501,12 +510,12 @@
                     if ([profiles isKindOfClass:[NSArray class]]) {
                         [self log:[NSString stringWithFormat:@"Profiles (%lu): %@", (unsigned long)profiles.count, [profiles componentsJoinedByString:@", "]]];
                     } else {
-                        [self log:[NSString stringWithFormat:@"Profiles: %@", res]];
+                        [self log:[NSString stringWithFormat:@"Profiles: %@", res]]; self.isDeviceBusy = NO;
                     }
                 } else if (s) {
                     [self log:[NSString stringWithFormat:@"Unexpected response: %@", res]];
                 } else {
-                    [self log:[NSString stringWithFormat:@"List failed: %@", err]];
+                    [self log:[NSString stringWithFormat:@"List failed: %@", err]]; self.isDeviceBusy = NO;
                 }
             });
         }];
@@ -515,14 +524,17 @@
 
 - (void)installRestrictions {
     if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
+    self.isDeviceBusy = YES;
     [self ensureMobileConfig:^(BOOL success) {
+        if (!success) { self.isDeviceBusy = NO; return; }
         if (!success) return;
+        [self log:@"Installing restrictions..."];
         [self.mobileConfig installRestrictionsProfileWithCompletion:^(BOOL s, id res, NSString *err) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (s) {
-                    [self log:@"Restrictions profile installed"];
+                    [self log:@"Restrictions profile installed"]; self.isDeviceBusy = NO;
                 } else {
-                    [self log:[NSString stringWithFormat:@"Failed: %@", err]];
+                    [self log:[NSString stringWithFormat:@"Failed: %@", err]]; self.isDeviceBusy = NO;
                 }
             });
         }];
@@ -585,7 +597,9 @@
 
     [alert addAction:[UIAlertAction actionWithTitle:@"ERASE" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
 
-        [self ensureMobileConfig:^(BOOL success) {
+        self.isDeviceBusy = YES;
+    [self ensureMobileConfig:^(BOOL success) {
+        if (!success) { self.isDeviceBusy = NO; return; }
 
             if (!success) return;
 
@@ -593,9 +607,9 @@
 
                 dispatch_async(dispatch_get_main_queue(), ^{
 
-                    if (s) [self log:@"Erase command sent"];
+                    if (s) [self log:@"Erase command sent"]; dispatch_async(dispatch_get_main_queue(), ^{ self.isDeviceBusy = NO; });
 
-                    else [self log:[NSString stringWithFormat:@"Erase failed: %@", err]];
+                    else [self log:[NSString stringWithFormat:@"Erase failed: %@", err]]; dispatch_async(dispatch_get_main_queue(), ^{ self.isDeviceBusy = NO; });
 
                 });
 

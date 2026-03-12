@@ -29,9 +29,6 @@
 }
 
 - (void)dealloc {
-    // CRITICAL: Block until the serial queue is drained.
-    // This ensures no background task is using the provider/lockdown handles
-    // while the parent view controller is freeing them.
     if (_serviceQueue) {
         dispatch_sync(_serviceQueue, ^{
             if (self->_stream) {
@@ -52,10 +49,10 @@
 
 - (void)log:(NSString *)msg {
     if (!msg) return;
-    if (self.logger) {
-        // Ensure logger is called on main thread as it usually updates UI
+    void (^logger)(NSString *) = self.logger;
+    if (logger) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.logger) self.logger(msg);
+            logger(msg);
         });
     }
     NSLog(@"[MobileConfig] %@", msg);
@@ -65,91 +62,98 @@
 
 - (void)connectWithCompletion:(MobileConfigCompletion)completion {
     dispatch_async(self.serviceQueue, ^{
-        if (self.connected) {
-            if (completion) completion(YES, nil, nil);
+        if (self.connected) { if (completion) completion(YES, nil, nil); return; }
+
+        [[HeartbeatManager sharedManager] pauseHeartbeat];
+        [self log:@"Suspending Heartbeat (WiFi stabilization)..."];
+        [NSThread sleepForTimeInterval:2.5];
+
+        struct IdeviceProviderHandle *pHandle = self.provider;
+        if (!pHandle) {
+            [[HeartbeatManager sharedManager] resumeHeartbeat];
+            if (completion) completion(NO, nil, @"No Provider");
             return;
         }
 
-        [[HeartbeatManager sharedManager] pauseHeartbeat];
-        [NSThread sleepForTimeInterval:0.5];
-
-        [self log:@"Initiating connection..."];
         struct IdeviceFfiError *err = NULL;
+        __block struct CoreDeviceProxyHandle *proxy = NULL;
+        __block struct AdapterHandle *adapter = NULL;
+        __block struct ReadWriteOpaque *stream = NULL;
 
-        // Warmup link
-        if (self.provider) {
+        // RSD Path (iOS 17+)
+        for (int i = 0; i < 8; i++) {
+            if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:2.0]; }
+            [self log:[NSString stringWithFormat:@"Tunnel Handshake (%d/8)...", i+1]];
 
+            NSLog(@"[MobileConfig] TRACE: core_device_proxy_connect entry");
+            err = core_device_proxy_connect(pHandle, &proxy);
+            NSLog(@"[MobileConfig] TRACE: core_device_proxy_connect exit (err=%p, proxy=%p)", err, proxy);
+
+            if (!err && proxy) break;
         }
 
-        // 1. RSD via CoreDeviceProxy (iOS 17+)
-        if (self.provider) {
-            for (int i = 0; i < 8; i++) {
-                if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:2.0]; }
-                [self log:[NSString stringWithFormat:@"Connecting to CoreDeviceProxy (attempt %d)...", i+1]];
-                err = core_device_proxy_connect(self.provider, &self->_proxy);
-                if (!err) break;
-            }
-
-            if (!err && self->_proxy) {
-                [self log:@"CoreDeviceProxy connected. Retrieving RSD port..."];
-                uint16_t rsdPort = 0;
-                err = core_device_proxy_get_server_rsd_port(self->_proxy, &rsdPort);
-                if (!err && rsdPort != 0) {
-                    err = core_device_proxy_create_tcp_adapter(self->_proxy, &self->_tunnelAdapter);
-                    if (!err && self->_tunnelAdapter) {
-                        self->_proxy = NULL; // Consumed
-                        struct ReadWriteOpaque *rsdStream = NULL;
-                        err = adapter_connect(self->_tunnelAdapter, rsdPort, &rsdStream);
-                        if (!err && rsdStream) {
-                            struct RsdHandshakeHandle *handshake = NULL;
-                            err = rsd_handshake_new(rsdStream, &handshake);
-                            if (!err && handshake) {
-                                struct CRsdService *svc_info = NULL;
-                                err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc_info);
-                                if (!err && svc_info) {
-                                    [self log:[NSString stringWithFormat:@"Found shim service on port %u", svc_info->port]];
-                                    err = adapter_connect(self->_tunnelAdapter, svc_info->port, &self->_stream);
-                                    rsd_free_service(svc_info);
-                                }
-                                rsd_handshake_free(handshake);
+        if (!err && proxy) {
+            uint16_t rsdPort = 0;
+            err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+            if (!err && rsdPort != 0) {
+                [self log:[NSString stringWithFormat:@"RSD Port: %u", rsdPort]];
+                err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+                proxy = NULL; // Consumed
+                if (!err && adapter) {
+                    struct ReadWriteOpaque *rsdStream = NULL;
+                    err = adapter_connect(adapter, rsdPort, &rsdStream);
+                    if (!err && rsdStream) {
+                        struct RsdHandshakeHandle *handshake = NULL;
+                        err = rsd_handshake_new(rsdStream, &handshake);
+                        if (!err && handshake) {
+                            struct CRsdService *svc_info = NULL;
+                            err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc_info);
+                            if (!err && svc_info) {
+                                [self log:[NSString stringWithFormat:@"Connecting to shim port %u...", svc_info->port]];
+                                err = adapter_connect(adapter, svc_info->port, &stream);
+                                rsd_free_service(svc_info);
                             }
+                            rsd_handshake_free(handshake);
                         }
                     }
                 }
             }
         }
 
-        // 2. Legacy Lockdown
-        if (!self->_stream && self.lockdown && self.provider) {
+        // Legacy Fallback
+        if (!stream) {
+            [self log:@"RSD path failed. Trying legacy path..."];
             if (err) { idevice_error_free(err); err = NULL; }
-            if (self->_proxy) { core_device_proxy_free(self->_proxy); self->_proxy = NULL; }
-            if (self->_tunnelAdapter) { adapter_free(self->_tunnelAdapter); self->_tunnelAdapter = NULL; }
+            if (proxy) { core_device_proxy_free(proxy); proxy = NULL; }
+            if (adapter) { adapter_free(adapter); adapter = NULL; }
 
-            [self log:@"RSD unavailable. Trying legacy MCInstall service..."];
-            uint16_t port = 0;
-            err = lockdownd_start_service(self.lockdown, "com.apple.mobile.MCInstall", &port, NULL);
-            if (!err) {
-                // For TCP providers, standard service connect is preferred.
-                    // We'll attempt a direct connection if the provider supports it.
-                    [self log:@"Legacy path requires an AdapterHandle. WiFi targets should use RSD."];
-                    err = NULL;
+            if (self.lockdown) {
+                uint16_t port = 0;
+                err = lockdownd_start_service(self.lockdown, "com.apple.mobile.MCInstall", &port, NULL);
+                if (!err) {
+                    // For TCP providers, we attempt direct adapter connect
+                    err = adapter_connect((struct AdapterHandle *)pHandle, port, &stream);
+                }
+                if (err) { idevice_error_free(err); err = NULL; }
             }
-            if (err) { idevice_error_free(err); err = NULL; }
         }
 
-        if (self->_stream) {
+        if (stream) {
+            self->_proxy = proxy;
+            self->_tunnelAdapter = adapter;
+            self->_stream = stream;
             [self log:@"Stream established. Initializing session..."];
             [self _performSendRequest:@{@"RequestType": @"HelloHostIdentifier"} completion:^(BOOL success, id result, NSString *errorMsg) {
                 self.connected = success;
                 [[HeartbeatManager sharedManager] resumeHeartbeat];
-                if (success) [self log:@"Session initialized."];
-                else [self log:[NSString stringWithFormat:@"Handshake failed: %@", errorMsg]];
+                if (success) [self log:@"MobileConfig session ready."];
+                else [self log:[NSString stringWithFormat:@"Init failed: %@", errorMsg]];
                 if (completion) completion(success, result, errorMsg);
             }];
         } else {
             [[HeartbeatManager sharedManager] resumeHeartbeat];
-            [self log:@"Failed to connect to MobileConfig service."];
-            if (completion) completion(NO, nil, @"Connection failed");
+            [self log:@"Critical: MobileConfig connection failed."];
+            if (completion) completion(NO, nil, @"Link failed");
         }
     });
 }
@@ -164,11 +168,11 @@
 
     NSError *error = nil;
     NSData *plistData = [NSPropertyListSerialization dataWithPropertyList:request
-                                                                   format:NSPropertyListXMLFormat_v1_0
+                                                                   format:NSPropertyListBinaryFormat_v1_0
                                                                   options:0
                                                                     error:&error];
     if (!plistData) {
-        if (completion) completion(NO, nil, @"Serialization error");
+        if (completion) completion(NO, nil, @"Serialization failed");
         return;
     }
 
@@ -178,7 +182,6 @@
     struct IdeviceFfiError *err = NULL;
     NSDictionary *response = nil;
 
-    // 3-attempt retry loop for transient WiFi errors
     for (int attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) [NSThread sleepForTimeInterval:0.5];
 
@@ -217,7 +220,7 @@
     if (response) {
         if (completion) completion(YES, response, nil);
     } else {
-        if (completion) completion(NO, nil, @"Link unstable");
+        if (completion) completion(NO, nil, @"Link failure");
     }
 }
 
@@ -242,12 +245,12 @@
 }
 
 - (void)installProfileWithData:(NSData *)profileData completion:(MobileConfigCompletion)completion {
-    if (!profileData) { if (completion) completion(NO, nil, @"No data"); return; }
+    if (!profileData) { if (completion) completion(NO, nil, @"Invalid data"); return; }
     [self sendRequest:@{@"RequestType": @"InstallProfile", @"Payload": profileData} completion:completion];
 }
 
 - (void)removeProfileWithIdentifier:(NSString *)identifier completion:(MobileConfigCompletion)completion {
-    if (!identifier) { if (completion) completion(NO, nil, @"No ID"); return; }
+    if (!identifier) { if (completion) completion(NO, nil, @"Invalid ID"); return; }
     [self sendRequest:@{@"RequestType": @"RemoveProfile", @"Identifier": identifier} completion:completion];
 }
 
@@ -268,9 +271,9 @@
 }
 
 - (void)escalateWithCertificate:(SecCertificateRef)cert privateKey:(SecKeyRef)key completion:(MobileConfigCompletion)completion {
-    if (!cert || !key) { if (completion) completion(NO, nil, @"No cert/key"); return; }
+    if (!cert || !key) { if (completion) completion(NO, nil, @"Missing identity"); return; }
     CFDataRef certData = SecCertificateCopyData(cert);
-    if (!certData) { if (completion) completion(NO, nil, @"Cert error"); return; }
+    if (!certData) { if (completion) completion(NO, nil, @"Identity error"); return; }
     NSData *certNSData = (__bridge_transfer NSData *)certData;
 
     dispatch_async(self.serviceQueue, ^{
@@ -278,21 +281,21 @@
         [self _performSendRequest:@{@"RequestType": @"Escalate", @"SupervisorCertificate": certNSData} completion:^(BOOL success, id result, NSString *error) {
             if (!success || ![result isKindOfClass:[NSDictionary class]]) {
                 [[HeartbeatManager sharedManager] resumeHeartbeat];
-                if (completion) completion(NO, nil, error ?: @"Invalid response");
+                if (completion) completion(NO, nil, error ?: @"Auth failure");
                 return;
             }
 
             NSData *challenge = result[@"Challenge"];
             if (![challenge isKindOfClass:[NSData class]]) {
                 [[HeartbeatManager sharedManager] resumeHeartbeat];
-                if (completion) completion(NO, nil, @"No challenge");
+                if (completion) completion(NO, nil, @"Challenge missing");
                 return;
             }
 
             NSData *signedChallenge = [self signData:challenge certificate:cert privateKey:key];
             if (!signedChallenge) {
                 [[HeartbeatManager sharedManager] resumeHeartbeat];
-                if (completion) completion(NO, nil, @"Signing failed");
+                if (completion) completion(NO, nil, @"Signing error");
                 return;
             }
 
@@ -455,7 +458,7 @@
     NSError *error = nil;
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:profile format:NSPropertyListXMLFormat_v1_0 options:0 error:&error];
     if (!data) {
-        if (completion) completion(NO, nil, @"Failed to build profile");
+        if (completion) completion(NO, nil, @"Profile error");
         return;
     }
 
