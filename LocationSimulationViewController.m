@@ -14,8 +14,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
 @property (nonatomic, assign) struct LockdowndClientHandle *lockdown;
 @property (nonatomic, assign) struct LocationSimulationHandle *simHandle17;
-@property (nonatomic, assign) struct RemoteServerHandle *remoteServer;
 @property (nonatomic, assign) struct LocationSimulationServiceHandle *simHandleLegacy;
+@property (nonatomic, assign) struct RemoteServerHandle *remoteServer;
 
 @property (nonatomic, strong) MKMapView *mapView;
 @property (nonatomic, strong) UISearchBar *searchBar;
@@ -37,7 +37,6 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 @property (nonatomic, strong) UITableView *searchResultsTable;
 @property (nonatomic, strong) NSArray<MKMapItem *> *searchResults;
-
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *favorites;
 @end
 
@@ -48,9 +47,13 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (self) {
         _provider = provider;
         _lockdown = lockdown;
-        _destinations = [NSMutableArray array];
+        _destinations = [[NSMutableArray alloc] init];
+        _currentPathPoints = [[NSMutableArray alloc] init];
+        _searchResults = [[NSArray alloc] init];
         _currentSpeedKmH = 5.0;
-        _favorites = [[[NSUserDefaults standardUserDefaults] arrayForKey:@"SimFavorites"] mutableCopy] ?: [NSMutableArray array];
+        _favorites = [[NSMutableArray alloc] init];
+        NSArray *saved = [[NSUserDefaults standardUserDefaults] arrayForKey:@"SimFavorites"];
+        if (saved) [_favorites addObjectsFromArray:saved];
     }
     return self;
 }
@@ -59,15 +62,18 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [super viewDidLoad];
     self.title = @"Location Simulation";
     self.view.backgroundColor = [UIColor blackColor];
+    NSLog(@"[SimVC] viewDidLoad started");
     [self setupUI];
     [self connectSimulationService];
 
     self.currentSimulatedPos = CLLocationCoordinate2DMake(35.6895, 139.6917);
     MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(self.currentSimulatedPos, 1000, 1000);
     [self.mapView setRegion:region animated:NO];
+    NSLog(@"[SimVC] viewDidLoad finished");
 }
 
 - (void)setupUI {
+    NSLog(@"[SimVC] setupUI started");
     self.mapView = [[MKMapView alloc] initWithFrame:self.view.bounds];
     self.mapView.delegate = self;
     [self.view addSubview:self.mapView];
@@ -140,37 +146,40 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [self.controlPanel addSubview:self.favButton];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
-        [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
-        [self.searchResultsTable.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
-        [self.searchResultsTable.leadingAnchor constraintEqualToAnchor:self.searchBar.leadingAnchor],
-        [self.searchResultsTable.trailingAnchor constraintEqualToAnchor:self.searchBar.trailingAnchor],
-        [self.searchResultsTable.heightAnchor constraintEqualToConstant:250],
-        [self.controlPanel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-20],
-        [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:15],
-        [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-15],
-        [self.controlPanel.heightAnchor constraintEqualToConstant:200],
-        [self.modeControl.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:15],
-        [self.modeControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
-        [self.modeControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
-        [self.transportControl.topAnchor constraintEqualToAnchor:self.modeControl.bottomAnchor constant:10],
-        [self.transportControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
-        [self.transportControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
-        [self.speedTextField.topAnchor constraintEqualToAnchor:self.transportControl.bottomAnchor constant:15],
-        [self.speedTextField.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
-        [self.speedTextField.widthAnchor constraintEqualToConstant:70],
-        [self.actionButton.topAnchor constraintEqualToAnchor:self.speedTextField.topAnchor],
-        [self.actionButton.leadingAnchor constraintEqualToAnchor:self.speedTextField.trailingAnchor constant:10],
-        [self.actionButton.trailingAnchor constraintEqualToAnchor:self.favButton.leadingAnchor constant:-10],
-        [self.actionButton.heightAnchor constraintEqualToConstant:40],
-        [self.favButton.centerYAnchor constraintEqualToAnchor:self.actionButton.centerYAnchor],
-        [self.favButton.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
-        [self.favButton.widthAnchor constraintEqualToConstant:50],
-        [self.clearButton.topAnchor constraintEqualToAnchor:self.actionButton.bottomAnchor constant:5],
-        [self.clearButton.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor]
-    ]];
+    if (safe) {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10],
+            [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
+            [self.searchBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
+            [self.searchResultsTable.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor],
+            [self.searchResultsTable.leadingAnchor constraintEqualToAnchor:self.searchBar.leadingAnchor],
+            [self.searchResultsTable.trailingAnchor constraintEqualToAnchor:self.searchBar.trailingAnchor],
+            [self.searchResultsTable.heightAnchor constraintEqualToConstant:250],
+            [self.controlPanel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-20],
+            [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:15],
+            [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-15],
+            [self.controlPanel.heightAnchor constraintEqualToConstant:200],
+            [self.modeControl.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:15],
+            [self.modeControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
+            [self.modeControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
+            [self.transportControl.topAnchor constraintEqualToAnchor:self.modeControl.bottomAnchor constant:10],
+            [self.transportControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
+            [self.transportControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
+            [self.speedTextField.topAnchor constraintEqualToAnchor:self.transportControl.bottomAnchor constant:15],
+            [self.speedTextField.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
+            [self.speedTextField.widthAnchor constraintEqualToConstant:70],
+            [self.actionButton.topAnchor constraintEqualToAnchor:self.speedTextField.topAnchor],
+            [self.actionButton.leadingAnchor constraintEqualToAnchor:self.speedTextField.trailingAnchor constant:10],
+            [self.actionButton.trailingAnchor constraintEqualToAnchor:self.favButton.leadingAnchor constant:-10],
+            [self.actionButton.heightAnchor constraintEqualToConstant:40],
+            [self.favButton.centerYAnchor constraintEqualToAnchor:self.actionButton.centerYAnchor],
+            [self.favButton.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
+            [self.favButton.widthAnchor constraintEqualToConstant:50],
+            [self.clearButton.topAnchor constraintEqualToAnchor:self.actionButton.bottomAnchor constant:5],
+            [self.clearButton.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor]
+        ]];
+    }
+    NSLog(@"[SimVC] setupUI finished");
 }
 
 - (void)transportChanged:(UISegmentedControl *)sender {
@@ -182,30 +191,18 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 }
 
 - (void)connectSimulationService {
+    NSLog(@"[SimVC] connectSimulationService started");
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // 1. Try Legacy (Lockdown)
-        struct LocationSimulationServiceHandle *legacy = NULL;
-        struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
-        if (!err) {
-            self.simHandleLegacy = legacy;
-            NSLog(@"[Sim] Legacy service connected");
-        } else {
-            idevice_error_free(err);
-
-            // 2. Try CoreDevice (iOS 17+)
-            struct CoreDeviceProxyHandle *proxy = NULL;
-            err = core_device_proxy_connect(self.provider, &proxy);
+        if (self.provider) {
+            struct LocationSimulationServiceHandle *legacy = NULL;
+            struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
             if (!err) {
-                struct AdapterHandle *adapter = NULL;
-                err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
-                if (!err) {
-                    struct RsdHandshakeHandle *handshake = NULL;
-                    // Simplified RemoteServer connection
-                    struct RemoteServerHandle *server = NULL;
-                }
-                core_device_proxy_free(proxy);
+                self.simHandleLegacy = legacy;
+                NSLog(@"[SimVC] Legacy service connected");
+            } else {
+                NSLog(@"[SimVC] Legacy connect failed: %s", err->message);
+                idevice_error_free(err);
             }
-            if (err) idevice_error_free(err);
         }
     });
 }
@@ -236,7 +233,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [self.mapView removeAnnotations:self.destinations];
     [self.destinations removeAllObjects];
     if (self.currentRoutePolyline) [self.mapView removeOverlay:self.currentRoutePolyline];
-    self.currentPathPoints = nil;
+    self.currentPathPoints = [[NSMutableArray alloc] init];
     [self.actionButton setTitle:@"START" forState:UIControlStateNormal];
 }
 
@@ -250,8 +247,10 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [search startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err) {
         if (resp) {
             self.searchResults = resp.mapItems;
-            self.searchResultsTable.hidden = NO;
-            [self.searchResultsTable reloadData];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.searchResultsTable.hidden = NO;
+                [self.searchResultsTable reloadData];
+            });
         }
     }];
 }
@@ -269,20 +268,24 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
-    MKMapItem *item = self.searchResults[indexPath.row];
-    cell.textLabel.text = item.name;
-    cell.detailTextLabel.text = item.name;
-    cell.textLabel.textColor = [UIColor whiteColor];
-    cell.backgroundColor = [UIColor clearColor];
+    if (indexPath.row < self.searchResults.count) {
+        MKMapItem *item = self.searchResults[indexPath.row];
+        cell.textLabel.text = item.name;
+        cell.detailTextLabel.text = item.name;
+        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.backgroundColor = [UIColor clearColor];
+    }
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    MKMapItem *item = self.searchResults[indexPath.row];
-    [self.mapView setCenterCoordinate:item.location.coordinate animated:YES];
-    [self addDestination:item.location.coordinate];
-    self.searchResultsTable.hidden = YES;
-    [self.searchBar resignFirstResponder];
+    if (indexPath.row < self.searchResults.count) {
+        MKMapItem *item = self.searchResults[indexPath.row];
+        [self.mapView setCenterCoordinate:item.placemark.coordinate animated:YES];
+        [self addDestination:item.placemark.coordinate];
+        self.searchResultsTable.hidden = YES;
+        [self.searchBar resignFirstResponder];
+    }
 }
 
 #pragma mark - Movement Execution
@@ -314,11 +317,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     } else if (mode == MoveModeMultiPoint) {
         [self buildMultiPointPath];
     } else if (mode == MoveModeRoadAuto) {
-        // RoadAuto path is already built by calculateRoute or needs to be built now
         if (!self.currentPathPoints || self.currentPathPoints.count == 0) {
             [self calculateRoute];
-            // Since calculateRoute is async, we'll wait for it.
-            // Better to disable START button until route is ready.
             return;
         }
     }
@@ -359,16 +359,18 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 - (void)calculateRoute {
     if (self.destinations.count == 0) return;
     MKDirectionsRequest *req = [[MKDirectionsRequest alloc] init];
-    req.source = [[MKMapItem alloc] initWithLocation:[[CLLocation alloc] initWithLatitude:self.currentSimulatedPos.latitude longitude:self.currentSimulatedPos.longitude] address:nil];
-    req.destination = [[MKMapItem alloc] initWithLocation:[[CLLocation alloc] initWithLatitude:self.destinations.lastObject.coordinate.latitude longitude:self.destinations.lastObject.coordinate.longitude] address:nil];
+    req.source = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.currentSimulatedPos]];
+    req.destination = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.destinations.lastObject.coordinate]];
     req.transportType = (self.transportControl.selectedSegmentIndex == 2) ? MKDirectionsTransportTypeAutomobile : MKDirectionsTransportTypeWalking;
     MKDirections *dir = [[MKDirections alloc] initWithRequest:req];
     [dir calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err) {
         if (resp.routes.count > 0) {
             MKRoute *route = resp.routes.firstObject;
-            if (self.currentRoutePolyline) [self.mapView removeOverlay:self.currentRoutePolyline];
-            self.currentRoutePolyline = route.polyline;
-            [self.mapView addOverlay:self.currentRoutePolyline];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (self.currentRoutePolyline) [self.mapView removeOverlay:self.currentRoutePolyline];
+                self.currentRoutePolyline = route.polyline;
+                [self.mapView addOverlay:self.currentRoutePolyline];
+            });
             NSUInteger count = route.polyline.pointCount;
             CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * count);
             [route.polyline getCoordinates:coords range:NSMakeRange(0, count)];
@@ -378,7 +380,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             }
             free(coords);
             if (self.modeControl.selectedSegmentIndex == MoveModeRoadAuto && ![self.moveTimer isValid]) {
-                [self startSimulation];
+                dispatch_async(dispatch_get_main_queue(), ^{ [self startSimulation]; });
             }
         }
     }];
