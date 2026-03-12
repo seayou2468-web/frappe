@@ -1,4 +1,5 @@
 #import "MobileConfigService.h"
+#import "HeartbeatManager.h"
 #import <Security/Security.h>
 
 @interface MobileConfigService ()
@@ -45,6 +46,7 @@
 }
 
 - (void)log:(NSString *)msg {
+    if (!msg) return;
     if (self.logger) self.logger(msg);
     NSLog(@"[MobileConfig] %@", msg);
 }
@@ -52,7 +54,7 @@
 #pragma mark - Connection
 
 - (void)connectWithCompletion:(MobileConfigCompletion)completion {
-    dispatch_async(self.serviceQueue, ^{
+    dispatch_async(self.serviceQueue, ^{ [[HeartbeatManager sharedManager] pauseHeartbeat]; [NSThread sleepForTimeInterval:0.5];
         if (self.connected) {
             if (completion) completion(YES, nil, nil);
             return;
@@ -60,9 +62,21 @@
 
         [self log:@"Initiating connection..."];
         struct IdeviceFfiError *err = NULL;
+        [self log:@"Warming up connection..."];
+        {
+            struct LockdowndClientHandle *warmup = NULL;
+            struct IdeviceFfiError *we = lockdownd_connect(self.provider, &warmup);
+            if (!we) {
+                plist_t udid = NULL;
+                lockdownd_get_value(warmup, "UniqueDeviceID", NULL, &udid);
+                if (udid) plist_free(udid);
+                lockdownd_client_free(warmup);
+            } else { idevice_error_free(we); }
+        }
+        [NSThread sleepForTimeInterval:0.5];
 
         // 1. RSD via CoreDeviceProxy
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 8; i++) {
             if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:1.0]; }
             [self log:[NSString stringWithFormat:@"Connecting to CoreDeviceProxy (attempt %d)...", i+1]];
             err = core_device_proxy_connect(self.provider, &self->_proxy);
@@ -123,11 +137,11 @@
                 self.connected = success;
                 if (success) [self log:@"Handshake successful."];
                 else [self log:[NSString stringWithFormat:@"Handshake failed: %@", errorMsg]];
-                if (completion) completion(success, result, errorMsg);
+                [[HeartbeatManager sharedManager] resumeHeartbeat]; if (completion) completion(success, result, errorMsg);
             }];
         } else {
             [self log:@"Failed to connect to MobileConfig service."];
-            if (completion) completion(NO, nil, @"Failed to establish connection to MCInstall");
+            [[HeartbeatManager sharedManager] resumeHeartbeat]; if (completion) completion(NO, nil, @"Failed to establish connection to MCInstall");
         }
     });
 }
@@ -175,7 +189,7 @@
     uintptr_t readLen = 0;
     err = adapter_recv(ash, (uint8_t *)&respLenBig, &readLen, sizeof(respLenBig));
     if (err || readLen != sizeof(respLenBig)) {
-        NSString *m = err ? [NSString stringWithUTF8String:(err->message && err->message[0] != '\0') ? err->message : "Recv length error"] : @"Short read";
+        NSString *m = (err && err->message) ? [NSString stringWithUTF8String:err->message] : (err ? @"Recv error" : @"Short read");
         if (err) idevice_error_free(err);
         if (completion) completion(NO, nil, m);
         return;
@@ -215,7 +229,7 @@
 
 - (void)sendRequest:(NSDictionary *)request completion:(MobileConfigCompletion)completion {
     dispatch_async(self.serviceQueue, ^{
-        [self _performSendRequest:request completion:completion];
+        [self _performSendRequest:request completion:^(BOOL s, id r, NSString *e) { if (completion) completion(s, r, e); }];
     });
 }
 
@@ -256,7 +270,8 @@
     NSData *certNSData = (__bridge_transfer NSData *)certData;
 
     dispatch_async(self.serviceQueue, ^{
-        [self _performSendRequest:@{@"RequestType": @"Escalate", @"SupervisorCertificate": certNSData} completion:^(BOOL success, id result, NSString *error) {
+        [self _performSendRequest:@{@"RequestType": @"Escalate", @"SupervisorCertificate": certNSData} completion:^(BOOL success, id result, NSString *error) { if (!success) [[HeartbeatManager sharedManager] resumeHeartbeat];
+            if (!success) [[HeartbeatManager sharedManager] resumeHeartbeat];
             if (!success || ![result isKindOfClass:[NSDictionary class]]) {
                 if (completion) completion(NO, nil, error ?: @"Invalid response");
                 return;
@@ -433,7 +448,7 @@
         return;
     }
 
-    [self installProfileWithData:data completion:completion];
+    [self installProfileWithData:data completion:^(BOOL s, id r, NSString *e) { if (completion) completion(s, r, e); }];
 }
 
 @end

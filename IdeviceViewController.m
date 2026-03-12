@@ -217,8 +217,11 @@
 }
 
 - (void)log:(NSString *)msg {
+    if (!msg) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.activityLog.text = [self.activityLog.text stringByAppendingFormat:@"\n> %@", msg];
+        if (!self.activityLog) return;
+        NSString *currentText = self.activityLog.text ?: @"";
+        self.activityLog.text = [currentText stringByAppendingFormat:@"\n> %@", msg];
         [self.activityLog scrollRangeToVisible:NSMakeRange(self.activityLog.text.length - 1, 1)];
     });
 }
@@ -394,7 +397,7 @@
 }
 
 - (void)fetchDeviceInfo:(struct LockdowndClientHandle *)lockdown {
-    NSArray *keys = @[@"DeviceName", @"ProductType", @"ProductVersion", @"UniqueDeviceID"];
+    NSArray *keys = @[@"DeviceName", @"ProductType", @"ProductVersion", @"UniqueDeviceID", @"IsSupervised"];
     dispatch_async(dispatch_get_main_queue(), ^{
         for (UIView *v in self.infoStack.arrangedSubviews) [v removeFromSuperview];
         self.infoContainer.hidden = NO;
@@ -404,14 +407,23 @@
         plist_t val_plist = NULL;
         lockdownd_get_value(lockdown, [key UTF8String], NULL, &val_plist);
         if (val_plist) {
-            char *val = NULL; plist_get_string_val(val_plist, &val);
+            char *val = NULL;
+            if (plist_get_node_type(val_plist) == PLIST_BOOLEAN) {
+                uint8_t b = 0; plist_get_bool_val(val_plist, &b);
+                val = strdup(b ? "YES" : "NO");
+            } else {
+                plist_get_string_val(val_plist, &val);
+            }
+
             if (val) {
                 NSString *nsVal = [NSString stringWithUTF8String:val];
                 dispatch_async(dispatch_get_main_queue(), ^{ [self addInfoRow:key value:nsVal]; });
                 if ([key isEqualToString:@"DeviceName"]) {
                     dispatch_async(dispatch_get_main_queue(), ^{ self.lockdownDetail.text = nsVal; });
                 }
-                plist_mem_free(val);
+                // Check if it was allocated by strdup or plist
+                if (plist_get_node_type(val_plist) == PLIST_BOOLEAN) free(val);
+                else plist_mem_free(val);
             }
             plist_free(val_plist);
         }
@@ -519,6 +531,8 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.mobileConfig) {
             self.mobileConfig = [[MobileConfigService alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
+            __weak typeof(self) weakSelf = self;
+            self.mobileConfig.logger = ^(NSString *msg) { [weakSelf log:msg]; };
         }
 
         [self.mobileConfig connectWithCompletion:^(BOOL success, id result, NSString *error) {
@@ -526,7 +540,7 @@
                 if (success) {
                     completion(YES);
                 } else {
-                    [self log:[NSString stringWithFormat:@"MobileConfig error: %@", error]];
+                    [self log:[NSString stringWithFormat:@"MobileConfig error: %@", error ?: @"Unknown"]];
                     completion(NO);
                 }
             });
