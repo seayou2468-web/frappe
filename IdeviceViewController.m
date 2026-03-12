@@ -507,31 +507,43 @@
     if (!self.currentProvider) { [self log:@"No device connected"]; completion(NO); return; }
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        uint16_t rsdPort = 0;
         struct ReadWriteOpaque *stream = NULL;
         struct IdeviceFfiError *err = NULL;
 
-        // Try RSD port lookup if we could, but we need CoreDeviceProxy for that.
-        // For now, let's stick to legacy or try to guess RSD port if it's constant,
-        // OR better, use the Lockdown client to get it if possible.
-
-        // Let's use the provided Lockdown client to start service
-        if (self.currentLockdown) {
-            uint16_t port = 0;
-            err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port, NULL);
-            if (!err) {
-                err = adapter_connect(self.currentProvider, port, &stream);
+        // Try RSD (iOS 17+) via CoreDeviceProxy
+        struct CoreDeviceProxyHandle *proxy = NULL;
+        err = core_device_proxy_connect(self.currentProvider, &proxy);
+        if (!err && proxy) {
+            uint16_t rsdPort = 0;
+            err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+            if (!err && rsdPort != 0) {
+                struct ReadWriteOpaque *rsdStream = NULL;
+                err = adapter_connect(self.currentProvider, rsdPort, &rsdStream);
+                if (!err && rsdStream) {
+                    struct RsdHandshakeHandle *handshake = NULL;
+                    err = rsd_handshake_new(rsdStream, &handshake);
+                    if (!err && handshake) {
+                        struct CRsdService *svc = NULL;
+                        err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc);
+                        if (!err && svc) {
+                            err = adapter_connect(self.currentProvider, svc->port, &stream);
+                            rsd_free_service(svc);
+                        }
+                        rsd_handshake_free(handshake);
+                    }
+                }
             }
+            core_device_proxy_free(proxy);
         }
 
         if (err || !stream) {
             if (err) idevice_error_free(err);
-            // Fallback or retry
+            // Fallback to legacy lockdown
             if (self.currentLockdown && !stream) {
-                uint16_t port2 = 0;
-                err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port2, NULL);
+                uint16_t port = 0;
+                err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port, NULL);
                 if (!err) {
-                    err = adapter_connect(self.currentProvider, port2, &stream);
+                    err = adapter_connect(self.currentProvider, port, &stream);
                 }
                 if (err) idevice_error_free(err);
             }
