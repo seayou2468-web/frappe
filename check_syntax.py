@@ -1,13 +1,24 @@
+import sys
 import subprocess
-import os
 
-files_to_check = ['LocationSimulationViewController.m', 'IdeviceViewController.m']
-for f in files_to_check:
-    print(f"Checking {f}...")
-    # Using a very basic clang check that doesn't rely on full SDK if possible, or just grep for common errors
-    # For now, let's just do a basic grep for common syntax mistakes like unclosed braces or missing semicolons
-    # But a real clang check would be better if we can find the headers.
-    # Since headers are missing, we'll rely on our manual review and the fact that we followed patterns.
-    pass
+def check_file(filename):
+    # Just a very basic check for brackets and such since we don't have a real compiler here that works
+    with open(filename, 'r') as f:
+        content = f.read()
 
-print("Syntax check complete (manual pattern verification).")
+    if content.count('{') != content.count('}'):
+        print(f"Brace mismatch in {filename}: {{ {content.count('{')} vs }} {content.count('}')}")
+        return False
+    if content.count('[') != content.count(']'):
+        print(f"Bracket mismatch in {filename}: [ {content.count('[')} vs ] {content.count(']')}")
+        return False
+    if content.count('(') != content.count(')'):
+        print(f"Parenthesis mismatch in {filename}: ( {content.count('(')} vs ) {content.count(')')}")
+        return False
+    return True
+
+files = ['MobileConfigService.h', 'MobileConfigService.m', 'IdeviceViewController.m']
+for f in files:
+    if not check_file(f):
+        sys.exit(1)
+print("Basic syntax check passed")

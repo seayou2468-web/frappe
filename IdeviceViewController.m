@@ -6,6 +6,8 @@
 #import "DdiManager.h"
 #import "AppListViewController.h"
 #import "LocationSimulationViewController.h"
+#import "MobileConfigService.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <arpa/inet.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -38,6 +40,7 @@
 @property (nonatomic, assign) struct IdevicePairingFile *currentPairingFile;
 @property (nonatomic, assign) struct IdeviceProviderHandle *currentProvider;
 @property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
+@property (nonatomic, strong) MobileConfigService *mobileConfig;
 
 @end
 
@@ -64,6 +67,7 @@
     if (self.currentLockdown) { lockdownd_client_free(self.currentLockdown); self.currentLockdown = NULL; }
     if (self.currentProvider) { idevice_provider_free(self.currentProvider); self.currentProvider = NULL; }
     if (self.currentPairingFile) { idevice_pairing_file_free(self.currentPairingFile); self.currentPairingFile = NULL; }
+    self.mobileConfig = nil;
 }
 
 - (void)setupUI {
@@ -158,6 +162,7 @@
     self.retryButton = [self createActionButtonWithTitle:@"RETRY HANDSHAKE" action:@selector(connectTapped)];
     self.retryButton.hidden = YES;
     [self.mainStack addArrangedSubview:self.retryButton];
+    [self setupMobileConfigUI];
 
     UIButton *appsButton = [self createActionButtonWithTitle:@"BROWSE APPLICATIONS" action:@selector(showAppList)];
     UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];
@@ -252,22 +257,71 @@
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject; if (!url) return;
+
+    // Check if it's a P12 or a Plist
+    NSString *ext = [url pathExtension].lowercaseString;
+    if ([ext isEqualToString:@"p12"] || [ext isEqualToString:@"pfx"]) {
+        [self handleSupervisorCertPick:url];
+    } else {
+        [self handlePairingFilePick:url];
+    }
+}
+
+- (void)handlePairingFilePick:(NSURL *)url {
     [self log:@"Importing device identity..."];
     BOOL access = [url startAccessingSecurityScopedResource];
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *pairingDir = [docsDir stringByAppendingPathComponent:@"PairingFiles"];
     [[NSFileManager defaultManager] createDirectoryAtPath:pairingDir withIntermediateDirectories:YES attributes:nil error:nil];
     NSString *targetFilename = @"pairfile.plist";
-    [[NSFileManager defaultManager] removeItemAtPath:[pairingDir stringByAppendingPathComponent:targetFilename] error:nil];
-    NSError *error = nil;
-    NSString *filename = [[FileManagerCore sharedManager] moveItemAtURL:url toDirectory:pairingDir uniqueName:targetFilename error:&error];
-    if (access) [url stopAccessingSecurityScopedResource];
-    if (filename) {
-        self.selectedPairingFilePath = [pairingDir stringByAppendingPathComponent:filename];
-        self.pairingFileLabel.text = @"IDENTITY_STORED";
-        self.pairingFileLabel.textColor = [UIColor systemGreenColor];
-        [self log:@"Identity successfully registered."];
+    NSString *destPath = [pairingDir stringByAppendingPathComponent:targetFilename];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:destPath]) {
+        [[NSFileManager defaultManager] removeItemAtPath:destPath error:nil];
     }
+    NSError *error = nil;
+    if ([[NSFileManager defaultManager] copyItemAtURL:url toURL:[NSURL fileURLWithPath:destPath] error:&error]) {
+        self.selectedPairingFilePath = destPath;
+        self.pairingFileLabel.text = @"CONFIGURED: pairfile.plist";
+        self.pairingFileLabel.textColor = [UIColor systemGreenColor];
+        [self log:@"Identity imported successfully."];
+    } else {
+        [self log:[NSString stringWithFormat:@"Import failed: %@", error.localizedDescription]];
+    }
+    if (access) [url stopAccessingSecurityScopedResource];
+}
+
+- (void)handleSupervisorCertPick:(NSURL *)url {
+    NSData *p12Data = [NSData dataWithContentsOfURL:url];
+    if (!p12Data) { [self log:@"Failed to read certificate"]; return; }
+
+    [self ensureMobileConfig:^(BOOL success) {
+        if (!success) return;
+
+        NSDictionary *options = @{(__bridge id)kSecImportExportPassphrase: @""};
+        CFArrayRef items = NULL;
+        OSStatus status = SecPKCS12Import((__bridge CFDataRef)p12Data, (__bridge CFDictionaryRef)options, &items);
+
+        if (status == errSecSuccess && CFArrayGetCount(items) > 0) {
+            NSDictionary *identityDict = (__bridge NSDictionary *)CFArrayGetValueAtIndex(items, 0);
+            SecIdentityRef identity = (__bridge SecIdentityRef)identityDict[(__bridge id)kSecImportItemIdentity];
+            SecCertificateRef cert = NULL;
+            SecKeyRef key = NULL;
+            SecIdentityCopyCertificate(identity, &cert);
+            SecIdentityCopyPrivateKey(identity, &key);
+
+            [self.mobileConfig escalateWithCertificate:cert privateKey:key completion:^(BOOL s, id res, NSString *err) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (s) [self log:@"Escalation successful!"];
+                    else [self log:[NSString stringWithFormat:@"Escalation failed: %@", err]];
+                    if (cert) CFRelease(cert);
+                    if (key) CFRelease(key);
+                });
+            }];
+            CFRelease(items);
+        } else {
+            [self log:[NSString stringWithFormat:@"P12 Import failed: %d", (int)status]];
+        }
+    }];
 }
 
 - (void)connectTapped {
@@ -379,6 +433,171 @@
     if (!self.currentProvider) { [self log:@"Link required."]; return; }
     AppListViewController *vc = [[AppListViewController alloc] initWithProvider:self.currentProvider];
     [self.navigationController pushViewController:vc animated:YES];
+}
+
+
+- (void)setupMobileConfigUI {
+    UIView *mcCard = [[UIView alloc] init];
+    [ThemeEngine applyGlassStyleToView:mcCard cornerRadius:25];
+    [self.mainStack addArrangedSubview:mcCard];
+
+    UILabel *mcHeader = [[UILabel alloc] initWithFrame:CGRectMake(20, 15, 200, 20)];
+    mcHeader.text = @"MOBILE_CONFIG"; mcHeader.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5]; mcHeader.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    [mcCard addSubview:mcHeader];
+
+    UIButton *listBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [listBtn setTitle:@"LIST PROFILES" forState:UIControlStateNormal];
+    listBtn.frame = CGRectMake(20, 45, 120, 35);
+    [listBtn addTarget:self action:@selector(listProfiles) forControlEvents:UIControlEventTouchUpInside];
+    [mcCard addSubview:listBtn];
+
+    UIButton *restrBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [restrBtn setTitle:@"RESTRICTIONS" forState:UIControlStateNormal];
+    restrBtn.frame = CGRectMake(150, 45, 120, 35);
+    [restrBtn addTarget:self action:@selector(installRestrictions) forControlEvents:UIControlEventTouchUpInside];
+    [mcCard addSubview:restrBtn];
+
+    UIButton *escBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [escBtn setTitle:@"ESCALATE" forState:UIControlStateNormal];
+    escBtn.frame = CGRectMake(20, 85, 120, 35);
+    [escBtn addTarget:self action:@selector(escalateSupervisor) forControlEvents:UIControlEventTouchUpInside];
+    [mcCard addSubview:escBtn];
+
+    UIButton *eraseBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [eraseBtn setTitle:@"ERASE DEVICE" forState:UIControlStateNormal];
+    eraseBtn.frame = CGRectMake(150, 85, 120, 35);
+    [eraseBtn addTarget:self action:@selector(eraseDevice) forControlEvents:UIControlEventTouchUpInside];
+    [mcCard addSubview:eraseBtn];
+
+    [mcCard.heightAnchor constraintEqualToConstant:130].active = YES;
+}
+
+- (void)listProfiles {
+    [self ensureMobileConfig:^(BOOL success) {
+        if (!success) return;
+        [self.mobileConfig getProfileListWithCompletion:^(BOOL s, id res, NSString *err) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (s) {
+                    [self log:[NSString stringWithFormat:@"Profiles: %@", res]];
+                } else {
+                    [self log:[NSString stringWithFormat:@"List failed: %@", err]];
+                }
+            });
+        }];
+    }];
+}
+
+- (void)installRestrictions {
+    [self ensureMobileConfig:^(BOOL success) {
+        if (!success) return;
+        [self.mobileConfig installRestrictionsProfileWithCompletion:^(BOOL s, id res, NSString *err) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (s) {
+                    [self log:@"Restrictions profile installed"];
+                } else {
+                    [self log:[NSString stringWithFormat:@"Failed: %@", err]];
+                }
+            });
+        }];
+    }];
+}
+
+- (void)ensureMobileConfig:(void(^)(BOOL))completion {
+    if (self.mobileConfig) { completion(YES); return; }
+    if (!self.currentProvider) { [self log:@"No device connected"]; completion(NO); return; }
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        uint16_t rsdPort = 0;
+        struct ReadWriteOpaque *stream = NULL;
+        struct IdeviceFfiError *err = NULL;
+
+        // Try RSD port lookup if we could, but we need CoreDeviceProxy for that.
+        // For now, let's stick to legacy or try to guess RSD port if it's constant,
+        // OR better, use the Lockdown client to get it if possible.
+
+        // Let's use the provided Lockdown client to start service
+        if (self.currentLockdown) {
+            uint16_t port = 0;
+            err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port, NULL);
+            if (!err) {
+                err = adapter_connect(self.currentProvider, port, &stream);
+            }
+        }
+
+        if (err || !stream) {
+            if (err) idevice_error_free(err);
+            // Fallback or retry
+            if (self.currentLockdown && !stream) {
+                uint16_t port2 = 0;
+                err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port2, NULL);
+                if (!err) {
+                    err = adapter_connect(self.currentProvider, port2, &stream);
+                }
+                if (err) idevice_error_free(err);
+            }
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (stream) {
+                self.mobileConfig = [[MobileConfigService alloc] initWithStream:stream];
+                completion(YES);
+            } else {
+                [self log:@"Failed to connect to MobileConfig service"];
+                completion(NO);
+            }
+        });
+    });
+}
+
+
+- (void)escalateSupervisor {
+
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"com.rsa.pkcs-12", @"public.item"] inMode:UIDocumentPickerModeImport];
+
+    picker.delegate = (id<UIDocumentPickerDelegate>)self;
+
+    picker.allowsMultipleSelection = NO;
+
+    [self presentViewController:picker animated:YES completion:nil];
+
+}
+
+
+
+
+
+
+
+- (void)eraseDevice {
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Erase Device" message:@"Are you sure? This will wipe the device." preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"ERASE" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+
+        [self ensureMobileConfig:^(BOOL success) {
+
+            if (!success) return;
+
+            [self.mobileConfig eraseDeviceWithPreserveDataPlan:NO disallowProximity:NO completion:^(BOOL s, id res, NSString *err) {
+
+                dispatch_async(dispatch_get_main_queue(), ^{
+
+                    if (s) [self log:@"Erase command sent"];
+
+                    else [self log:[NSString stringWithFormat:@"Erase failed: %@", err]];
+
+                });
+
+            }];
+
+        }];
+
+    }]];
+
+    [self presentViewController:alert animated:YES completion:nil];
+
 }
 
 @end
