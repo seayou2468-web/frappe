@@ -1,5 +1,6 @@
 #import "LocationSimulationViewController.h"
 #import "ThemeEngine.h"
+#import "DdiManager.h"
 #import <CoreLocation/CoreLocation.h>
 #import <MapKit/MapKit.h>
 
@@ -26,6 +27,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, strong) UIButton *actionButton;
 @property (nonatomic, strong) UIButton *clearButton;
 @property (nonatomic, strong) UIButton *favButton;
+@property (nonatomic, strong) UILabel *statusLabel;
 
 @property (nonatomic, strong) NSMutableArray<MKPointAnnotation *> *destinations;
 @property (nonatomic, strong) MKPolyline *currentRoutePolyline;
@@ -62,18 +64,15 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [super viewDidLoad];
     self.title = @"Location Simulation";
     self.view.backgroundColor = [UIColor blackColor];
-    NSLog(@"[SimVC] viewDidLoad started");
     [self setupUI];
     [self connectSimulationService];
 
     self.currentSimulatedPos = CLLocationCoordinate2DMake(35.6895, 139.6917);
     MKCoordinateRegion region = MKCoordinateRegionMakeWithDistance(self.currentSimulatedPos, 1000, 1000);
     [self.mapView setRegion:region animated:NO];
-    NSLog(@"[SimVC] viewDidLoad finished");
 }
 
 - (void)setupUI {
-    NSLog(@"[SimVC] setupUI started");
     self.mapView = [[MKMapView alloc] initWithFrame:self.view.bounds];
     self.mapView.delegate = self;
     [self.view addSubview:self.mapView];
@@ -134,7 +133,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
     self.clearButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.clearButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.clearButton setTitle:@"CLEAR" forState:UIControlStateNormal];
+    [self.clearButton setTitle:@"CLEAR ALL" forState:UIControlStateNormal];
     self.clearButton.tintColor = [UIColor systemRedColor];
     [self.clearButton addTarget:self action:@selector(clearDestinations) forControlEvents:UIControlEventTouchUpInside];
     [self.controlPanel addSubview:self.clearButton];
@@ -144,6 +143,14 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [self.favButton setTitle:@"FAV" forState:UIControlStateNormal];
     [self.favButton addTarget:self action:@selector(showFavorites) forControlEvents:UIControlEventTouchUpInside];
     [self.controlPanel addSubview:self.favButton];
+
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusLabel.textColor = [UIColor systemGreenColor];
+    self.statusLabel.font = [UIFont systemFontOfSize:10];
+    self.statusLabel.text = @"READY";
+    self.statusLabel.textAlignment = NSTextAlignmentCenter;
+    [self.controlPanel addSubview:self.statusLabel];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     if (safe) {
@@ -158,7 +165,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             [self.controlPanel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-20],
             [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:15],
             [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-15],
-            [self.controlPanel.heightAnchor constraintEqualToConstant:200],
+            [self.controlPanel.heightAnchor constraintEqualToConstant:220],
             [self.modeControl.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:15],
             [self.modeControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:15],
             [self.modeControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
@@ -176,10 +183,19 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             [self.favButton.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-15],
             [self.favButton.widthAnchor constraintEqualToConstant:50],
             [self.clearButton.topAnchor constraintEqualToAnchor:self.actionButton.bottomAnchor constant:5],
-            [self.clearButton.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor]
+            [self.clearButton.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor],
+            [self.statusLabel.topAnchor constraintEqualToAnchor:self.clearButton.bottomAnchor constant:5],
+            [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:10],
+            [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-10]
         ]];
     }
-    NSLog(@"[SimVC] setupUI finished");
+}
+
+- (void)log:(NSString *)msg {
+    NSLog(@"[SimVC] %@", msg);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.statusLabel.text = msg;
+    });
 }
 
 - (void)transportChanged:(UISegmentedControl *)sender {
@@ -191,20 +207,27 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 }
 
 - (void)connectSimulationService {
-    NSLog(@"[SimVC] connectSimulationService started");
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        if (self.provider) {
-            struct LocationSimulationServiceHandle *legacy = NULL;
-            struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
-            if (!err) {
-                self.simHandleLegacy = legacy;
-                NSLog(@"[SimVC] Legacy service connected");
-            } else {
-                NSLog(@"[SimVC] Legacy connect failed: %s", err->message);
-                idevice_error_free(err);
-            }
+    [self log:@"Connecting to DDI..."];
+    [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:self.lockdown completion:^(BOOL success, NSString *message) {
+        if (!success) {
+            [self log:[NSString stringWithFormat:@"DDI FAIL: %@", message]];
+            return;
         }
-    });
+        [self log:@"Mounting OK. Starting service..."];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+            if (self.provider) {
+                struct LocationSimulationServiceHandle *legacy = NULL;
+                struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
+                if (!err) {
+                    self.simHandleLegacy = legacy;
+                    [self log:@"Legacy Service Ready"];
+                } else {
+                    [self log:[NSString stringWithFormat:@"Legacy ERR: %s", err->message]];
+                    idevice_error_free(err);
+                }
+            }
+        });
+    }];
 }
 
 #pragma mark - Map & Touch
@@ -222,6 +245,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     ann.title = [NSString stringWithFormat:@"Target %lu", (unsigned long)self.destinations.count + 1];
     [self.mapView addAnnotation:ann];
     [self.destinations addObject:ann];
+    [self log:[NSString stringWithFormat:@"Point added (%lu total)", (unsigned long)self.destinations.count]];
 
     if (self.modeControl.selectedSegmentIndex == MoveModeRoadAuto) {
         [self calculateRoute];
@@ -235,12 +259,23 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (self.currentRoutePolyline) [self.mapView removeOverlay:self.currentRoutePolyline];
     self.currentPathPoints = [[NSMutableArray alloc] init];
     [self.actionButton setTitle:@"START" forState:UIControlStateNormal];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        if (self.simHandleLegacy) lockdown_location_simulation_clear(self.simHandleLegacy);
+        if (self.simHandle17) location_simulation_clear(self.simHandle17);
+    });
+    [self log:@"Simulation cleared"];
 }
 
 #pragma mark - Search
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
-    if (searchText.length < 2) { self.searchResultsTable.hidden = YES; return; }
+    if (searchText.length < 2) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.searchResultsTable.hidden = YES;
+        });
+        return;
+    }
     MKLocalSearchRequest *request = [[MKLocalSearchRequest alloc] init];
     request.naturalLanguageQuery = searchText;
     MKLocalSearch *search = [[MKLocalSearch alloc] initWithRequest:request];
@@ -267,13 +302,16 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
+        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.detailTextLabel.textColor = [UIColor lightGrayColor];
+        cell.backgroundColor = [UIColor clearColor];
+    }
     if (indexPath.row < self.searchResults.count) {
         MKMapItem *item = self.searchResults[indexPath.row];
         cell.textLabel.text = item.name;
         cell.detailTextLabel.text = item.name;
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.backgroundColor = [UIColor clearColor];
     }
     return cell;
 }
@@ -281,9 +319,10 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.row < self.searchResults.count) {
         MKMapItem *item = self.searchResults[indexPath.row];
-        [self.mapView setCenterCoordinate:item.placemark.coordinate animated:YES];
-        [self addDestination:item.placemark.coordinate];
+        [self.mapView setCenterCoordinate:item.location.coordinate animated:YES];
+        [self addDestination:item.location.coordinate];
         self.searchResultsTable.hidden = YES;
+        self.searchBar.text = @"";
         [self.searchBar resignFirstResponder];
     }
 }
@@ -294,14 +333,19 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if ([self.moveTimer isValid]) {
         [self.moveTimer invalidate];
         [self.actionButton setTitle:@"START" forState:UIControlStateNormal];
+        [self log:@"Simulation stopped"];
         return;
     }
-    if (self.destinations.count == 0) return;
+    if (self.destinations.count == 0) {
+        [self log:@"Add a target point first"];
+        return;
+    }
     self.currentSpeedKmH = [self.speedTextField.text doubleValue] ?: 5.0;
 
     MoveMode mode = (MoveMode)self.modeControl.selectedSegmentIndex;
     if (mode == MoveModeDirect) {
         [self updateDeviceLocation:self.destinations.firstObject.coordinate];
+        [self log:@"Jump successful"];
     } else {
         [self startSimulation];
     }
@@ -326,6 +370,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (self.currentPathPoints.count > 0) {
         [self.actionButton setTitle:@"STOP" forState:UIControlStateNormal];
         self.moveTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 target:self selector:@selector(onTick) userInfo:nil repeats:YES];
+        [self log:@"Simulation active"];
     }
 }
 
@@ -358,9 +403,12 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (void)calculateRoute {
     if (self.destinations.count == 0) return;
+    [self log:@"Calculating route..."];
     MKDirectionsRequest *req = [[MKDirectionsRequest alloc] init];
-    req.source = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.currentSimulatedPos]];
-    req.destination = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.destinations.lastObject.coordinate]];
+    CLLocation *sourceLoc = [[CLLocation alloc] initWithLatitude:self.currentSimulatedPos.latitude longitude:self.currentSimulatedPos.longitude];
+    CLLocation *destLoc = [[CLLocation alloc] initWithLatitude:self.destinations.lastObject.coordinate.latitude longitude:self.destinations.lastObject.coordinate.longitude];
+    req.source = [[MKMapItem alloc] initWithLocation:sourceLoc address:nil];
+    req.destination = [[MKMapItem alloc] initWithLocation:destLoc address:nil];
     req.transportType = (self.transportControl.selectedSegmentIndex == 2) ? MKDirectionsTransportTypeAutomobile : MKDirectionsTransportTypeWalking;
     MKDirections *dir = [[MKDirections alloc] initWithRequest:req];
     [dir calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err) {
@@ -374,14 +422,26 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             NSUInteger count = route.polyline.pointCount;
             CLLocationCoordinate2D *coords = malloc(sizeof(CLLocationCoordinate2D) * count);
             [route.polyline getCoordinates:coords range:NSMakeRange(0, count)];
-            self.currentPathPoints = [NSMutableArray array];
+
+            NSMutableArray *interpolated = [NSMutableArray array];
+            CLLocation *prevL = nil;
             for (NSUInteger i = 0; i < count; i++) {
-                [self.currentPathPoints addObject:[[CLLocation alloc] initWithLatitude:coords[i].latitude longitude:coords[i].longitude]];
+                CLLocation *currL = [[CLLocation alloc] initWithLatitude:coords[i].latitude longitude:coords[i].longitude];
+                if (prevL) {
+                    [self interpolateBetween:prevL and:currL into:interpolated];
+                } else {
+                    [interpolated addObject:currL];
+                }
+                prevL = currL;
             }
+            self.currentPathPoints = interpolated;
             free(coords);
+            [self log:@"Route ready"];
             if (self.modeControl.selectedSegmentIndex == MoveModeRoadAuto && ![self.moveTimer isValid]) {
                 dispatch_async(dispatch_get_main_queue(), ^{ [self startSimulation]; });
             }
+        } else {
+            [self log:@"Route failed"];
         }
     }];
 }
@@ -398,6 +458,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (self.currentPathIndex >= self.currentPathPoints.count) {
         [self.moveTimer invalidate];
         [self.actionButton setTitle:@"START" forState:UIControlStateNormal];
+        [self log:@"Destination reached"];
         return;
     }
     CLLocation *loc = self.currentPathPoints[self.currentPathIndex];
@@ -410,12 +471,20 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         if (self.simHandleLegacy) {
             char lat[32], lon[32];
-            snprintf(lat, 32, "%f", coord.latitude);
-            snprintf(lon, 32, "%f", coord.longitude);
-            lockdown_location_simulation_set(self.simHandleLegacy, lat, lon);
+            snprintf(lat, 32, "%.8f", coord.latitude);
+            snprintf(lon, 32, "%.8f", coord.longitude);
+            struct IdeviceFfiError *err = lockdown_location_simulation_set(self.simHandleLegacy, lat, lon);
+            if (err) {
+                NSLog(@"[SimVC] Legacy set failed: %s", err->message);
+                idevice_error_free(err);
+            }
         }
         if (self.simHandle17) {
-            location_simulation_set(self.simHandle17, coord.latitude, coord.longitude);
+            struct IdeviceFfiError *err = location_simulation_set(self.simHandle17, coord.latitude, coord.longitude);
+            if (err) {
+                NSLog(@"[SimVC] 17 set failed: %s", err->message);
+                idevice_error_free(err);
+            }
         }
     });
 }
