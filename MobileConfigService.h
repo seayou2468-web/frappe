@@ -5,15 +5,19 @@ typedef void (^MobileConfigCompletion)(BOOL success, id _Nullable result, NSStri
 
 @interface MobileConfigService : NSObject
 
-@property (nonatomic, assign, readonly) struct ReadWriteOpaque *stream;
+@property (nonatomic, copy) void (^logger)(NSString *msg);
 
-- (instancetype)initWithStream:(struct ReadWriteOpaque *)stream;
+/// Connection state
+@property (nonatomic, assign, readonly) BOOL connected;
+
+/// Initialize with core handles. Ownership is transferred to the service.
+- (instancetype)initWithProvider:(struct IdeviceProviderHandle *)provider lockdown:(struct LockdowndClientHandle *)lockdown;
+
+/// Performs the connection sequence (RSD/Lockdown) and Hello handshake.
+- (void)connectWithCompletion:(MobileConfigCompletion)completion;
 
 /// Sends a request and waits for a response (Plist Service Protocol)
 - (void)sendRequest:(NSDictionary *)request completion:(MobileConfigCompletion)completion;
-
-/// HelloHostIdentifier
-- (void)helloWithCompletion:(MobileConfigCompletion)completion;
 
 /// GetProfileList
 - (void)getProfileListWithCompletion:(MobileConfigCompletion)completion;

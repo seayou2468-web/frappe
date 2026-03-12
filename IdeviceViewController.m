@@ -513,84 +513,24 @@
 }
 
 - (void)ensureMobileConfig:(void(^)(BOOL))completion {
-    if (self.mobileConfig) { completion(YES); return; }
+    if (self.mobileConfig && self.mobileConfig.connected) { completion(YES); return; }
     if (!self.currentProvider) { [self log:@"No device connected"]; completion(NO); return; }
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        struct ReadWriteOpaque *stream = NULL;
-        struct IdeviceFfiError *err = NULL;
-
-        // Try RSD (iOS 17+) via CoreDeviceProxy
-        struct CoreDeviceProxyHandle *proxy = NULL;
-        // Retry loop for proxy connect
-        for (int i = 0; i < 3; i++) {
-            if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:1.0]; }
-            err = core_device_proxy_connect(self.currentProvider, &proxy);
-            if (!err) break;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.mobileConfig) {
+            self.mobileConfig = [[MobileConfigService alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
         }
 
-        if (!err && proxy) {
-            uint16_t rsdPort = 0;
-            err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
-            if (!err && rsdPort != 0) {
-                struct AdapterHandle *tunnelAdapter = NULL;
-                err = core_device_proxy_create_tcp_adapter(proxy, &tunnelAdapter);
-                proxy = NULL; // Consumed
-
-                if (!err && tunnelAdapter) {
-                    struct ReadWriteOpaque *rsdStream = NULL;
-                    err = adapter_connect(tunnelAdapter, rsdPort, &rsdStream);
-                    if (!err && rsdStream) {
-                        struct RsdHandshakeHandle *handshake = NULL;
-                        err = rsd_handshake_new(rsdStream, &handshake);
-                        if (!err && handshake) {
-                            struct CRsdService *svc = NULL;
-                            err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc);
-                            if (!err && svc) {
-                                err = adapter_connect(tunnelAdapter, svc->port, &stream);
-                                rsd_free_service(svc);
-                            }
-                            rsd_handshake_free(handshake);
-                        }
-                    }
-                    adapter_free(tunnelAdapter); // Free adapter if we are done with it
+        [self.mobileConfig connectWithCompletion:^(BOOL success, id result, NSString *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success) {
+                    completion(YES);
+                } else {
+                    [self log:[NSString stringWithFormat:@"MobileConfig error: %@", error]];
+                    completion(NO);
                 }
-            }
-            if (proxy) core_device_proxy_free(proxy);
-        }
-
-        if (err || !stream) {
-            if (err) idevice_error_free(err);
-            // Fallback to legacy lockdown
-            if (self.currentLockdown && !stream) {
-                uint16_t port = 0;
-                err = lockdownd_start_service(self.currentLockdown, "com.apple.mobile.MCInstall", &port, NULL);
-                if (!err) {
-                    err = adapter_connect(self.currentProvider, port, &stream);
-                }
-                if (err) idevice_error_free(err);
-            }
-        }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (stream) {
-                MobileConfigService *svc = [[MobileConfigService alloc] initWithStream:stream];
-                [svc helloWithCompletion:^(BOOL success, id result, NSString *error) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        if (success) {
-                            self.mobileConfig = svc;
-                            completion(YES);
-                        } else {
-                            [self log:[NSString stringWithFormat:@"Hello handshake failed: %@", error]];
-                            completion(NO);
-                        }
-                    });
-                }];
-            } else {
-                [self log:@"Failed to connect to MobileConfig service"];
-                completion(NO);
-            }
-        });
+            });
+        }];
     });
 }
 
