@@ -41,6 +41,7 @@
 @property (nonatomic, assign) struct IdeviceProviderHandle *currentProvider;
 @property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
 @property (nonatomic, strong) MobileConfigService *mobileConfig;
+@property (nonatomic, assign) BOOL isConnectingMobileConfig;
 
 @end
 
@@ -64,10 +65,11 @@
 }
 
 - (void)cleanupHandles {
+    // Null out service first to ensure its queue is finished and dealloc doesn't use freed handles
+    self.mobileConfig = nil;
     if (self.currentLockdown) { lockdownd_client_free(self.currentLockdown); self.currentLockdown = NULL; }
     if (self.currentProvider) { idevice_provider_free(self.currentProvider); self.currentProvider = NULL; }
     if (self.currentPairingFile) { idevice_pairing_file_free(self.currentPairingFile); self.currentPairingFile = NULL; }
-    self.mobileConfig = nil;
 }
 
 - (void)setupUI {
@@ -527,7 +529,9 @@
 - (void)ensureMobileConfig:(void(^)(BOOL))completion {
     if (self.mobileConfig && self.mobileConfig.connected) { completion(YES); return; }
     if (!self.currentProvider) { [self log:@"No device connected"]; completion(NO); return; }
+    if (self.isConnectingMobileConfig) { [self log:@"MobileConfig link is busy..."]; completion(NO); return; }
 
+    self.isConnectingMobileConfig = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.mobileConfig) {
             self.mobileConfig = [[MobileConfigService alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
@@ -537,9 +541,11 @@
 
         [self.mobileConfig connectWithCompletion:^(BOOL success, id result, NSString *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                self.isConnectingMobileConfig = NO;
                 if (success) {
                     completion(YES);
                 } else {
+                    self.isConnectingMobileConfig = NO;
                     [self log:[NSString stringWithFormat:@"MobileConfig error: %@", error ?: @"Unknown"]];
                     completion(NO);
                 }
