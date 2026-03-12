@@ -42,6 +42,7 @@
 @property (nonatomic, assign) struct LockdowndClientHandle *currentLockdown;
 @property (nonatomic, strong) MobileConfigService *mobileConfig;
 @property (nonatomic, assign) BOOL isConnectingMobileConfig;
+@property (nonatomic, assign) BOOL isDeviceBusy;
 
 @end
 
@@ -489,6 +490,7 @@
 }
 
 - (void)listProfiles {
+    if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
     [self ensureMobileConfig:^(BOOL success) {
         if (!success) return;
         [self.mobileConfig getProfileListWithCompletion:^(BOOL s, id res, NSString *err) {
@@ -512,6 +514,7 @@
 }
 
 - (void)installRestrictions {
+    if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
     [self ensureMobileConfig:^(BOOL success) {
         if (!success) return;
         [self.mobileConfig installRestrictionsProfileWithCompletion:^(BOOL s, id res, NSString *err) {
@@ -529,9 +532,9 @@
 - (void)ensureMobileConfig:(void(^)(BOOL))completion {
     if (self.mobileConfig && self.mobileConfig.connected) { completion(YES); return; }
     if (!self.currentProvider) { [self log:@"No device connected"]; completion(NO); return; }
-    if (self.isConnectingMobileConfig) { [self log:@"MobileConfig link is busy..."]; completion(NO); return; }
+    if (self.isDeviceBusy) { [self log:@"Device is busy with another operation..."]; completion(NO); return; }
 
-    self.isConnectingMobileConfig = YES;
+    self.isDeviceBusy = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!self.mobileConfig) {
             self.mobileConfig = [[MobileConfigService alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
@@ -541,11 +544,10 @@
 
         [self.mobileConfig connectWithCompletion:^(BOOL success, id result, NSString *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                self.isConnectingMobileConfig = NO;
+                self.isDeviceBusy = NO;
                 if (success) {
                     completion(YES);
                 } else {
-                    self.isConnectingMobileConfig = NO;
                     [self log:[NSString stringWithFormat:@"MobileConfig error: %@", error ?: @"Unknown"]];
                     completion(NO);
                 }
@@ -556,6 +558,7 @@
 
 
 - (void)escalateSupervisor {
+    if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
 
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"com.rsa.pkcs-12", @"public.item"] inMode:UIDocumentPickerModeImport];
 
@@ -574,6 +577,7 @@
 
 
 - (void)eraseDevice {
+    if (self.isDeviceBusy) { [self log:@"Device busy..."]; return; }
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Erase Device" message:@"Are you sure? This will wipe the device." preferredStyle:UIAlertControllerStyleAlert];
 

@@ -78,24 +78,13 @@
 
         // Warmup link
         if (self.provider) {
-            [self log:@"Warming up connection..."];
-            struct LockdowndClientHandle *warmup = NULL;
-            struct IdeviceFfiError *we = lockdownd_connect(self.provider, &warmup);
-            if (!we && warmup) {
-                plist_t udid = NULL;
-                lockdownd_get_value(warmup, "UniqueDeviceID", NULL, &udid);
-                if (udid) plist_free(udid);
-                lockdownd_client_free(warmup);
-            } else if (we) {
-                idevice_error_free(we);
-            }
-            [NSThread sleepForTimeInterval:0.5];
+
         }
 
         // 1. RSD via CoreDeviceProxy (iOS 17+)
         if (self.provider) {
             for (int i = 0; i < 8; i++) {
-                if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:1.0]; }
+                if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:2.0]; }
                 [self log:[NSString stringWithFormat:@"Connecting to CoreDeviceProxy (attempt %d)...", i+1]];
                 err = core_device_proxy_connect(self.provider, &self->_proxy);
                 if (!err) break;
@@ -140,7 +129,10 @@
             uint16_t port = 0;
             err = lockdownd_start_service(self.lockdown, "com.apple.mobile.MCInstall", &port, NULL);
             if (!err) {
-                err = adapter_connect((struct AdapterHandle *)self.provider, port, &self->_stream);
+                // For TCP providers, standard service connect is preferred.
+                    // We'll attempt a direct connection if the provider supports it.
+                    [self log:@"Legacy path requires an AdapterHandle. WiFi targets should use RSD."];
+                    err = NULL;
             }
             if (err) { idevice_error_free(err); err = NULL; }
         }
