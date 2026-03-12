@@ -365,7 +365,9 @@
     [self updateIndicator:self.heartbeatIndicator label:self.heartbeatLabel status:@"STABLE" color:[UIColor systemGreenColor] animating:YES];
 
     [self log:@"Analyzing disk images..."];
+    [[HeartbeatManager sharedManager] pauseHeartbeat];
     [[DdiManager sharedManager] checkAndMountDdiWithProvider:provider lockdown:lockdown completion:^(BOOL success, NSString *message) {
+        [[HeartbeatManager sharedManager] resumeHeartbeat];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
                 [self log:message];

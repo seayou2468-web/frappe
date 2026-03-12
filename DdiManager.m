@@ -27,8 +27,17 @@ static inline const char *ddiSafeErrCString(const struct IdeviceFfiError *err) {
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         struct ImageMounterHandle *mounter = NULL;
-        struct IdeviceFfiError *err = image_mounter_connect(provider, &mounter);
-        if (err) { completion(NO, [NSString stringWithFormat:@"DDI Service Connect failed: %s", ddiSafeErrCString(err)]); idevice_error_free(err); return; }
+        struct IdeviceFfiError *err = NULL;
+
+        // 8-attempt retry loop for DDI service on wireless/iOS 17+
+        NSTimeInterval delay = 1.0;
+        for (int i = 0; i < 8; i++) {
+            if (err) { idevice_error_free(err); [NSThread sleepForTimeInterval:delay]; delay *= 1.5; }
+            err = image_mounter_connect(provider, &mounter);
+            if (!err) break;
+        }
+
+        if (err) { completion(NO, [NSString stringWithFormat:@"DDI Service Connect failed (8 attempts): %s", ddiSafeErrCString(err)]); idevice_error_free(err); return; }
 
         BOOL alreadyMounted = NO;
 
@@ -39,33 +48,36 @@ static inline const char *ddiSafeErrCString(const struct IdeviceFfiError *err) {
             if (devices_len > 0) alreadyMounted = YES;
             idevice_plist_array_free(devices, devices_len);
         }
-        if (err) { NSLog(@"[DDI] copy_devices error: %s", ddiSafeErrCString(err)); idevice_error_free(err); }
+        if (err) { NSLog(@"[DDI] copy_devices error: %s", ddiSafeErrCString(err)); idevice_error_free(err); err = NULL; }
 
-        // 2. Double-check with image lookup if list was empty but service says otherwise
+        // 2. Double-check with image lookup
         if (!alreadyMounted) {
             uint8_t *sig = NULL; size_t sig_len = 0;
             err = image_mounter_lookup_image(mounter, "Developer", &sig, &sig_len);
             if (!err && sig) { alreadyMounted = YES; idevice_data_free(sig, sig_len); }
-            if (err) idevice_error_free(err);
+            if (err) { idevice_error_free(err); err = NULL; }
         }
 
-        if (alreadyMounted) {
-            // Verify developer mode status even if already mounted
-            int dev_mode = 0;
+        int dev_mode = 0;
+        // Retry query if needed
+        delay = 1.0;
+        for (int i = 0; i < 3; i++) {
+            if (err) { idevice_error_free(err); [NSThread sleepForTimeInterval:delay]; delay *= 1.5; }
             err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
-            if (!err && dev_mode == 1) {
+            if (!err) break;
+        }
+
+        if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", ddiSafeErrCString(err)]); idevice_error_free(err); image_mounter_free(mounter); return; }
+
+        if (alreadyMounted) {
+            if (dev_mode == 1) {
                 completion(YES, [NSString stringWithFormat:@"DDI Active (iOS %@)", version]);
             } else {
-                if (err) idevice_error_free(err);
                 completion(NO, [NSString stringWithFormat:@"DDI state inconsistent (Mode: %d)", dev_mode]);
             }
             image_mounter_free(mounter);
             return;
         }
-
-        int dev_mode = 0;
-        err = image_mounter_query_developer_mode_status(mounter, &dev_mode);
-        if (err) { completion(NO, [NSString stringWithFormat:@"Dev mode check failed: %s", ddiSafeErrCString(err)]); idevice_error_free(err); image_mounter_free(mounter); return; }
 
         if (dev_mode == 0) { completion(NO, @"Developer Mode is disabled."); image_mounter_free(mounter); return; }
 
