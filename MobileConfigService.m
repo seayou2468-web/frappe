@@ -44,16 +44,16 @@
 
         struct AdapterStreamHandle *ash = (struct AdapterStreamHandle *)self.stream;
         struct IdeviceFfiError *err = adapter_send(ash, (const uint8_t *)&len, sizeof(len));
-        NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "Unknown send error"];
+        if (err) { NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message ?: "");
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "" ?: "Unknown send error"];
             idevice_error_free(err);
             if (completion) completion(NO, nil, msg);
             return;
         }
 
         err = adapter_send(ash, (const uint8_t *)plistData.bytes, plistData.length);
-        NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
-            NSString *msg = [NSString stringWithUTF8String:err->message ?: "Unknown send error"];
+        if (err) { NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message ?: "");
+            NSString *msg = [NSString stringWithUTF8String:err->message ?: "" ?: "Unknown send error"];
             idevice_error_free(err);
             if (completion) completion(NO, nil, msg);
             return;
@@ -64,7 +64,7 @@
         uintptr_t readLen = 0;
         err = adapter_recv(ash, (uint8_t *)&respLenBig, &readLen, sizeof(respLenBig));
         if (err || readLen != sizeof(respLenBig)) {
-            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "Recv error"] : @"Short read for length";
+            NSString *msg = err ? [NSString stringWithUTF8String:err->message ?: "" ?: "Recv error"] : @"Short read for length";
             if (err) idevice_error_free(err);
             if (completion) completion(NO, nil, msg);
             return;
@@ -81,8 +81,8 @@
         while (totalRead < respLen) {
             uintptr_t currentRead = 0;
             err = adapter_recv(ash, (uint8_t *)respData.mutableBytes + totalRead, &currentRead, respLen - totalRead);
-            NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
-                NSString *msg = [NSString stringWithUTF8String:err->message ?: "Recv data error"];
+            if (err) { NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message ?: "");
+                NSString *msg = [NSString stringWithUTF8String:err->message ?: "" ?: "Recv data error"];
                 idevice_error_free(err);
                 if (completion) completion(NO, nil, msg);
                 return;

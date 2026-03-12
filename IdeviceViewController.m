@@ -479,8 +479,16 @@
         if (!success) return;
         [self.mobileConfig getProfileListWithCompletion:^(BOOL s, id res, NSString *err) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (s) {
-                    [self log:[NSString stringWithFormat:@"Profiles: %@", res]];
+                if (s && [res isKindOfClass:[NSDictionary class]]) {
+                    NSDictionary *dict = (NSDictionary *)res;
+                    NSArray *profiles = dict[@"OrderedIdentifiers"];
+                    if ([profiles isKindOfClass:[NSArray class]]) {
+                        [self log:[NSString stringWithFormat:@"Profiles (%lu): %@", (unsigned long)profiles.count, [profiles componentsJoinedByString:@", "]]];
+                    } else {
+                        [self log:[NSString stringWithFormat:@"Profiles: %@", res]];
+                    }
+                } else if (s) {
+                    [self log:[NSString stringWithFormat:@"Unexpected response: %@", res]];
                 } else {
                     [self log:[NSString stringWithFormat:@"List failed: %@", err]];
                 }
