@@ -551,8 +551,18 @@
 
         dispatch_async(dispatch_get_main_queue(), ^{
             if (stream) {
-                self.mobileConfig = [[MobileConfigService alloc] initWithStream:stream];
-                completion(YES);
+                MobileConfigService *svc = [[MobileConfigService alloc] initWithStream:stream];
+                [svc helloWithCompletion:^(BOOL success, id result, NSString *error) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (success) {
+                            self.mobileConfig = svc;
+                            completion(YES);
+                        } else {
+                            [self log:[NSString stringWithFormat:@"Hello handshake failed: %@", error]];
+                            completion(NO);
+                        }
+                    });
+                }];
             } else {
                 [self log:@"Failed to connect to MobileConfig service"];
                 completion(NO);

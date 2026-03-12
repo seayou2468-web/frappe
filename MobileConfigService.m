@@ -27,7 +27,7 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSError *error = nil;
         NSData *plistData = [NSPropertyListSerialization dataWithPropertyList:request
-                                                                       format:NSPropertyListXMLFormat_v1_0
+                                                                       format:NSPropertyListBinaryFormat_v1_0
                                                                       options:0
                                                                         error:&error];
         if (!plistData) {
@@ -44,7 +44,7 @@
 
         struct AdapterStreamHandle *ash = (struct AdapterStreamHandle *)self.stream;
         struct IdeviceFfiError *err = adapter_send(ash, (const uint8_t *)&len, sizeof(len));
-        if (err) {
+        NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "Unknown send error"];
             idevice_error_free(err);
             if (completion) completion(NO, nil, msg);
@@ -52,7 +52,7 @@
         }
 
         err = adapter_send(ash, (const uint8_t *)plistData.bytes, plistData.length);
-        if (err) {
+        NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
             NSString *msg = [NSString stringWithUTF8String:err->message ?: "Unknown send error"];
             idevice_error_free(err);
             if (completion) completion(NO, nil, msg);
@@ -71,7 +71,7 @@
         }
 
         uint32_t respLen = CFSwapInt32BigToHost(respLenBig);
-        if (respLen > 10 * 1024 * 1024) { // 10MB sanity check
+        NSLog(@"[MobileConfig] Response length: %u", respLen); if (respLen > 10 * 1024 * 1024) { // 10MB sanity check
              if (completion) completion(NO, nil, @"Response too large");
              return;
         }
@@ -81,7 +81,7 @@
         while (totalRead < respLen) {
             uintptr_t currentRead = 0;
             err = adapter_recv(ash, (uint8_t *)respData.mutableBytes + totalRead, &currentRead, respLen - totalRead);
-            if (err) {
+            NSLog(@"[MobileConfig] Send/Recv Error: %s", err->message); if (err) {
                 NSString *msg = [NSString stringWithUTF8String:err->message ?: "Recv data error"];
                 idevice_error_free(err);
                 if (completion) completion(NO, nil, msg);
@@ -338,7 +338,7 @@
     };
 
     NSError *error = nil;
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:profile format:NSPropertyListXMLFormat_v1_0 options:0 error:&error];
+    NSData *data = [NSPropertyListSerialization dataWithPropertyList:profile format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
     if (!data) {
         if (completion) completion(NO, nil, @"Failed to build restrictions profile");
         return;
