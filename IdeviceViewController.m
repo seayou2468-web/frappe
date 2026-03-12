@@ -512,28 +512,41 @@
 
         // Try RSD (iOS 17+) via CoreDeviceProxy
         struct CoreDeviceProxyHandle *proxy = NULL;
-        err = core_device_proxy_connect(self.currentProvider, &proxy);
+        // Retry loop for proxy connect
+        for (int i = 0; i < 3; i++) {
+            if (err) { idevice_error_free(err); err = NULL; [NSThread sleepForTimeInterval:1.0]; }
+            err = core_device_proxy_connect(self.currentProvider, &proxy);
+            if (!err) break;
+        }
+
         if (!err && proxy) {
             uint16_t rsdPort = 0;
             err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
             if (!err && rsdPort != 0) {
-                struct ReadWriteOpaque *rsdStream = NULL;
-                err = adapter_connect(self.currentProvider, rsdPort, &rsdStream);
-                if (!err && rsdStream) {
-                    struct RsdHandshakeHandle *handshake = NULL;
-                    err = rsd_handshake_new(rsdStream, &handshake);
-                    if (!err && handshake) {
-                        struct CRsdService *svc = NULL;
-                        err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc);
-                        if (!err && svc) {
-                            err = adapter_connect(self.currentProvider, svc->port, &stream);
-                            rsd_free_service(svc);
+                struct AdapterHandle *tunnelAdapter = NULL;
+                err = core_device_proxy_create_tcp_adapter(proxy, &tunnelAdapter);
+                proxy = NULL; // Consumed
+
+                if (!err && tunnelAdapter) {
+                    struct ReadWriteOpaque *rsdStream = NULL;
+                    err = adapter_connect(tunnelAdapter, rsdPort, &rsdStream);
+                    if (!err && rsdStream) {
+                        struct RsdHandshakeHandle *handshake = NULL;
+                        err = rsd_handshake_new(rsdStream, &handshake);
+                        if (!err && handshake) {
+                            struct CRsdService *svc = NULL;
+                            err = rsd_get_service_info(handshake, "com.apple.mobile.MCInstall.shim.remote", &svc);
+                            if (!err && svc) {
+                                err = adapter_connect(tunnelAdapter, svc->port, &stream);
+                                rsd_free_service(svc);
+                            }
+                            rsd_handshake_free(handshake);
                         }
-                        rsd_handshake_free(handshake);
                     }
+                    adapter_free(tunnelAdapter); // Free adapter if we are done with it
                 }
             }
-            core_device_proxy_free(proxy);
+            if (proxy) core_device_proxy_free(proxy);
         }
 
         if (err || !stream) {
