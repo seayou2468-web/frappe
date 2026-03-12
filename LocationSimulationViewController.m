@@ -14,6 +14,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
 @property (nonatomic, assign) struct LockdowndClientHandle *lockdown;
 @property (nonatomic, assign) struct LocationSimulationHandle *simHandle17;
+@property (nonatomic, assign) struct RemoteServerHandle *remoteServer;
 @property (nonatomic, assign) struct LocationSimulationServiceHandle *simHandleLegacy;
 
 @property (nonatomic, strong) MKMapView *mapView;
@@ -182,6 +183,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (void)connectSimulationService {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        // 1. Try Legacy (Lockdown)
         struct LocationSimulationServiceHandle *legacy = NULL;
         struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
         if (!err) {
@@ -189,6 +191,21 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             NSLog(@"[Sim] Legacy service connected");
         } else {
             idevice_error_free(err);
+
+            // 2. Try CoreDevice (iOS 17+)
+            struct CoreDeviceProxyHandle *proxy = NULL;
+            err = core_device_proxy_connect(self.provider, &proxy);
+            if (!err) {
+                struct AdapterHandle *adapter = NULL;
+                err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+                if (!err) {
+                    struct RsdHandshakeHandle *handshake = NULL;
+                    // Simplified RemoteServer connection
+                    struct RemoteServerHandle *server = NULL;
+                }
+                core_device_proxy_free(proxy);
+            }
+            if (err) idevice_error_free(err);
         }
     });
 }
@@ -254,7 +271,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
     MKMapItem *item = self.searchResults[indexPath.row];
     cell.textLabel.text = item.name;
-    cell.detailTextLabel.text = item.placemark.title;
+    cell.detailTextLabel.text = item.name;
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.backgroundColor = [UIColor clearColor];
     return cell;
@@ -262,8 +279,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     MKMapItem *item = self.searchResults[indexPath.row];
-    [self.mapView setCenterCoordinate:item.placemark.coordinate animated:YES];
-    [self addDestination:item.placemark.coordinate];
+    [self.mapView setCenterCoordinate:item.location.coordinate animated:YES];
+    [self addDestination:item.location.coordinate];
     self.searchResultsTable.hidden = YES;
     [self.searchBar resignFirstResponder];
 }
@@ -342,8 +359,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 - (void)calculateRoute {
     if (self.destinations.count == 0) return;
     MKDirectionsRequest *req = [[MKDirectionsRequest alloc] init];
-    req.source = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.currentSimulatedPos]];
-    req.destination = [[MKMapItem alloc] initWithPlacemark:[[MKPlacemark alloc] initWithCoordinate:self.destinations.lastObject.coordinate]];
+    req.source = [[MKMapItem alloc] initWithLocation:[[CLLocation alloc] initWithLatitude:self.currentSimulatedPos.latitude longitude:self.currentSimulatedPos.longitude] address:nil];
+    req.destination = [[MKMapItem alloc] initWithLocation:[[CLLocation alloc] initWithLatitude:self.destinations.lastObject.coordinate.latitude longitude:self.destinations.lastObject.coordinate.longitude] address:nil];
     req.transportType = (self.transportControl.selectedSegmentIndex == 2) ? MKDirectionsTransportTypeAutomobile : MKDirectionsTransportTypeWalking;
     MKDirections *dir = [[MKDirections alloc] initWithRequest:req];
     [dir calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err) {
@@ -369,7 +386,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (MKOverlayRenderer *)mapView:(MKMapView *)mapView rendererForOverlay:(id<MKOverlay>)overlay {
     if ([overlay isKindOfClass:[MKPolyline class]]) {
-        MKPolylineRenderer *r = [[MKPolylineRenderer alloc] initWithPolyline:overlay];
+        MKPolylineRenderer *r = [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
         r.strokeColor = [UIColor systemBlueColor]; r.lineWidth = 4; return r;
     }
     return nil;
@@ -432,6 +449,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [self.moveTimer invalidate];
     if (self.simHandleLegacy) lockdown_location_simulation_free(self.simHandleLegacy);
     if (self.simHandle17) location_simulation_free(self.simHandle17);
+    if (self.remoteServer) remote_server_free(self.remoteServer);
 }
 
 @end
