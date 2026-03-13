@@ -392,7 +392,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (void)startSimulation {
     MoveMode mode = (MoveMode)self.modeControl.selectedSegmentIndex;
-    self.currentPathPoints = [NSMutableArray array];
+    if (mode != MoveModeRoadAuto) { [self.currentPathPoints removeAllObjects]; }
     self.currentPathIndex = 0;
 
     if (mode == MoveModeStraightAuto) {
@@ -448,7 +448,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     CLLocation *destLoc = [[CLLocation alloc] initWithLatitude:self.destinations.lastObject.coordinate.latitude longitude:self.destinations.lastObject.coordinate.longitude];
     req.source = [[MKMapItem alloc] initWithLocation:sourceLoc address:nil];
     req.destination = [[MKMapItem alloc] initWithLocation:destLoc address:nil];
-    req.transportType = (self.transportControl.selectedSegmentIndex == 2) ? MKDirectionsTransportTypeAutomobile : MKDirectionsTransportTypeWalking;
+    req.transportType = (self.transportControl.selectedSegmentIndex == 0) ? MKDirectionsTransportTypeWalking : MKDirectionsTransportTypeAutomobile;
     MKDirections *dir = [[MKDirections alloc] initWithRequest:req];
     [dir calculateDirectionsWithCompletionHandler:^(MKDirectionsResponse *resp, NSError *err) {
         if (resp.routes.count > 0) {
@@ -470,7 +470,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
                 else { [interpolated addObject:currL]; }
                 prevL = currL;
             }
-            self.currentPathPoints = interpolated;
+            [self.currentPathPoints removeAllObjects];
+            [self.currentPathPoints addObjectsFromArray:interpolated];
             free(coords);
             [self log:@"Route ready"];
             if (self.modeControl.selectedSegmentIndex == MoveModeRoadAuto && ![self.moveTimer isValid]) {
