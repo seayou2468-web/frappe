@@ -18,33 +18,32 @@
 - (instancetype)initWithProvider:(struct IdeviceProviderHandle *)provider isAfc2:(BOOL)isAfc2 {
     self = [super init];
     if (self) {
-        _provider = provider;
-        _isAfc2 = isAfc2;
-        _currentPath = @"/";
-        _items = [[NSMutableArray alloc] init];
+        _provider = provider; _isAfc2 = isAfc2;
+        _currentPath = @"/"; _items = [[NSMutableArray alloc] init];
     }
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = self.isAfc2 ? @"Root" : @"Media";
+    self.title = self.isAfc2 ? @"System Root" : @"Media Staging";
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self connectAfc];
 }
 
 - (void)setupUI {
-    self.headerView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.headerView = [[UIView alloc] init];
     self.headerView.translatesAutoresizingMaskIntoConstraints = NO;
-    [ThemeEngine applyGlassStyleToView:self.headerView cornerRadius:0];
     [self.view addSubview:self.headerView];
+    [ThemeEngine applyGlassStyleToView:self.headerView cornerRadius:0];
 
     self.pathLabel = [[UILabel alloc] init];
     self.pathLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.pathLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
-    self.pathLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
-    self.pathLabel.text = self.currentPath;
+    self.pathLabel.textColor = [UIColor systemBlueColor];
+    self.pathLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBlack];
+    self.pathLabel.text = @"/";
+    self.pathLabel.lineBreakMode = NSLineBreakByTruncatingHead;
     [self.headerView addSubview:self.pathLabel];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -68,7 +67,7 @@
         [self.headerView.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.headerView.heightAnchor constraintEqualToConstant:30],
+        [self.headerView.heightAnchor constraintEqualToConstant:44],
 
         [self.pathLabel.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor constant:15],
         [self.pathLabel.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor constant:-15],
@@ -85,90 +84,60 @@
 }
 
 - (void)connectAfc {
-    [self showLoading:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner startAnimating]; });
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         struct AfcClientHandle *client = NULL;
         struct IdeviceFfiError *err = self.isAfc2 ? afc2_client_connect(self.provider, &client) : afc_client_connect(self.provider, &client);
-
         if (!err) {
             self.afc = client;
-            [self loadPath:self.currentPath];
+            [self loadPath:@"/"];
         } else {
-            [self handleError:err];
+            idevice_error_free(err);
+            dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner stopAnimating]; });
         }
     });
 }
 
-- (void)showLoading:(BOOL)loading {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (loading) [self.spinner startAnimating];
-        else [self.spinner stopAnimating];
-    });
-}
-
-- (void)handleError:(struct IdeviceFfiError *)err {
-    NSString *msg = [NSString stringWithUTF8String:err->message];
-    NSLog(@"[AFC] Error: %@", msg);
-    idevice_error_free(err);
-    [self showLoading:NO];
-}
-
 - (void)loadPath:(NSString *)path {
-    [self showLoading:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner startAnimating]; });
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        char **entries = NULL;
-        size_t count = 0;
+        char **entries = NULL; size_t count = 0;
         struct IdeviceFfiError *err = afc_list_directory(self.afc, [path UTF8String], &entries, &count);
-
         if (!err) {
             NSMutableArray *newList = [NSMutableArray array];
             for (size_t i = 0; i < count; i++) {
                 NSString *name = [NSString stringWithUTF8String:entries[i]];
                 if ([name isEqualToString:@"."] || [name isEqualToString:@".."]) continue;
 
-                NSString *full;
-                if ([path isEqualToString:@"/"]) full = [@"/" stringByAppendingString:name];
-                else full = [path stringByAppendingPathComponent:name];
-
+                NSString *full = [path isEqualToString:@"/"] ? [@"/" stringByAppendingString:name] : [path stringByAppendingPathComponent:name];
                 struct AfcFileInfo info = {0};
                 struct IdeviceFfiError *e2 = afc_get_file_info(self.afc, [full UTF8String], &info);
 
                 BOOL isDir = NO;
                 if (!e2) {
-                    if (info.st_ifmt && (strcmp(info.st_ifmt, "S_IFDIR") == 0 || strcmp(info.st_ifmt, "directory") == 0)) isDir = YES;
+                    if (info.st_ifmt && (strstr(info.st_ifmt, "DIR") || strstr(info.st_ifmt, "directory"))) isDir = YES;
                     afc_file_info_free(&info);
-                } else {
-                    idevice_error_free(e2);
-                    if (![name containsString:@"."]) isDir = YES;
-                }
+                } else { idevice_error_free(e2); if (![name containsString:@"."]) isDir = YES; }
                 [newList addObject:@{@"name": name, @"isDir": @(isDir)}];
             }
-
-            [newList sortUsingComparator:^NSComparisonResult(id obj1, id obj2) {
-                BOOL d1 = [obj1[@"isDir"] boolValue];
-                BOOL d2 = [obj2[@"isDir"] boolValue];
-                if (d1 != d2) return d1 ? NSOrderedAscending : NSOrderedDescending;
-                return [obj1[@"name"] localizedCaseInsensitiveCompare:obj2[@"name"]];
+            [newList sortUsingComparator:^NSComparisonResult(id o1, id o2) {
+                if ([o1[@"isDir"] boolValue] != [o2[@"isDir"] boolValue]) return [o1[@"isDir"] boolValue] ? NSOrderedAscending : NSOrderedDescending;
+                return [o1[@"name"] localizedCaseInsensitiveCompare:o2[@"name"]];
             }];
-
             dispatch_async(dispatch_get_main_queue(), ^{
-                self.items = newList;
-                self.currentPath = path;
-                self.pathLabel.text = path;
-                [self.tableView reloadData];
-                [self.spinner stopAnimating];
+                [self.items removeAllObjects]; [self.items addObjectsFromArray:newList];
+                self.currentPath = path; self.pathLabel.text = path;
+                [self.tableView reloadData]; [self.spinner stopAnimating];
             });
         } else {
-            [self handleError:err];
+            idevice_error_free(err);
+            dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner stopAnimating]; });
         }
     });
 }
 
 - (void)goBack {
-    if ([self.currentPath isEqualToString:@"/"]) {
-        [self.navigationController popViewControllerAnimated:YES];
-        return;
-    }
+    if ([self.currentPath isEqualToString:@"/"]) return;
     NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
     if (parent.length == 0 || [parent isEqualToString:@"."]) parent = @"/";
     [self loadPath:parent];
@@ -177,13 +146,11 @@
 #pragma mark - TableView
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
     NSDictionary *item = self.items[indexPath.row];
-    cell.backgroundColor = [UIColor clearColor];
-    cell.textLabel.textColor = [UIColor whiteColor];
-    cell.textLabel.font = [UIFont systemFontOfSize:15];
+    cell.backgroundColor = [UIColor clearColor]; cell.textLabel.textColor = [UIColor whiteColor];
+    cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     cell.textLabel.text = item[@"name"];
     BOOL isDir = [item[@"isDir"] boolValue];
     cell.imageView.image = [UIImage systemImageNamed:isDir ? @"folder.fill" : @"doc"];
@@ -196,15 +163,11 @@
     NSDictionary *item = self.items[indexPath.row];
     if ([item[@"isDir"] boolValue]) {
         NSString *name = item[@"name"];
-        NSString *newPath;
-        if ([self.currentPath isEqualToString:@"/"]) newPath = [@"/" stringByAppendingString:name];
-        else newPath = [self.currentPath stringByAppendingPathComponent:name];
+        NSString *newPath = [self.currentPath isEqualToString:@"/"] ? [@"/" stringByAppendingString:name] : [self.currentPath stringByAppendingPathComponent:name];
         [self loadPath:newPath];
     }
 }
 
-- (void)dealloc {
-    if (self.afc) afc_client_free(self.afc);
-}
+- (void)dealloc { if (self.afc) afc_client_free(self.afc); }
 
 @end
