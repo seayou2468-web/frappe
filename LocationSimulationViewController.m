@@ -11,7 +11,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     MoveModeMultiPoint
 };
 
-@interface LocationSimulationViewController () <MKMapViewDelegate, UISearchBarDelegate, UITableViewDelegate, UITableViewDataSource>
+@interface LocationSimulationViewController () <MKMapViewDelegate, UISearchBarDelegate, UITableViewDelegate, UITableViewDataSource, CLLocationManagerDelegate>
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
 @property (nonatomic, assign) struct LockdowndClientHandle *lockdown;
 @property (nonatomic, assign) struct LocationSimulationHandle *simHandle17;
@@ -31,6 +31,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, strong) UIButton *favButton;
 @property (nonatomic, strong) UIButton *reverseButton;
 @property (nonatomic, strong) UIButton *centerButton;
+@property (nonatomic, strong) UIButton *realLocButton;
 @property (nonatomic, strong) UILabel *statusLabel;
 
 @property (nonatomic, strong) UIView *joyBox;
@@ -50,6 +51,11 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, assign) NSInteger currentPathIndex;
 @property (nonatomic, assign) double currentSpeedKmH;
 
+@property (nonatomic, strong) CLLocationManager *locManager;
+@property (nonatomic, assign) CLLocationCoordinate2D lastRealPos;
+@property (nonatomic, assign) BOOL followRealPos;
+
+@property (nonatomic, strong) UIVisualEffectView *searchContainer;
 @property (nonatomic, strong) UITableView *searchResultsTable;
 @property (nonatomic, strong) NSArray<MKMapItem *> *searchResults;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *favorites;
@@ -66,6 +72,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
         _currentSpeedKmH = 5.0; _favorites = [NSMutableArray array];
         NSArray *saved = [[NSUserDefaults standardUserDefaults] arrayForKey:@"SimFavorites"];
         if (saved) [_favorites addObjectsFromArray:saved];
+        _locManager = [[CLLocationManager alloc] init]; _locManager.delegate = self;
+        _followRealPos = NO;
     }
     return self;
 }
@@ -74,6 +82,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     [super viewDidLoad];
     self.title = @"Location Simulation"; self.view.backgroundColor = [UIColor blackColor];
     [self setupUI]; [self connectSimulationService];
+    [self.locManager requestWhenInUseAuthorization]; [self.locManager startUpdatingLocation];
     self.currentSimulatedPos = CLLocationCoordinate2DMake(35.6895, 139.6917);
     [self updatePosMarker];
     [self.mapView setRegion:MKCoordinateRegionMakeWithDistance(self.currentSimulatedPos, 1000, 1000) animated:NO];
@@ -83,10 +92,24 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     self.mapView = [[MKMapView alloc] initWithFrame:self.view.bounds]; self.mapView.delegate = self; [self.view addSubview:self.mapView];
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)]; [self.mapView addGestureRecognizer:lp];
 
-    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero]; self.searchBar.delegate = self; self.searchBar.placeholder = @"Search or Lat,Lon..."; self.searchBar.barStyle = UIBarStyleBlack; self.searchBar.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:self.searchBar];
-    self.centerButton = [UIButton buttonWithType:UIButtonTypeSystem]; [self.centerButton setTitle:@"⌖" forState:UIControlStateNormal]; self.centerButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6]; self.centerButton.tintColor = [UIColor whiteColor]; self.centerButton.layer.cornerRadius = 20; self.centerButton.translatesAutoresizingMaskIntoConstraints = NO; [self.centerButton addTarget:self action:@selector(centerOnPos) forControlEvents:UIControlEventTouchUpInside]; [self.view addSubview:self.centerButton];
+    self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero]; self.searchBar.delegate = self; self.searchBar.placeholder = @"Search or Lat,Lon..."; self.searchBar.barStyle = UIBarStyleBlack; self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.searchBar.searchTextField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    self.searchBar.backgroundImage = [[UIImage alloc] init];
+    [self.view addSubview:self.searchBar];
 
-    self.searchResultsTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain]; self.searchResultsTable.delegate = self; self.searchResultsTable.dataSource = self; self.searchResultsTable.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.9]; self.searchResultsTable.hidden = YES; self.searchResultsTable.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:self.searchResultsTable];
+    self.centerButton = [self createCircleBtn:@"⌖" act:@selector(centerOnPos)]; [self.view addSubview:self.centerButton];
+    self.realLocButton = [self createCircleBtn:@"📍" act:@selector(useRealLocation)]; [self.view addSubview:self.realLocButton];
+
+    self.searchContainer = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
+    self.searchContainer.layer.cornerRadius = 20; self.searchContainer.clipsToBounds = YES;
+    self.searchContainer.hidden = YES; self.searchContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.searchContainer];
+
+    self.searchResultsTable = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain]; self.searchResultsTable.delegate = self; self.searchResultsTable.dataSource = self;
+    self.searchResultsTable.backgroundColor = [UIColor clearColor]; self.searchResultsTable.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    self.searchResultsTable.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    self.searchResultsTable.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.searchContainer.contentView addSubview:self.searchResultsTable];
 
     self.controlPanel = [[UIView alloc] initWithFrame:CGRectZero]; self.controlPanel.translatesAutoresizingMaskIntoConstraints = NO; [ThemeEngine applyGlassStyleToView:self.controlPanel cornerRadius:20]; [self.view addSubview:self.controlPanel];
 
@@ -118,7 +141,9 @@ typedef NS_ENUM(NSInteger, MoveMode) {
         [NSLayoutConstraint activateConstraints:@[
             [self.searchBar.topAnchor constraintEqualToAnchor:safe.topAnchor constant:10], [self.searchBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10], [self.searchBar.trailingAnchor constraintEqualToAnchor:self.centerButton.leadingAnchor constant:-10],
             [self.centerButton.centerYAnchor constraintEqualToAnchor:self.searchBar.centerYAnchor], [self.centerButton.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10], [self.centerButton.widthAnchor constraintEqualToConstant:40], [self.centerButton.heightAnchor constraintEqualToConstant:40],
-            [self.searchResultsTable.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor], [self.searchResultsTable.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.searchResultsTable.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.searchResultsTable.heightAnchor constraintEqualToConstant:300],
+            [self.realLocButton.topAnchor constraintEqualToAnchor:self.centerButton.bottomAnchor constant:10], [self.realLocButton.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10], [self.realLocButton.widthAnchor constraintEqualToConstant:40], [self.realLocButton.heightAnchor constraintEqualToConstant:40],
+            [self.searchContainer.topAnchor constraintEqualToAnchor:self.searchBar.bottomAnchor constant:5], [self.searchContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:15], [self.searchContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-15], [self.searchContainer.heightAnchor constraintEqualToConstant:300],
+            [self.searchResultsTable.topAnchor constraintEqualToAnchor:self.searchContainer.topAnchor], [self.searchResultsTable.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor], [self.searchResultsTable.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor], [self.searchResultsTable.bottomAnchor constraintEqualToAnchor:self.searchContainer.bottomAnchor],
             [self.controlPanel.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-10], [self.controlPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10], [self.controlPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10], [self.controlPanel.heightAnchor constraintEqualToConstant:240],
             [self.modeControl.topAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:12], [self.modeControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:12], [self.modeControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-12],
             [self.transportControl.topAnchor constraintEqualToAnchor:self.modeControl.bottomAnchor constant:10], [self.transportControl.leadingAnchor constraintEqualToAnchor:self.controlPanel.leadingAnchor constant:12], [self.transportControl.trailingAnchor constraintEqualToAnchor:self.controlPanel.trailingAnchor constant:-12],
@@ -131,10 +156,14 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             [self.loopLabel.centerYAnchor constraintEqualToAnchor:self.loopSwitch.centerYAnchor], [self.loopLabel.trailingAnchor constraintEqualToAnchor:self.loopSwitch.leadingAnchor constant:-5],
             [self.statusLabel.bottomAnchor constraintEqualToAnchor:self.controlPanel.bottomAnchor constant:-5], [self.statusLabel.centerXAnchor constraintEqualToAnchor:self.controlPanel.centerXAnchor],
             [self.joyBox.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20], [self.joyBox.bottomAnchor constraintEqualToAnchor:self.controlPanel.topAnchor constant:-20], [self.joyBox.widthAnchor constraintEqualToConstant:80], [self.joyBox.heightAnchor constraintEqualToConstant:80],
-            [self.joyUp.topAnchor constraintEqualToAnchor:self.joyBox.topAnchor], [self.joyUp.centerXAnchor constraintEqualToAnchor:self.joyBox.centerXAnchor], [self.joyDown.bottomAnchorAnchor constraintEqualToAnchor:self.joyBox.bottomAnchor], [self.joyDown.centerXAnchor constraintEqualToAnchor:self.joyBox.centerXAnchor],
+            [self.joyUp.topAnchor constraintEqualToAnchor:self.joyBox.topAnchor], [self.joyUp.centerXAnchor constraintEqualToAnchor:self.joyBox.centerXAnchor], [self.joyDown.bottomAnchor constraintEqualToAnchor:self.joyBox.bottomAnchor], [self.joyDown.centerXAnchor constraintEqualToAnchor:self.joyBox.centerXAnchor],
             [self.joyLeft.leadingAnchor constraintEqualToAnchor:self.joyBox.leadingAnchor], [self.joyLeft.centerYAnchor constraintEqualToAnchor:self.joyBox.centerYAnchor], [self.joyRight.trailingAnchor constraintEqualToAnchor:self.joyBox.trailingAnchor], [self.joyRight.centerYAnchor constraintEqualToAnchor:self.joyBox.centerYAnchor]
         ]];
     }
+}
+
+- (UIButton *)createCircleBtn:(NSString *)t act:(SEL)a {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem]; [b setTitle:t forState:UIControlStateNormal]; b.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6]; b.tintColor = [UIColor whiteColor]; b.layer.cornerRadius = 20; b.translatesAutoresizingMaskIntoConstraints = NO; [b addTarget:self action:a forControlEvents:UIControlEventTouchUpInside]; return b;
 }
 
 - (UIButton *)createJoyBtn:(NSString *)t act:(SEL)a {
@@ -147,8 +176,17 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     NSArray *v = @[@"5", @"20", @"40", @"80"]; if (sender.selectedSegmentIndex < v.count) self.speedTextField.text = v[sender.selectedSegmentIndex];
 }
 
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
+    self.lastRealPos = locations.lastObject.coordinate;
+}
+
+- (void)useRealLocation {
+    if (self.lastRealPos.latitude == 0) { [self log:@"REAL LOC UNKNOWN"]; return; }
+    self.currentSimulatedPos = self.lastRealPos; [self updateDeviceLocation:self.currentSimulatedPos]; [self centerOnPos]; [self log:@"SYNC TO REAL"];
+}
+
 - (void)connectSimulationService {
-    [self log:@"Tunneling..."];
+    [self log:@"TUNNELING..."];
     [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:self.lockdown completion:^(BOOL success, NSString *message) {
         if (!success) { [self log:[NSString stringWithFormat:@"DDI FAIL: %@", message]]; return; }
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
@@ -163,7 +201,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
                         self.handshake = handshake; struct RemoteServerHandle *server = NULL; remote_server_connect_rsd(adapter, handshake, &server);
                         if (server) {
                             self.remoteServer = server; struct LocationSimulationHandle *sim17 = NULL; location_simulation_new(server, &sim17);
-                            if (sim17) { self.simHandle17 = sim17; [self log:@"CD Ready"]; return; }
+                            if (sim17) { self.simHandle17 = sim17; [self log:@"CD READY"]; return; }
                         }
                     }
                 }
@@ -171,8 +209,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             }
             if (err) { idevice_error_free(err); }
             struct LocationSimulationServiceHandle *legacy = NULL; err = lockdown_location_simulation_connect(self.provider, &legacy);
-            if (!err) { self.simHandleLegacy = legacy; [self log:@"LD Ready"]; }
-            else { [self log:@"Fail"]; idevice_error_free(err); }
+            if (!err) { self.simHandleLegacy = legacy; [self log:@"LD READY"]; }
+            else { [self log:@"FAIL"]; idevice_error_free(err); }
         });
     }];
 }
@@ -224,37 +262,34 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 #pragma mark - Search
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
-    if (searchText.length < 2) { self.searchResultsTable.hidden = YES; return; }
-    NSArray *p = [searchText componentsSeparatedByString:@","];
-    if (p.count == 2) {
-        double lat = [p[0] doubleValue], lon = [p[1] doubleValue];
-        if (lat != 0 && lon != 0) { [self log:@"COORD IN"]; return; }
-    }
+    if (searchText.length < 2) { dispatch_async(dispatch_get_main_queue(), ^{ self.searchContainer.hidden = YES; }); return; }
     MKLocalSearchRequest *req = [[MKLocalSearchRequest alloc] init]; req.naturalLanguageQuery = searchText;
     [[[MKLocalSearch alloc] initWithRequest:req] startWithCompletionHandler:^(MKLocalSearchResponse *resp, NSError *err) {
-        if (resp) { self.searchResults = resp.mapItems; dispatch_async(dispatch_get_main_queue(), ^{ self.searchResultsTable.hidden = NO; [self.searchResultsTable reloadData]; }); }
+        if (resp) { self.searchResults = resp.mapItems; dispatch_async(dispatch_get_main_queue(), ^{ self.searchContainer.hidden = NO; [self.searchResultsTable reloadData]; }); }
     }];
 }
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
     if ([searchBar.text containsString:@","]) {
         NSArray *p = [searchBar.text componentsSeparatedByString:@","];
-        [self addDestination:CLLocationCoordinate2DMake([p[0] doubleValue], [p[1] doubleValue])];
+        if (p.count == 2) [self addDestination:CLLocationCoordinate2DMake([p[0] doubleValue], [p[1] doubleValue])];
     } [searchBar resignFirstResponder];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.searchResults.count; }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
-    cell.textLabel.textColor = [UIColor whiteColor]; cell.backgroundColor = [UIColor clearColor];
-    if (indexPath.row < self.searchResults.count) { MKMapItem *item = self.searchResults[indexPath.row]; cell.textLabel.text = item.name; cell.detailTextLabel.text = item.name; }
+    cell.textLabel.textColor = [UIColor whiteColor]; cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+    cell.backgroundColor = [UIColor clearColor]; cell.selectedBackgroundView = [[UIView alloc] init]; cell.selectedBackgroundView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    cell.textLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium]; cell.detailTextLabel.font = [UIFont systemFontOfSize:10];
+    if (indexPath.row < self.searchResults.count) { MKMapItem *item = self.searchResults[indexPath.row]; cell.textLabel.text = item.name; cell.detailTextLabel.text = item.placemark.title; }
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.row < self.searchResults.count) {
         MKMapItem *item = self.searchResults[indexPath.row]; [self.mapView setCenterCoordinate:item.location.coordinate animated:YES]; [self addDestination:item.location.coordinate];
-        self.searchResultsTable.hidden = YES; self.searchBar.text = @""; [self.searchBar resignFirstResponder];
+        self.searchContainer.hidden = YES; self.searchBar.text = @""; [self.searchBar resignFirstResponder];
     }
 }
 
@@ -368,6 +403,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 }
 
 - (void)dealloc {
+    [self.locManager stopUpdatingLocation];
     [self.moveTimer invalidate]; if (self.simHandleLegacy) lockdown_location_simulation_free(self.simHandleLegacy);
     if (self.simHandle17) location_simulation_free(self.simHandle17); if (self.remoteServer) remote_server_free(self.remoteServer);
     if (self.handshake) rsd_handshake_free(self.handshake); if (self.adapter) adapter_free(self.adapter);
