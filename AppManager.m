@@ -1457,7 +1457,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             }
 
             NSArray *result = [self parseProfilesPlist:profilesPlist];
-            idevice_plist_free(profilesPlist);
+            plist_free(profilesPlist);
             mcinstall_client_free(mc);
             safeCompletion(result, nil);
         } else {
@@ -1470,8 +1470,15 @@ static BOOL omegaWriteMemory(OmegaSession *s,
                 safeCompletion(nil, msg); return;
             }
 
+            struct AdapterHandle *adapter = NULL;
+            struct IdeviceFfiError *adapterErr = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+            if (adapterErr) {
+                NSString *msg = [NSString stringWithFormat:@"Failed to create adapter: %s", adapterErr->message];
+                idevice_error_free(adapterErr); core_device_proxy_free(proxy);
+                safeCompletion(nil, msg); return;
+            }
             struct ReadWriteOpaque *rsdStream = NULL;
-            struct IdeviceFfiError *streamErr = core_device_proxy_connect_tcp_stream(proxy, rsdPort, &rsdStream);
+            struct IdeviceFfiError *streamErr = adapter_connect(adapter, rsdPort, &rsdStream);
             if (streamErr) {
                 NSString *msg = [NSString stringWithFormat:@"Failed to connect to RSD stream: %s", streamErr->message];
                 idevice_error_free(streamErr); core_device_proxy_free(proxy);
@@ -1495,7 +1502,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             }
 
             NSArray *result = [self parseProfilesPlist:profilesPlist];
-            idevice_plist_free(profilesPlist);
+            plist_free(profilesPlist);
             mcinstall_core_device_client_free(mcCore);
             core_device_proxy_free(proxy);
             safeCompletion(result, nil);
@@ -1504,29 +1511,29 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 }
 
 - (NSArray<ProfileInfo *> *)parseProfilesPlist:(plist_t)plist {
-    if (!plist || idevice_plist_get_node_type(plist) != PLIST_ARRAY) return @[];
-    uint32_t size = idevice_plist_array_get_size(plist);
+    if (!plist || plist_get_node_type(plist) != PLIST_ARRAY) return @[];
+    uint32_t size = plist_array_get_size(plist);
     NSMutableArray *profiles = [NSMutableArray arrayWithCapacity:size];
     for (uint32_t i = 0; i < size; i++) {
-        plist_t item = idevice_plist_array_get_item(plist, i);
-        if (idevice_plist_get_node_type(item) != PLIST_DICT) continue;
+        plist_t item = plist_array_get_item(plist, i);
+        if (plist_get_node_type(item) != PLIST_DICT) continue;
 
         ProfileInfo *info = [[ProfileInfo alloc] init];
 
-        plist_t val = idevice_plist_dict_get_item(item, "PayloadDisplayName");
-        if (val) { char *s = NULL; idevice_plist_get_string_val(val, &s); if (s) { info.displayName = [NSString stringWithUTF8String:s]; free(s); } }
+        plist_t val = plist_dict_get_item(item, "PayloadDisplayName");
+        if (val) { char *s = NULL; plist_get_string_val(val, &s); if (s) { info.displayName = [NSString stringWithUTF8String:s]; free(s); } }
 
-        val = idevice_plist_dict_get_item(item, "PayloadIdentifier");
-        if (val) { char *s = NULL; idevice_plist_get_string_val(val, &s); if (s) { info.identifier = [NSString stringWithUTF8String:s]; free(s); } }
+        val = plist_dict_get_item(item, "PayloadIdentifier");
+        if (val) { char *s = NULL; plist_get_string_val(val, &s); if (s) { info.identifier = [NSString stringWithUTF8String:s]; free(s); } }
 
-        val = idevice_plist_dict_get_item(item, "PayloadOrganization");
-        if (val) { char *s = NULL; idevice_plist_get_string_val(val, &s); if (s) { info.organization = [NSString stringWithUTF8String:s]; free(s); } }
+        val = plist_dict_get_item(item, "PayloadOrganization");
+        if (val) { char *s = NULL; plist_get_string_val(val, &s); if (s) { info.organization = [NSString stringWithUTF8String:s]; free(s); } }
 
-        val = idevice_plist_dict_get_item(item, "PayloadDescription");
-        if (val) { char *s = NULL; idevice_plist_get_string_val(val, &s); if (s) { info.profileDescription = [NSString stringWithUTF8String:s]; free(s); } }
+        val = plist_dict_get_item(item, "PayloadDescription");
+        if (val) { char *s = NULL; plist_get_string_val(val, &s); if (s) { info.profileDescription = [NSString stringWithUTF8String:s]; free(s); } }
 
-        val = idevice_plist_dict_get_item(item, "IsEncrypted");
-        if (val) { uint8_t b = 0; idevice_plist_get_bool_val(val, &b); info.isEncrypted = (b != 0); }
+        val = plist_dict_get_item(item, "IsEncrypted");
+        if (val) { uint8_t b = 0; plist_get_bool_val(val, &b); info.isEncrypted = (b != 0); }
 
         [profiles addObject:info];
     }
@@ -1561,8 +1568,10 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         } else {
             uint16_t rsdPort = 0;
             core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+            struct AdapterHandle *adapter = NULL;
+            core_device_proxy_create_tcp_adapter(proxy, &adapter);
             struct ReadWriteOpaque *rsdStream = NULL;
-            core_device_proxy_connect_tcp_stream(proxy, rsdPort, &rsdStream);
+            adapter_connect(adapter, rsdPort, &rsdStream);
             struct McInstallCoreDeviceClientHandle *mcCore = NULL;
             mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
 
@@ -1607,8 +1616,10 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         } else {
             uint16_t rsdPort = 0;
             core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+            struct AdapterHandle *adapter = NULL;
+            core_device_proxy_create_tcp_adapter(proxy, &adapter);
             struct ReadWriteOpaque *rsdStream = NULL;
-            core_device_proxy_connect_tcp_stream(proxy, rsdPort, &rsdStream);
+            adapter_connect(adapter, rsdPort, &rsdStream);
             struct McInstallCoreDeviceClientHandle *mcCore = NULL;
             mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
 
