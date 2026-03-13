@@ -1,7 +1,7 @@
 #import "AfcBrowserViewController.h"
 #import "ThemeEngine.h"
 
-@interface AfcBrowserViewController () <UITableViewDelegate, UITableViewDataSource>
+@interface AfcBrowserViewController () <UITableViewDelegate, UITableViewDataSource, UIGestureRecognizerDelegate>
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
 @property (nonatomic, assign) struct AfcClientHandle *afc;
 @property (nonatomic, assign) BOOL isAfc2;
@@ -83,7 +83,7 @@
     ]];
 
     UIScreenEdgePanGestureRecognizer *swipe = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeBack:)];
-    swipe.edges = UIRectEdgeLeft;
+    swipe.edges = UIRectEdgeLeft; swipe.delegate = self;
     [self.view addGestureRecognizer:swipe];
 }
 
@@ -138,6 +138,23 @@
             dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner stopAnimating]; });
         }
     });
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if ([gestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
+        // If we are at root, let the navigation controller handle the pop
+        if ([self.currentPath isEqualToString:@"/"]) return NO;
+        return YES;
+    }
+    return YES;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    if ([gestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]] &&
+        [otherGestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
+        return YES;
+    }
+    return NO;
 }
 
 - (void)handleSwipeBack:(UIScreenEdgePanGestureRecognizer *)gesture {
