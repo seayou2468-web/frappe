@@ -6,6 +6,7 @@
 #import "DdiManager.h"
 #import "AppListViewController.h"
 #import "LocationSimulationViewController.h"
+#import "ProfileManagerViewController.h"
 #import <arpa/inet.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -161,8 +162,10 @@
 
     UIButton *appsButton = [self createActionButtonWithTitle:@"BROWSE APPLICATIONS" action:@selector(showAppList)];
     UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];
+    UIButton *profileButton = [self createActionButtonWithTitle:@"CONFIGURATION PROFILES" action:@selector(showProfileManager)];
     [self.mainStack addArrangedSubview:appsButton];
     [self.mainStack addArrangedSubview:simButton];
+    [self.mainStack addArrangedSubview:profileButton];
 }
 
 - (UITextField *)createStyledTextFieldWithFrame:(CGRect)frame placeholder:(NSString *)placeholder {
@@ -372,6 +375,12 @@
 - (void)showLocationSim {
     if (!self.currentProvider) { [self log:@"Link required."]; return; }
     LocationSimulationViewController *vc = [[LocationSimulationViewController alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)showProfileManager {
+    if (!self.currentProvider) { [self log:@"Active link required."]; return; }
+    ProfileManagerViewController *vc = [[ProfileManagerViewController alloc] initWithProvider:self.currentProvider];
     [self.navigationController pushViewController:vc animated:YES];
 }
 

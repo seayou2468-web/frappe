@@ -1,29 +1,29 @@
 import sys
 
-with open('IdeviceViewController.m', 'r') as f:
+with open("IdeviceViewController.m", "r") as f:
     lines = f.readlines()
 
 new_lines = []
 for line in lines:
-    if '#import "AppListViewController.h"' in line:
-        new_lines.append(line)
-        new_lines.append('#import "LocationSimulationViewController.h"\n')
-    elif 'UIButton *appsButton = [self createActionButtonWithTitle:@"BROWSE APPLICATIONS"' in line:
-        new_lines.append(line)
-        new_lines.append('    UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];\n')
-    elif '[self.actionStack addArrangedSubview:appsButton];' in line:
-        new_lines.append(line)
-        new_lines.append('    [self.actionStack addArrangedSubview:simButton];\n')
-    elif '- (void)showAppList {' in line:
-        # Add showLocationSim before showAppList
-        new_lines.append('- (void)showLocationSim {\n')
-        new_lines.append('    if (!self.currentProvider) { [self log:@"Link required."]; return; }\n')
-        new_lines.append('    LocationSimulationViewController *vc = [[LocationSimulationViewController alloc] initWithProvider:self.currentProvider lockdown:self.currentLockdown];\n')
-        new_lines.append('    [self.navigationController pushViewController:vc animated:YES];\n')
-        new_lines.append('}\n\n')
-        new_lines.append(line)
-    else:
-        new_lines.append(line)
+    new_lines.append(line)
+    if '#import "LocationSimulationViewController.h"' in line:
+        new_lines.append('#import "ProfileManagerViewController.h"\n')
 
-with open('IdeviceViewController.m', 'w') as f:
+    if 'UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];' in line:
+        new_lines.append('    UIButton *profileButton = [self createActionButtonWithTitle:@"CONFIGURATION PROFILES" action:@selector(showProfileManager)];\n')
+
+    if '[self.mainStack addArrangedSubview:simButton];' in line:
+        new_lines.append('    [self.mainStack addArrangedSubview:profileButton];\n')
+
+# Add the showProfileManager method
+found_show_location_sim = False
+for i in range(len(new_lines)):
+    if '- (void)showLocationSim {' in new_lines[i]:
+        found_show_location_sim = True
+        continue
+    if found_show_location_sim and new_lines[i].strip() == '}':
+        new_lines.insert(i+1, '\n- (void)showProfileManager {\n    if (!self.currentProvider) { [self log:@"ERROR: NO_ACTIVE_LINK"]; return; }\n    ProfileManagerViewController *vc = [[ProfileManagerViewController alloc] initWithProvider:self.currentProvider];\n    [self.navigationController pushViewController:vc animated:YES];\n}\n')
+        break
+
+with open("IdeviceViewController.m", "w") as f:
     f.writelines(new_lines)
