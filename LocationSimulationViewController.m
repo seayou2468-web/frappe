@@ -17,6 +17,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 @property (nonatomic, assign) struct LocationSimulationHandle *simHandle17;
 @property (nonatomic, assign) struct LocationSimulationServiceHandle *simHandleLegacy;
 @property (nonatomic, assign) struct RemoteServerHandle *remoteServer;
+@property (nonatomic, assign) struct AdapterHandle *adapter;
+@property (nonatomic, assign) struct RsdHandshakeHandle *handshake;
 
 @property (nonatomic, strong) MKMapView *mapView;
 @property (nonatomic, strong) UISearchBar *searchBar;
@@ -207,24 +209,63 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 }
 
 - (void)connectSimulationService {
-    [self log:@"Connecting to DDI..."];
+    [self log:@"Initializing Tunnel..."];
     [[DdiManager sharedManager] checkAndMountDdiWithProvider:self.provider lockdown:self.lockdown completion:^(BOOL success, NSString *message) {
         if (!success) {
             [self log:[NSString stringWithFormat:@"DDI FAIL: %@", message]];
             return;
         }
-        [self log:@"Mounting OK. Starting service..."];
+        [self log:@"DDI Active. Establishing Session..."];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-            if (self.provider) {
-                struct LocationSimulationServiceHandle *legacy = NULL;
-                struct IdeviceFfiError *err = lockdown_location_simulation_connect(self.provider, &legacy);
+            struct IdeviceFfiError *err = NULL;
+
+            // 1. Try iOS 17+ (CoreDevice)
+            struct CoreDeviceProxyHandle *proxy = NULL;
+            err = core_device_proxy_connect(self.provider, &proxy);
+            if (!err) {
+                uint16_t rsdPort = 0;
+                err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
                 if (!err) {
-                    self.simHandleLegacy = legacy;
-                    [self log:@"Legacy Service Ready"];
-                } else {
-                    [self log:[NSString stringWithFormat:@"Legacy ERR: %s", err->message]];
-                    idevice_error_free(err);
+                    struct AdapterHandle *adapter = NULL;
+                    err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+                    if (!err) {
+                        self.adapter = adapter;
+                        struct ReadWriteOpaque *rsdStream = NULL;
+                        err = adapter_connect(adapter, rsdPort, &rsdStream);
+                        if (!err) {
+                            struct RsdHandshakeHandle *handshake = NULL;
+                            err = rsd_handshake_new(rsdStream, &handshake);
+                            if (!err) {
+                                self.handshake = handshake;
+                                struct RemoteServerHandle *server = NULL;
+                                err = remote_server_connect_rsd(adapter, handshake, &server);
+                                if (!err) {
+                                    self.remoteServer = server;
+                                    struct LocationSimulationHandle *sim17 = NULL;
+                                    err = location_simulation_new(server, &sim17);
+                                    if (!err) {
+                                        self.simHandle17 = sim17;
+                                        [self log:@"CoreDevice Service Ready"];
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                if (proxy) core_device_proxy_free(proxy);
+            }
+            if (err) { idevice_error_free(err); err = NULL; }
+
+            // 2. Try Legacy (Lockdown)
+            struct LocationSimulationServiceHandle *legacy = NULL;
+            err = lockdown_location_simulation_connect(self.provider, &legacy);
+            if (!err) {
+                self.simHandleLegacy = legacy;
+                [self log:@"Legacy Service Ready"];
+            } else {
+                [self log:[NSString stringWithFormat:@"FAIL: %s", err->message]];
+                idevice_error_free(err);
             }
         });
     }];
@@ -271,9 +312,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
 
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
     if (searchText.length < 2) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.searchResultsTable.hidden = YES;
-        });
+        dispatch_async(dispatch_get_main_queue(), ^{ self.searchResultsTable.hidden = YES; });
         return;
     }
     MKLocalSearchRequest *request = [[MKLocalSearchRequest alloc] init];
@@ -345,7 +384,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     MoveMode mode = (MoveMode)self.modeControl.selectedSegmentIndex;
     if (mode == MoveModeDirect) {
         [self updateDeviceLocation:self.destinations.firstObject.coordinate];
-        [self log:@"Jump successful"];
+        [self log:@"Direct teleport successful"];
     } else {
         [self startSimulation];
     }
@@ -427,11 +466,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             CLLocation *prevL = nil;
             for (NSUInteger i = 0; i < count; i++) {
                 CLLocation *currL = [[CLLocation alloc] initWithLatitude:coords[i].latitude longitude:coords[i].longitude];
-                if (prevL) {
-                    [self interpolateBetween:prevL and:currL into:interpolated];
-                } else {
-                    [interpolated addObject:currL];
-                }
+                if (prevL) { [self interpolateBetween:prevL and:currL into:interpolated]; }
+                else { [interpolated addObject:currL]; }
                 prevL = currL;
             }
             self.currentPathPoints = interpolated;
@@ -440,9 +476,7 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             if (self.modeControl.selectedSegmentIndex == MoveModeRoadAuto && ![self.moveTimer isValid]) {
                 dispatch_async(dispatch_get_main_queue(), ^{ [self startSimulation]; });
             }
-        } else {
-            [self log:@"Route failed"];
-        }
+        } else { [self log:@"Route failed"]; }
     }];
 }
 
@@ -474,17 +508,11 @@ typedef NS_ENUM(NSInteger, MoveMode) {
             snprintf(lat, 32, "%.8f", coord.latitude);
             snprintf(lon, 32, "%.8f", coord.longitude);
             struct IdeviceFfiError *err = lockdown_location_simulation_set(self.simHandleLegacy, lat, lon);
-            if (err) {
-                NSLog(@"[SimVC] Legacy set failed: %s", err->message);
-                idevice_error_free(err);
-            }
+            if (err) { NSLog(@"[SimVC] Legacy set failed: %s", err->message); idevice_error_free(err); }
         }
         if (self.simHandle17) {
             struct IdeviceFfiError *err = location_simulation_set(self.simHandle17, coord.latitude, coord.longitude);
-            if (err) {
-                NSLog(@"[SimVC] 17 set failed: %s", err->message);
-                idevice_error_free(err);
-            }
+            if (err) { NSLog(@"[SimVC] 17 set failed: %s", err->message); idevice_error_free(err); }
         }
     });
 }
@@ -521,6 +549,8 @@ typedef NS_ENUM(NSInteger, MoveMode) {
     if (self.simHandleLegacy) lockdown_location_simulation_free(self.simHandleLegacy);
     if (self.simHandle17) location_simulation_free(self.simHandle17);
     if (self.remoteServer) remote_server_free(self.remoteServer);
+    if (self.handshake) rsd_handshake_free(self.handshake);
+    if (self.adapter) adapter_free(self.adapter);
 }
 
 @end
