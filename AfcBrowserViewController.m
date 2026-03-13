@@ -9,6 +9,8 @@
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *items;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, strong) UILabel *pathLabel;
+@property (nonatomic, strong) UIView *headerView;
 @end
 
 @implementation AfcBrowserViewController
@@ -19,58 +21,100 @@
         _provider = provider;
         _isAfc2 = isAfc2;
         _currentPath = @"/";
-        _items = [NSMutableArray array];
+        _items = [[NSMutableArray alloc] init];
     }
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = self.isAfc2 ? @"AFC2 (Root)" : @"AFC (Media)";
+    self.title = self.isAfc2 ? @"Root" : @"Media";
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self connectAfc];
 }
 
 - (void)setupUI {
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
+    self.headerView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.headerView.translatesAutoresizingMaskIntoConstraints = NO;
+    [ThemeEngine applyGlassStyleToView:self.headerView cornerRadius:0];
+    [self.view addSubview:self.headerView];
+
+    self.pathLabel = [[UILabel alloc] init];
+    self.pathLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.pathLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
+    self.pathLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    self.pathLabel.text = self.currentPath;
+    [self.headerView addSubview:self.pathLabel];
+
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.delegate = self; self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
     self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
     [self.view addSubview:self.tableView];
-    [ThemeEngine applyGlassStyleToView:self.tableView cornerRadius:0];
 
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     self.spinner.color = [UIColor whiteColor];
-    self.spinner.center = self.view.center;
+    self.spinner.translatesAutoresizingMaskIntoConstraints = NO;
     self.spinner.hidesWhenStopped = YES;
     [self.view addSubview:self.spinner];
 
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Back" style:UIBarButtonItemStylePlain target:self action:@selector(goBack)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Parent" style:UIBarButtonItemStylePlain target:self action:@selector(goBack)];
+
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.headerView.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.headerView.heightAnchor constraintEqualToConstant:30],
+
+        [self.pathLabel.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor constant:15],
+        [self.pathLabel.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor constant:-15],
+        [self.pathLabel.centerYAnchor constraintEqualToAnchor:self.headerView.centerYAnchor],
+
+        [self.tableView.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+
+        [self.spinner.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.spinner.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
+    ]];
 }
 
 - (void)connectAfc {
-    [self.spinner startAnimating];
+    [self showLoading:YES];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         struct AfcClientHandle *client = NULL;
-        struct IdeviceFfiError *err = NULL;
-        if (self.isAfc2) err = afc2_client_connect(self.provider, &client);
-        else err = afc_client_connect(self.provider, &client);
+        struct IdeviceFfiError *err = self.isAfc2 ? afc2_client_connect(self.provider, &client) : afc_client_connect(self.provider, &client);
 
         if (!err) {
             self.afc = client;
             [self loadPath:self.currentPath];
         } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.spinner stopAnimating];
-                NSLog(@"[AFC] Connect failed: %s", err->message);
-                idevice_error_free(err);
-            });
+            [self handleError:err];
         }
     });
 }
 
+- (void)showLoading:(BOOL)loading {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (loading) [self.spinner startAnimating];
+        else [self.spinner stopAnimating];
+    });
+}
+
+- (void)handleError:(struct IdeviceFfiError *)err {
+    NSString *msg = [NSString stringWithUTF8String:err->message];
+    NSLog(@"[AFC] Error: %@", msg);
+    idevice_error_free(err);
+    [self showLoading:NO];
+}
+
 - (void)loadPath:(NSString *)path {
+    [self showLoading:YES];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         char **entries = NULL;
         size_t count = 0;
@@ -82,16 +126,21 @@
                 NSString *name = [NSString stringWithUTF8String:entries[i]];
                 if ([name isEqualToString:@"."] || [name isEqualToString:@".."]) continue;
 
-                NSString *full = [path stringByAppendingPathComponent:name];
+                NSString *full;
+                if ([path isEqualToString:@"/"]) full = [@"/" stringByAppendingString:name];
+                else full = [path stringByAppendingPathComponent:name];
+
                 struct AfcFileInfo info = {0};
                 struct IdeviceFfiError *e2 = afc_get_file_info(self.afc, [full UTF8String], &info);
 
                 BOOL isDir = NO;
                 if (!e2) {
-                    if (info.st_ifmt && strcmp(info.st_ifmt, "S_IFDIR") == 0) isDir = YES;
+                    if (info.st_ifmt && (strcmp(info.st_ifmt, "S_IFDIR") == 0 || strcmp(info.st_ifmt, "directory") == 0)) isDir = YES;
                     afc_file_info_free(&info);
-                } else { idevice_error_free(e2); }
-
+                } else {
+                    idevice_error_free(e2);
+                    if (![name containsString:@"."]) isDir = YES;
+                }
                 [newList addObject:@{@"name": name, @"isDir": @(isDir)}];
             }
 
@@ -103,20 +152,14 @@
             }];
 
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self.items removeAllObjects];
-                [self.items addObjectsFromArray:newList];
+                self.items = newList;
                 self.currentPath = path;
-                self.title = [path lastPathComponent].length > 0 ? [path lastPathComponent] : (self.isAfc2 ? @"Root" : @"Media");
+                self.pathLabel.text = path;
                 [self.tableView reloadData];
                 [self.spinner stopAnimating];
             });
-            // Entries free is missing in idevice.h? Usually it's afc_free_directory_entries.
-            // Given the pattern, let's assume it should exist but maybe I missed it.
         } else {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.spinner stopAnimating];
-                idevice_error_free(err);
-            });
+            [self handleError:err];
         }
     });
 }
@@ -127,8 +170,7 @@
         return;
     }
     NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
-    if (parent.length == 0) parent = @"/";
-    [self.spinner startAnimating];
+    if (parent.length == 0 || [parent isEqualToString:@"."]) parent = @"/";
     [self loadPath:parent];
 }
 
@@ -141,9 +183,11 @@
     NSDictionary *item = self.items[indexPath.row];
     cell.backgroundColor = [UIColor clearColor];
     cell.textLabel.textColor = [UIColor whiteColor];
+    cell.textLabel.font = [UIFont systemFontOfSize:15];
     cell.textLabel.text = item[@"name"];
-    cell.imageView.image = [UIImage systemImageNamed:[item[@"isDir"] boolValue] ? @"folder.fill" : @"doc"];
-    cell.imageView.tintColor = [item[@"isDir"] boolValue] ? [UIColor systemBlueColor] : [UIColor systemGrayColor];
+    BOOL isDir = [item[@"isDir"] boolValue];
+    cell.imageView.image = [UIImage systemImageNamed:isDir ? @"folder.fill" : @"doc"];
+    cell.imageView.tintColor = isDir ? [UIColor systemBlueColor] : [UIColor systemGrayColor];
     return cell;
 }
 
@@ -151,8 +195,10 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     NSDictionary *item = self.items[indexPath.row];
     if ([item[@"isDir"] boolValue]) {
-        NSString *newPath = [self.currentPath stringByAppendingPathComponent:item[@"name"]];
-        [self.spinner startAnimating];
+        NSString *name = item[@"name"];
+        NSString *newPath;
+        if ([self.currentPath isEqualToString:@"/"]) newPath = [@"/" stringByAppendingString:name];
+        else newPath = [self.currentPath stringByAppendingPathComponent:name];
         [self loadPath:newPath];
     }
 }
