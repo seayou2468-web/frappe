@@ -9,6 +9,7 @@
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *items;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, strong) UIScreenEdgePanGestureRecognizer *customSwipeGesture;
 @property (nonatomic, strong) UILabel *pathLabel;
 @property (nonatomic, strong) UIView *headerView;
 @end
@@ -30,6 +31,27 @@
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self connectAfc];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self updatePopGestureState];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    // Always restore system pop gesture when leaving
+    if (self.navigationController.interactivePopGestureRecognizer) {
+        self.navigationController.interactivePopGestureRecognizer.enabled = YES;
+    }
+}
+
+- (void)updatePopGestureState {
+    BOOL isAtRoot = [self.currentPath isEqualToString:@"/"];
+    if (self.navigationController.interactivePopGestureRecognizer) {
+        // Disable system back-pop gesture when deep in folders so our custom one can work
+        self.navigationController.interactivePopGestureRecognizer.enabled = isAtRoot;
+    }
 }
 
 - (void)setupUI {
@@ -82,9 +104,9 @@
         [self.spinner.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
     ]];
 
-    UIScreenEdgePanGestureRecognizer *swipe = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeBack:)];
-    swipe.edges = UIRectEdgeLeft; swipe.delegate = self;
-    [self.view addGestureRecognizer:swipe];
+    self.customSwipeGesture = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeBack:)];
+    self.customSwipeGesture.edges = UIRectEdgeLeft; self.customSwipeGesture.delegate = self;
+    [self.view addGestureRecognizer:self.customSwipeGesture];
 }
 
 - (void)connectAfc {
@@ -132,6 +154,7 @@
                 [self.items removeAllObjects]; [self.items addObjectsFromArray:newList];
                 self.currentPath = path; self.pathLabel.text = path;
                 [self.tableView reloadData]; [self.spinner stopAnimating];
+                [self updatePopGestureState];
             });
         } else {
             idevice_error_free(err);
@@ -141,10 +164,8 @@
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
-    if ([gestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
-        // If we are at root, let the navigation controller handle the pop
-        if ([self.currentPath isEqualToString:@"/"]) return NO;
-        return YES;
+    if (gestureRecognizer == self.customSwipeGesture) {
+        return ![self.currentPath isEqualToString:@"/"];
     }
     return YES;
 }
@@ -159,14 +180,22 @@
 
 - (void)handleSwipeBack:(UIScreenEdgePanGestureRecognizer *)gesture {
     if (gesture.state == UIGestureRecognizerStateEnded) {
+        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [gen impactOccurred];
         [self goBack];
     }
 }
 
 - (void)goBack {
-    if ([self.currentPath isEqualToString:@"/"]) return;
+    if ([self.currentPath isEqualToString:@"/"]) {
+        [self.navigationController popViewControllerAnimated:YES];
+        return;
+    }
     NSString *parent = [self.currentPath stringByDeletingLastPathComponent];
     if (parent.length == 0 || [parent isEqualToString:@"."]) parent = @"/";
+
+    // Add a simple transition effect for "folder back" if desired,
+    // but just loading the path is standard for this app.
     [self loadPath:parent];
 }
 
