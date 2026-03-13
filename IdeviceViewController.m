@@ -6,6 +6,7 @@
 #import "DdiManager.h"
 #import "AppListViewController.h"
 #import "LocationSimulationViewController.h"
+#import "AfcBrowserViewController.h"
 #import <arpa/inet.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -161,8 +162,12 @@
 
     UIButton *appsButton = [self createActionButtonWithTitle:@"BROWSE APPLICATIONS" action:@selector(showAppList)];
     UIButton *simButton = [self createActionButtonWithTitle:@"LOCATION SIMULATION" action:@selector(showLocationSim)];
+    UIButton *afcButton = [self createActionButtonWithTitle:@"AFC (MEDIA)" action:@selector(showAfc)];
+    UIButton *afc2Button = [self createActionButtonWithTitle:@"AFC2 (ROOT)" action:@selector(showAfc2)];
     [self.mainStack addArrangedSubview:appsButton];
     [self.mainStack addArrangedSubview:simButton];
+    [self.mainStack addArrangedSubview:afcButton];
+    [self.mainStack addArrangedSubview:afc2Button];
 }
 
 - (UITextField *)createStyledTextFieldWithFrame:(CGRect)frame placeholder:(NSString *)placeholder {
@@ -367,6 +372,18 @@
     row.textColor = [UIColor whiteColor]; row.font = [UIFont systemFontOfSize:13 weight:UIFontWeightLight];
     row.text = [NSString stringWithFormat:@"%@: %@", key, value];
     [self.infoStack addArrangedSubview:row];
+}
+
+- (void)showAfc {
+    if (!self.currentProvider) { [self log:@"Link required."]; return; }
+    AfcBrowserViewController *vc = [[AfcBrowserViewController alloc] initWithProvider:self.currentProvider isAfc2:NO];
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)showAfc2 {
+    if (!self.currentProvider) { [self log:@"Link required."]; return; }
+    AfcBrowserViewController *vc = [[AfcBrowserViewController alloc] initWithProvider:self.currentProvider isAfc2:YES];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)showLocationSim {
