@@ -1430,6 +1430,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
 
 
+
 - (void)fetchProfilesWithProvider:(struct IdeviceProviderHandle *)provider completion:(void (^)(NSArray<ProfileInfo *> *profiles, NSString *error))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         void (^safeCompletion)(NSArray *, NSString *) = ^(NSArray *p, NSString *e) {
@@ -1438,57 +1439,51 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
-        if (!err && proxy) {
-            uint16_t rsdPort = 0;
-            core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
-            struct AdapterHandle *adapter = NULL;
-            core_device_proxy_create_tcp_adapter(proxy, &adapter);
-            struct ReadWriteOpaque *rsdStream = NULL;
-            adapter_connect(adapter, rsdPort, &rsdStream);
-
-            struct McInstallCoreDeviceClientHandle *mcCore = NULL;
-            struct IdeviceFfiError *mcErr = mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
-            if (mcErr) {
-                idevice_error_free(mcErr); adapter_free(adapter);
-                safeCompletion(nil, @"Modern MCInstall connection failed."); return;
-            }
-
-            plist_t profilesPlist = NULL;
-            struct IdeviceFfiError *listErr = mcinstall_core_device_get_profile_list(mcCore, &profilesPlist);
-            if (listErr) {
-                NSString *msg = [NSString stringWithFormat:@"Modern List Error: %s", listErr->message];
-                idevice_error_free(listErr); mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
-                safeCompletion(nil, msg); return;
-            }
-
-            NSArray *result = [self parseProfilesPlist:profilesPlist];
-            plist_free(profilesPlist);
-            mcinstall_core_device_client_free(mcCore);
-            adapter_free(adapter);
-            safeCompletion(result, nil);
-        } else {
-            if (err) idevice_error_free(err);
-            if (proxy) core_device_proxy_free(proxy);
-
-            struct McInstallClientHandle *mc = NULL;
-            struct IdeviceFfiError *mcErr = mcinstall_connect(provider, &mc);
-            if (mcErr) {
-                safeCompletion(nil, [NSString stringWithFormat:@"Legacy Connection Error: %s", mcErr->message]);
-                idevice_error_free(mcErr); return;
-            }
-
-            plist_t profilesPlist = NULL;
-            struct IdeviceFfiError *listErr = mcinstall_get_profile_list(mc, &profilesPlist);
-            if (listErr) {
-                safeCompletion(nil, [NSString stringWithFormat:@"Legacy List Error: %s", listErr->message]);
-                idevice_error_free(listErr); mcinstall_client_free(mc); return;
-            }
-
-            NSArray *result = [self parseProfilesPlist:profilesPlist];
-            plist_free(profilesPlist);
-            mcinstall_client_free(mc);
-            safeCompletion(result, nil);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
+            idevice_error_free(err); return;
         }
+
+        uint16_t rsdPort = 0;
+        err = core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"RSD Port Error: %s", err->message]);
+            idevice_error_free(err); core_device_proxy_free(proxy); return;
+        }
+
+        struct AdapterHandle *adapter = NULL;
+        err = core_device_proxy_create_tcp_adapter(proxy, &adapter);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"Adapter Error: %s", err->message]);
+            idevice_error_free(err); return;
+        }
+
+        struct ReadWriteOpaque *rsdStream = NULL;
+        err = adapter_connect(adapter, rsdPort, &rsdStream);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"Stream Error: %s", err->message]);
+            idevice_error_free(err); adapter_free(adapter); return;
+        }
+
+        struct McInstallCoreDeviceClientHandle *mcCore = NULL;
+        err = mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"MCInstall CoreDevice Error: %s", err->message]);
+            idevice_error_free(err); adapter_free(adapter); return;
+        }
+
+        plist_t profilesPlist = NULL;
+        err = mcinstall_core_device_get_profile_list(mcCore, &profilesPlist);
+        if (err) {
+            safeCompletion(nil, [NSString stringWithFormat:@"Profile List Error: %s", err->message]);
+            idevice_error_free(err); mcinstall_core_device_client_free(mcCore); adapter_free(adapter); return;
+        }
+
+        NSArray *result = [self parseProfilesPlist:profilesPlist];
+        plist_free(profilesPlist);
+        mcinstall_core_device_client_free(mcCore);
+        adapter_free(adapter);
+        safeCompletion(result, nil);
     });
 }
 
@@ -1542,44 +1537,29 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
-        if (!err && proxy) {
-            uint16_t rsdPort = 0;
-            core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
-            struct AdapterHandle *adapter = NULL;
-            core_device_proxy_create_tcp_adapter(proxy, &adapter);
-            struct ReadWriteOpaque *rsdStream = NULL;
-            adapter_connect(adapter, rsdPort, &rsdStream);
-
-            struct McInstallCoreDeviceClientHandle *mcCore = NULL;
-            mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
-
-            struct IdeviceFfiError *instErr = mcinstall_core_device_install_profile(mcCore, [profileData bytes], [profileData length]);
-            if (instErr) {
-                NSString *msg = [NSString stringWithFormat:@"Modern Install Error: %s", instErr->message];
-                idevice_error_free(instErr); mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
-                safeCompletion(NO, msg); return;
-            }
-            mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
-            safeCompletion(YES, @"Profile installed (Modern).");
-        } else {
-            if (err) idevice_error_free(err);
-            if (proxy) core_device_proxy_free(proxy);
-
-            struct McInstallClientHandle *mc = NULL;
-            struct IdeviceFfiError *mcErr = mcinstall_connect(provider, &mc);
-            if (mcErr) {
-                safeCompletion(NO, [NSString stringWithFormat:@"Legacy Connection Error: %s", mcErr->message]);
-                idevice_error_free(mcErr); return;
-            }
-
-            struct IdeviceFfiError *instErr = mcinstall_install_profile(mc, [profileData bytes], [profileData length]);
-            if (instErr) {
-                safeCompletion(NO, [NSString stringWithFormat:@"Legacy Install Error: %s", instErr->message]);
-                idevice_error_free(instErr); mcinstall_client_free(mc); return;
-            }
-            mcinstall_client_free(mc);
-            safeCompletion(YES, @"Profile installed.");
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
+            idevice_error_free(err); return;
         }
+
+        uint16_t rsdPort = 0;
+        core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+        struct AdapterHandle *adapter = NULL;
+        core_device_proxy_create_tcp_adapter(proxy, &adapter);
+        struct ReadWriteOpaque *rsdStream = NULL;
+        adapter_connect(adapter, rsdPort, &rsdStream);
+
+        struct McInstallCoreDeviceClientHandle *mcCore = NULL;
+        mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
+
+        struct IdeviceFfiError *instErr = mcinstall_core_device_install_profile(mcCore, [profileData bytes], [profileData length]);
+        if (instErr) {
+            NSString *msg = [NSString stringWithFormat:@"Install Error: %s", instErr->message];
+            idevice_error_free(instErr); mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
+            safeCompletion(NO, msg); return;
+        }
+        mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
+        safeCompletion(YES, @"Profile installed successfully (RSD).");
     });
 }
 
@@ -1592,44 +1572,29 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         const char *cid = [identifier UTF8String];
         struct CoreDeviceProxyHandle *proxy = NULL;
         struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
-        if (!err && proxy) {
-            uint16_t rsdPort = 0;
-            core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
-            struct AdapterHandle *adapter = NULL;
-            core_device_proxy_create_tcp_adapter(proxy, &adapter);
-            struct ReadWriteOpaque *rsdStream = NULL;
-            adapter_connect(adapter, rsdPort, &rsdStream);
-
-            struct McInstallCoreDeviceClientHandle *mcCore = NULL;
-            mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
-
-            struct IdeviceFfiError *remErr = mcinstall_core_device_remove_profile(mcCore, cid);
-            if (remErr) {
-                NSString *msg = [NSString stringWithFormat:@"Modern Remove Error: %s", remErr->message];
-                idevice_error_free(remErr); mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
-                safeCompletion(NO, msg); return;
-            }
-            mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
-            safeCompletion(YES, @"Profile removed (Modern).");
-        } else {
-            if (err) idevice_error_free(err);
-            if (proxy) core_device_proxy_free(proxy);
-
-            struct McInstallClientHandle *mc = NULL;
-            struct IdeviceFfiError *mcErr = mcinstall_connect(provider, &mc);
-            if (mcErr) {
-                safeCompletion(NO, [NSString stringWithFormat:@"Legacy Connection Error: %s", mcErr->message]);
-                idevice_error_free(mcErr); return;
-            }
-
-            struct IdeviceFfiError *remErr = mcinstall_remove_profile(mc, cid);
-            if (remErr) {
-                safeCompletion(NO, [NSString stringWithFormat:@"Legacy Remove Error: %s", remErr->message]);
-                idevice_error_free(remErr); mcinstall_client_free(mc); return;
-            }
-            mcinstall_client_free(mc);
-            safeCompletion(YES, @"Profile removed.");
+        if (err) {
+            safeCompletion(NO, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
+            idevice_error_free(err); return;
         }
+
+        uint16_t rsdPort = 0;
+        core_device_proxy_get_server_rsd_port(proxy, &rsdPort);
+        struct AdapterHandle *adapter = NULL;
+        core_device_proxy_create_tcp_adapter(proxy, &adapter);
+        struct ReadWriteOpaque *rsdStream = NULL;
+        adapter_connect(adapter, rsdPort, &rsdStream);
+
+        struct McInstallCoreDeviceClientHandle *mcCore = NULL;
+        mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
+
+        struct IdeviceFfiError *remErr = mcinstall_core_device_remove_profile(mcCore, cid);
+        if (remErr) {
+            NSString *msg = [NSString stringWithFormat:@"Remove Error: %s", remErr->message];
+            idevice_error_free(remErr); mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
+            safeCompletion(NO, msg); return;
+        }
+        mcinstall_core_device_client_free(mcCore); adapter_free(adapter);
+        safeCompletion(YES, @"Profile removed successfully (RSD).");
     });
 }
 @end
