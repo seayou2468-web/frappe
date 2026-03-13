@@ -11,6 +11,8 @@
 #import "MainContainerViewController.h"
 #import "BookmarksManager.h"
 #import "ZipManager.h"
+#import "AppManager.h"
+#import "IdeviceViewController.h"
 #import "PlistEditorViewController.h"
 #import "TextEditorViewController.h"
 #import "ImageViewerViewController.h"
@@ -216,6 +218,7 @@
     NSString *targetPath = [item.fullPath stringByResolvingSymlinksInPath];
     if (!targetPath) return;
     NSString *ext = [targetPath pathExtension].lowercaseString;
+    if ([ext isEqualToString:@"mobileconfig"]) { [self showProfileInstallOption:targetPath]; return; }
     UIViewController *vc = nil;
     if ([ext isEqualToString:@"plist"]) vc = [[PlistEditorViewController alloc] initWithPath:targetPath];
     else if ([@[@"txt", @"xml", @"json", @"h", @"m", @"c", @"cpp"] containsObject:ext]) vc = [[TextEditorViewController alloc] initWithPath:targetPath];
@@ -463,4 +466,61 @@
 
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
+
+- (void)showProfileInstallOption:(NSString *)path {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Install Profile" message:@"Do you want to install this configuration profile on the connected iDevice?" preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Install" style:UIAlertActionStyleDefault handler:^(UIAlertAction *  action) {
+        [self installProfile:path];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"View as Text" style:UIAlertActionStyleDefault handler:^(UIAlertAction *  action) {
+        TextEditorViewController *vc = [[TextEditorViewController alloc] initWithPath:path];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)installProfile:(NSString *)path {
+    // Find active provider from IdeviceViewController (singleton or stored state would be better, but let's try to find it)
+    // For now, we assume there might be a better way, but we'll try to get it from a known place if possible.
+    // In this app, IdeviceViewController seems to hold the provider.
+
+    // Let's look for the IdeviceViewController in the navigation stack or similar.
+    // However, AppManager doesn't store the provider.
+    // For this implementation, we might need a way to access the current provider globally.
+
+    // A quick hack for this specific project structure:
+    // We can try to find the IdeviceViewController instance.
+
+    IdeviceViewController *deviceVC = nil;
+    for (UIViewController *vc in self.navigationController.viewControllers) {
+        if ([vc isKindOfClass:[IdeviceViewController class]]) {
+            deviceVC = (IdeviceViewController *)vc;
+            break;
+        }
+    }
+
+    if (!deviceVC || !deviceVC.currentProvider) {
+        UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Error" message:@"No active iDevice connection found. Please connect to a device in the iDevice tab first." preferredStyle:UIAlertControllerStyleAlert];
+        [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:err animated:YES completion:nil];
+        return;
+    }
+
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data) return;
+
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    spinner.center = self.view.center;
+    [self.view addSubview:spinner];
+    [spinner startAnimating];
+
+    [[AppManager sharedManager] installProfileData:data provider:deviceVC.currentProvider completion:^(BOOL success, NSString *message) {
+        [spinner stopAnimating];
+        [spinner removeFromSuperview];
+        UIAlertController *res = [UIAlertController alertControllerWithTitle:success ? @"Success" : @"Error" message:message preferredStyle:UIAlertControllerStyleAlert];
+        [res addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:res animated:YES completion:nil];
+    }];
+}
 @end
