@@ -24,6 +24,8 @@
 			</dict>
 		</dict>
 	</dict>
+		<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is required for simulation and original position recovery.</string>
 	<key>LDEBundleShortVersion</key>
 	<string>1.0</string>
 	<key>LDEBundleVersion</key>
@@ -44,6 +46,8 @@
 		<string>Foundation</string>
 		<string>-framework</string>
 		<string>UIKit</string>
+		<string>CoreLocation</string>
+		<string>MapKit</string>
 		<string>-framework</string>
 		<string>CoreGraphics</string>
 		<string>-framework</string>
