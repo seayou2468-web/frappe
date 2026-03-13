@@ -379,7 +379,7 @@
 }
 
 - (void)showProfileManager {
-    if (!self.currentProvider) { [self log:@"ERROR: NO_ACTIVE_LINK"]; return; }
+    if (!self.currentProvider) { [self log:@"Active link required."]; return; }
     ProfileManagerViewController *vc = [[ProfileManagerViewController alloc] initWithProvider:self.currentProvider];
     [self.navigationController pushViewController:vc animated:YES];
 }
