@@ -1433,6 +1433,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
 
 
+
 - (void)fetchProfilesWithProvider:(struct IdeviceProviderHandle *)provider completion:(void (^)(NSArray<ProfileInfo *> *profiles, NSString *error))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         void (^safeCompletion)(NSArray *, NSString *) = ^(NSArray *p, NSString *e) {
@@ -1483,33 +1484,25 @@ static BOOL omegaWriteMemory(OmegaSession *s,
             idevice_error_free(err); adapter_free(adapter); return;
         }
 
-        // RSD Handshake is required before service client creation
-        struct RsdHandshakeHandle *handshake = NULL;
-        err = rsd_handshake_new(rsdStream, &handshake);
-        if (err) {
-            safeCompletion(nil, [NSString stringWithFormat:@"RSD Handshake Error: %s", err->message]);
-            idevice_error_free(err); adapter_free(adapter); return;
-        }
-
         struct McInstallCoreDeviceClientHandle *mcCore = NULL;
         err = mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
         if (err) {
             safeCompletion(nil, [NSString stringWithFormat:@"MCInstall CoreDevice Error: %s", err->message]);
-            idevice_error_free(err); rsd_handshake_free(handshake); adapter_free(adapter); return;
+            idevice_error_free(err); adapter_free(adapter); return;
         }
 
         plist_t profilesPlist = NULL;
         err = mcinstall_core_device_get_profile_list(mcCore, &profilesPlist);
         if (err) {
             safeCompletion(nil, [NSString stringWithFormat:@"Profile List Error: %s", err->message]);
-            idevice_error_free(err); mcinstall_core_device_client_free(mcCore); rsd_handshake_free(handshake); adapter_free(adapter); return;
+            idevice_error_free(err); mcinstall_core_device_client_free(mcCore); adapter_free(adapter); return;
         }
 
         NSArray *result = [self parseProfilesPlist:profilesPlist];
-        plist_free(profilesPlist);
+        if (profilesPlist) plist_free(profilesPlist);
         mcinstall_core_device_client_free(mcCore);
-        rsd_handshake_free(handshake);
-        adapter_free(adapter);
+        // Do NOT free adapter as it's consumed by rsdStream/client or shared
+        // Do NOT free rsdStream if it's managed by mcCore
         safeCompletion(result, nil);
     });
 }
@@ -1532,7 +1525,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
     NSMutableArray *profiles = [NSMutableArray arrayWithCapacity:size];
     for (uint32_t i = 0; i < size; i++) {
         plist_t item = plist_array_get_item(arrayNode, i);
-        if (plist_get_node_type(item) != PLIST_DICT) continue;
+        if (!item || plist_get_node_type(item) != PLIST_DICT) continue;
 
         ProfileInfo *info = [[ProfileInfo alloc] init];
 
@@ -1551,7 +1544,7 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         val = plist_dict_get_item(item, "IsEncrypted");
         if (val) { uint8_t b = 0; plist_get_bool_val(val, &b); info.isEncrypted = (b != 0); }
 
-        [profiles addObject:info];
+        if (info.identifier) [profiles addObject:info];
     }
     return profiles;
 }
@@ -1592,19 +1585,16 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         struct ReadWriteOpaque *rsdStream = NULL;
         adapter_connect(adapter, rsdPort, &rsdStream);
 
-        struct RsdHandshakeHandle *handshake = NULL;
-        rsd_handshake_new(rsdStream, &handshake);
-
         struct McInstallCoreDeviceClientHandle *mcCore = NULL;
         mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
 
         struct IdeviceFfiError *instErr = mcinstall_core_device_install_profile(mcCore, [profileData bytes], [profileData length]);
         if (instErr) {
             NSString *msg = [NSString stringWithFormat:@"Install Error: %s", instErr->message];
-            idevice_error_free(instErr); mcinstall_core_device_client_free(mcCore); rsd_handshake_free(handshake); adapter_free(adapter);
+            idevice_error_free(instErr); mcinstall_core_device_client_free(mcCore);
             safeCompletion(NO, msg); return;
         }
-        mcinstall_core_device_client_free(mcCore); rsd_handshake_free(handshake); adapter_free(adapter);
+        mcinstall_core_device_client_free(mcCore);
         safeCompletion(YES, @"Profile installed successfully (RSD).");
     });
 }
@@ -1646,19 +1636,16 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         struct ReadWriteOpaque *rsdStream = NULL;
         adapter_connect(adapter, rsdPort, &rsdStream);
 
-        struct RsdHandshakeHandle *handshake = NULL;
-        rsd_handshake_new(rsdStream, &handshake);
-
         struct McInstallCoreDeviceClientHandle *mcCore = NULL;
         mcinstall_core_device_client_new_from_stream(rsdStream, &mcCore);
 
         struct IdeviceFfiError *remErr = mcinstall_core_device_remove_profile(mcCore, cid);
         if (remErr) {
             NSString *msg = [NSString stringWithFormat:@"Remove Error: %s", remErr->message];
-            idevice_error_free(remErr); mcinstall_core_device_client_free(mcCore); rsd_handshake_free(handshake); adapter_free(adapter);
+            idevice_error_free(remErr); mcinstall_core_device_client_free(mcCore);
             safeCompletion(NO, msg); return;
         }
-        mcinstall_core_device_client_free(mcCore); rsd_handshake_free(handshake); adapter_free(adapter);
+        mcinstall_core_device_client_free(mcCore);
         safeCompletion(YES, @"Profile removed successfully (RSD).");
     });
 }
