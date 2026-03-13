@@ -1438,7 +1438,25 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         };
 
         struct CoreDeviceProxyHandle *proxy = NULL;
-        struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
+        struct IdeviceFfiError *err = NULL;
+
+        // Robust connection loop for iOS 17+ (CoreDevice)
+        [[HeartbeatManager sharedManager] pause];
+        [NSThread sleepForTimeInterval:0.5];
+
+        NSTimeInterval delay = 1.0;
+        for (int i = 0; i < 8; i++) {
+            err = core_device_proxy_connect(provider, &proxy);
+            if (!err) break;
+
+            if (i < 7) {
+                idevice_error_free(err);
+                [NSThread sleepForTimeInterval:delay];
+                delay *= 1.5;
+            }
+        }
+        [[HeartbeatManager sharedManager] resume];
+
         if (err) {
             safeCompletion(nil, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
             idevice_error_free(err); return;
@@ -1536,7 +1554,26 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         };
 
         struct CoreDeviceProxyHandle *proxy = NULL;
-        struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
+        struct CoreDeviceProxyHandle *proxy = NULL;
+        struct IdeviceFfiError *err = NULL;
+
+        // Robust connection loop for iOS 17+ (CoreDevice)
+        [[HeartbeatManager sharedManager] pause];
+        [NSThread sleepForTimeInterval:0.5];
+
+        NSTimeInterval delay = 1.0;
+        for (int i = 0; i < 8; i++) {
+            err = core_device_proxy_connect(provider, &proxy);
+            if (!err) break;
+
+            if (i < 7) {
+                idevice_error_free(err);
+                [NSThread sleepForTimeInterval:delay];
+                delay *= 1.5;
+            }
+        }
+        [[HeartbeatManager sharedManager] resume];
+
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
             idevice_error_free(err); return;
@@ -1571,7 +1608,26 @@ static BOOL omegaWriteMemory(OmegaSession *s,
 
         const char *cid = [identifier UTF8String];
         struct CoreDeviceProxyHandle *proxy = NULL;
-        struct IdeviceFfiError *err = core_device_proxy_connect(provider, &proxy);
+        struct CoreDeviceProxyHandle *proxy = NULL;
+        struct IdeviceFfiError *err = NULL;
+
+        // Robust connection loop for iOS 17+ (CoreDevice)
+        [[HeartbeatManager sharedManager] pause];
+        [NSThread sleepForTimeInterval:0.5];
+
+        NSTimeInterval delay = 1.0;
+        for (int i = 0; i < 8; i++) {
+            err = core_device_proxy_connect(provider, &proxy);
+            if (!err) break;
+
+            if (i < 7) {
+                idevice_error_free(err);
+                [NSThread sleepForTimeInterval:delay];
+                delay *= 1.5;
+            }
+        }
+        [[HeartbeatManager sharedManager] resume];
+
         if (err) {
             safeCompletion(NO, [NSString stringWithFormat:@"CoreDevice Connection Error: %s", err->message]);
             idevice_error_free(err); return;
