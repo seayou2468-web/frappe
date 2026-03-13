@@ -81,6 +81,10 @@
         [self.spinner.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.spinner.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor]
     ]];
+
+    UIScreenEdgePanGestureRecognizer *swipe = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handleSwipeBack:)];
+    swipe.edges = UIRectEdgeLeft;
+    [self.view addGestureRecognizer:swipe];
 }
 
 - (void)connectAfc {
@@ -134,6 +138,12 @@
             dispatch_async(dispatch_get_main_queue(), ^{ [self.spinner stopAnimating]; });
         }
     });
+}
+
+- (void)handleSwipeBack:(UIScreenEdgePanGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        [self goBack];
+    }
 }
 
 - (void)goBack {
