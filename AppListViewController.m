@@ -2,15 +2,49 @@
 #import "AppManager.h"
 #import "ThemeEngine.h"
 #import "DdiManager.h"
+#import "AppDetailViewController.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface AppListViewController () <UITableViewDelegate, UITableViewDataSource>
+@interface AppListViewController () <UITableViewDelegate, UITableViewDataSource, UIDocumentPickerDelegate>
 @property (nonatomic, assign) struct IdeviceProviderHandle *provider;
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray<AppInfo *> *apps;
 @property (nonatomic, strong) UISegmentedControl *filterControl;
 @property (nonatomic, assign) NSInteger currentFilter;
 @property (nonatomic, strong) UIActivityIndicatorView *loadingIndicator;
+
+- (void)installTapped {
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType typeWithFilenameExtension:@"ipa"]]];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *url = urls.firstObject;
+    if (!url) return;
+
+    UIAlertController *progressAlert = [UIAlertController alertControllerWithTitle:@"Installing" message:@"Preparing..." preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:progressAlert animated:YES completion:nil];
+
+    [[AppManager sharedManager] installAppWithURL:url provider:self.provider progress:^(double progress, NSString *status) {
+        progressAlert.message = status;
+    } completion:^(BOOL success, NSString *error) {
+        [progressAlert dismissViewControllerAnimated:YES completion:^{
+            if (success) {
+                UIAlertController *done = [UIAlertController alertControllerWithTitle:@"Success" message:@"Application installed successfully." preferredStyle:UIAlertControllerStyleAlert];
+                [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self refreshApps]; }]];
+                [self presentViewController:done animated:YES completion:nil];
+            } else {
+                UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Error" message:error preferredStyle:UIAlertControllerStyleAlert];
+                [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:err animated:YES completion:nil];
+            }
+        }];
+    }];
+}
 @end
+
 
 @implementation AppListViewController
 
@@ -28,6 +62,7 @@ static inline NSString *appListSafeErrorMessage(struct IdeviceFfiError *err) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Applications";
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(installTapped)];
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self refreshApps];
@@ -135,8 +170,13 @@ static inline NSString *appListSafeErrorMessage(struct IdeviceFfiError *err) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     AppInfo *app = [self filteredApps][indexPath.row];
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:@"Select launch mode" preferredStyle:UIAlertControllerStyleActionSheet];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:app.name message:@"Select action" preferredStyle:UIAlertControllerStyleActionSheet];
     [ThemeEngine applyGlassStyleToView:alert.view cornerRadius:20];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Show Details" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        AppDetailViewController *vc = [[AppDetailViewController alloc] initWithAppInfo:app provider:self.provider];
+        [self.navigationController pushViewController:vc animated:YES];
+    }]];
 
     [alert addAction:[UIAlertAction actionWithTitle:@"Launch Normal" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [self launch:app.bundleId jitMode:JitModeNone];
@@ -201,4 +241,35 @@ static inline NSString *appListSafeErrorMessage(struct IdeviceFfiError *err) {
     });
 }
 
+
+- (void)installTapped {
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType typeWithFilenameExtension:@"ipa"]]];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *url = urls.firstObject;
+    if (!url) return;
+
+    UIAlertController *progressAlert = [UIAlertController alertControllerWithTitle:@"Installing" message:@"Preparing..." preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:progressAlert animated:YES completion:nil];
+
+    [[AppManager sharedManager] installAppWithURL:url provider:self.provider progress:^(double progress, NSString *status) {
+        progressAlert.message = status;
+    } completion:^(BOOL success, NSString *error) {
+        [progressAlert dismissViewControllerAnimated:YES completion:^{
+            if (success) {
+                UIAlertController *done = [UIAlertController alertControllerWithTitle:@"Success" message:@"Application installed successfully." preferredStyle:UIAlertControllerStyleAlert];
+                [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { [self refreshApps]; }]];
+                [self presentViewController:done animated:YES completion:nil];
+            } else {
+                UIAlertController *err = [UIAlertController alertControllerWithTitle:@"Error" message:error preferredStyle:UIAlertControllerStyleAlert];
+                [err addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:err animated:YES completion:nil];
+            }
+        }];
+    }];
+}
 @end

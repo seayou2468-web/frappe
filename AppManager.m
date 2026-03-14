@@ -944,22 +944,165 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         info.isSystem = isSystem;
         plist_t bidNode = plist_dict_get_item(item, "CFBundleIdentifier");
         if (bidNode) {
-            char *val = NULL;
-            plist_get_string_val(bidNode, &val);
+            char *val = NULL; plist_get_string_val(bidNode, &val);
             if (val) { info.bundleId = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
         }
         if (!info.bundleId) continue;
+
         plist_t nameNode = plist_dict_get_item(item, "CFBundleDisplayName");
         if (!nameNode) nameNode = plist_dict_get_item(item, "CFBundleName");
         if (nameNode) {
-            char *val = NULL;
-            plist_get_string_val(nameNode, &val);
+            char *val = NULL; plist_get_string_val(nameNode, &val);
             if (val) { info.name = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
         }
         if (!info.name) info.name = info.bundleId;
+
+        plist_t verNode = plist_dict_get_item(item, "CFBundleShortVersionString");
+        if (!verNode) verNode = plist_dict_get_item(item, "CFBundleVersion");
+        if (verNode) {
+            char *val = NULL; plist_get_string_val(verNode, &val);
+            if (val) { info.version = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
+        }
+
+        plist_t pathNode = plist_dict_get_item(item, "Path");
+        if (pathNode) {
+            char *val = NULL; plist_get_string_val(pathNode, &val);
+            if (val) { info.path = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
+        }
+
+        plist_t signerNode = plist_dict_get_item(item, "SignerIdentity");
+        if (signerNode) {
+            char *val = NULL; plist_get_string_val(signerNode, &val);
+            if (val) { info.signer = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
+        }
+
+        plist_t typeNode = plist_dict_get_item(item, "ApplicationType");
+        if (typeNode) {
+            char *val = NULL; plist_get_string_val(typeNode, &val);
+            if (val) { info.type = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
+        }
+
+        plist_t containerNode = plist_dict_get_item(item, "Container");
+        if (containerNode) {
+            char *val = NULL; plist_get_string_val(containerNode, &val);
+            if (val) { info.container = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
+        }
+
+        plist_t usageNode = plist_dict_get_item(item, "StaticDiskUsage");
+        if (usageNode) {
+            uint64_t bytes = 0; plist_get_uint_val(usageNode, &bytes);
+            if (bytes > 0) {
+                if (bytes > 1024*1024*1024) info.diskUsage = [NSString stringWithFormat:@"%.2f GB", (double)bytes/(1024*1024*1024)];
+                else if (bytes > 1024*1024) info.diskUsage = [NSString stringWithFormat:@"%.2f MB", (double)bytes/(1024*1024)];
+                else info.diskUsage = [NSString stringWithFormat:@"%llu KB", bytes/1024];
+            }
+        }
         [list addObject:info];
     }
     idevice_plist_array_free(result_array, result_count);
+}
+
+
+static void instproxy_callback(uint64_t progress, void *user_data) {
+    void (^progressBlock)(double, NSString *) = (__bridge void (^)(double, NSString *))user_data;
+    if (progressBlock) {
+        double val = 0.5 + (0.5 * ((double)progress / 100.0));
+        dispatch_async(dispatch_get_main_queue(), ^{
+            progressBlock(val, [NSString stringWithFormat:@"Installing (%llu%%)...", progress]);
+        });
+    }
+}
+
+- (void)installAppWithURL:(NSURL *)url
+                 provider:(struct IdeviceProviderHandle *)provider
+                 progress:(void (^)(double progress, NSString *status))progress
+               completion:(void (^)(BOOL success, NSString *error))completion
+{
+    if (!url || !provider) {
+        if (completion) completion(NO, @"Missing URL or provider");
+        return;
+    }
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        struct AfcClientHandle *afc = NULL;
+        struct IdeviceFfiError *err = afc_client_connect(provider, &afc);
+        if (err) {
+            NSString *msg = [NSString stringWithFormat:@"AFC connect failed: %s", err->message];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
+            return;
+        }
+
+        afc_make_directory(afc, "/PublicStaging");
+        NSString *fileName = [url lastPathComponent];
+        NSString *remotePath = [NSString stringWithFormat:@"/PublicStaging/%@", fileName];
+        if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(0.1, @"Uploading IPA..."); });
+
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        if (!data) {
+            afc_client_free(afc);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, @"Failed to read IPA data"); });
+            return;
+        }
+
+        struct AfcFileHandle *file = NULL;
+        err = afc_file_open(afc, [remotePath UTF8String], AfcWrOnly, &file);
+        if (err) {
+            afc_client_free(afc);
+            NSString *msg = [NSString stringWithFormat:@"AFC open failed: %s", err->message];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
+            return;
+        }
+
+        const uint8_t *bytes = (const uint8_t *)[data bytes];
+        size_t total = data.length;
+        size_t uploaded = 0;
+        size_t chunkSize = 1024 * 64;
+        while (uploaded < total) {
+            size_t toWrite = MIN(chunkSize, total - uploaded);
+            err = afc_file_write(file, bytes + uploaded, toWrite);
+            if (err) break;
+            uploaded += toWrite;
+            if (progress) {
+                double p = 0.1 + (0.4 * ((double)uploaded / total));
+                dispatch_async(dispatch_get_main_queue(), ^{ progress(p, [NSString stringWithFormat:@"Uploading (%.0f%%)...", p*100]); });
+            }
+        }
+        afc_file_close(file);
+
+        if (err) {
+            afc_client_free(afc);
+            NSString *msg = [NSString stringWithFormat:@"Upload failed: %s", err->message];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
+            return;
+        }
+        afc_client_free(afc);
+
+        if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(0.5, @"Starting Installation..."); });
+
+        struct InstallationProxyClientHandle *inst = NULL;
+        err = installation_proxy_connect(provider, &inst);
+        if (err) {
+            NSString *msg = [NSString stringWithFormat:@"InstProxy connect failed: %s", err->message];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
+            return;
+        }
+
+        void (^progressCopy)(double, NSString *) = [progress copy];
+        err = installation_proxy_install_with_callback(inst, [remotePath UTF8String], NULL, instproxy_callback, (__bridge void *)progressCopy);
+        installation_proxy_client_free(inst);
+
+        if (err) {
+            NSString *msg = [NSString stringWithFormat:@"Install failed: %s", err->message];
+            idevice_error_free(err);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
+        } else {
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(YES, nil); });
+        }
+    });
 }
 
 - (void)launchApp:(NSString *)bundleId
