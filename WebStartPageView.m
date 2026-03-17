@@ -13,7 +13,7 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = [ThemeEngine mainBackgroundColor];
+        self.backgroundColor = [ThemeEngine bg];
         [self setupUI];
     }
     return self;
@@ -46,7 +46,7 @@
 
     UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [addBtn setImage:[UIImage systemImageNamed:@"plus.circle.fill"] forState:UIControlStateNormal];
-    addBtn.tintColor = [ThemeEngine liquidColor];
+    addBtn.tintColor = [ThemeEngine accent];
     addBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [addBtn addTarget:self action:@selector(promptAddBookmark) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:addBtn];
@@ -92,7 +92,7 @@
     NSDictionary *bookmark = [WebBookmarksManager sharedManager].bookmarks[indexPath.item];
 
     UIView *iconView = [[UIView alloc] initWithFrame:CGRectMake(10, 0, 60, 60)];
-    iconView.backgroundColor = [[ThemeEngine liquidColor] colorWithAlphaComponent:0.8];
+    iconView.backgroundColor = [[ThemeEngine accent] colorWithAlphaComponent:0.8];
     iconView.layer.cornerRadius = 14;
     [cell.contentView addSubview:iconView];
 

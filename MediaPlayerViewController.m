@@ -21,7 +21,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     self.title = [self.path lastPathComponent];
 
     AVPlayer *player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:self.path]];

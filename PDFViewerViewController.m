@@ -97,15 +97,16 @@
     self.gridView.alpha = 0.2;
     [self.pdfView addSubview:self.gridView];
 
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(40, 40), NO, 0);
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    CGContextSetStrokeColorWithColor(ctx, [UIColor systemGrayColor].CGColor);
-    CGContextSetLineWidth(ctx, 1.0);
-    CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 40, 0);
-    CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 0, 40);
-    CGContextStrokePath(ctx);
-    UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    // iOS 17+: UIGraphicsImageRenderer
+    UIGraphicsImageRenderer *_gridRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(40, 40)];
+    UIImage *img = [_gridRenderer imageWithActions:^(UIGraphicsImageRendererContext *_rc) {
+        CGContextRef ctx = _rc.CGContext;
+        CGContextSetStrokeColorWithColor(ctx, [UIColor systemGrayColor].CGColor);
+        CGContextSetLineWidth(ctx, 1.0);
+        CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 40, 0);
+        CGContextMoveToPoint(ctx, 0, 0); CGContextAddLineToPoint(ctx, 0, 40);
+        CGContextStrokePath(ctx);
+    }];
     self.gridView.backgroundColor = [UIColor colorWithPatternImage:img];
 }
 
@@ -122,7 +123,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     self.title = _path.lastPathComponent;
 
     self.pdfView = [[PDFView alloc] initWithFrame:self.view.bounds];
@@ -137,8 +138,8 @@
 
     [self setupGridView];
 
-    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePDF)];
-    UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(showEditMenu)];
+    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.down"] style:UIBarButtonItemStylePlain target:self action:@selector(savePDF)];
+    UIBarButtonItem *editBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"pencil"] style:UIBarButtonItemStylePlain target:self action:@selector(showEditMenu)];
 
 
     self.navigationItem.rightBarButtonItems = @[saveBtn, editBtn];
@@ -663,6 +664,7 @@
 
 - (void)showPageMenu {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"ページ操作"];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"白紙ページを追加" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self addBlankPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを複製" systemImage:@"plus.square.on.square" style:CustomMenuActionStyleDefault handler:^{ [self duplicateCurrentPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{ [self deleteCurrentPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページ回転 (+90°)" systemImage:@"rotate.right" style:CustomMenuActionStyleDefault handler:^{ [self rotateCurrentPage]; }]];
@@ -670,6 +672,17 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"下へ移動" systemImage:@"arrow.down" style:CustomMenuActionStyleDefault handler:^{ [self movePageDown]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"テンプレート挿入" systemImage:@"rectangle.stack.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self showTemplateMenu]; }]];
     [menu showInView:self.view];
+}
+
+- (void)addBlankPage {
+    PDFDocument *doc = self.pdfView.document;
+    PDFPage *blank = [[PDFPage alloc] init];
+    [blank setBounds:CGRectMake(0, 0, 612, 792) forBox:kPDFDisplayBoxMediaBox];
+    NSInteger idx = doc ? ([doc indexForPage:self.pdfView.currentPage] + 1) : 0;
+    if (!doc) { doc = [[PDFDocument alloc] init]; self.pdfView.document = doc; idx = 0; }
+    [doc insertPage:blank atIndex:idx];
+    [self.pdfView goToPage:[doc pageAtIndex:idx]];
+    [self.pdfView setNeedsDisplay];
 }
 
 - (void)duplicateCurrentPage {
@@ -732,19 +745,20 @@
     PDFPage *page = self.pdfView.currentPage; if (!page) return;
     AdvancedAnnotation *annot = [[AdvancedAnnotation alloc] initWithBounds:CGRectMake(100, 100, 150, 150) forType:PDFAnnotationSubtypeStamp withProperties:nil];
 
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(150, 150), NO, 0);
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    CGContextSetFillColorWithColor(ctx, [UIColor yellowColor].CGColor);
-    CGFloat centerX = 75, centerY = 75, r = 70;
-    CGContextMoveToPoint(ctx, centerX, centerY - r);
-    for (int i=1; i<5; i++) {
-        CGFloat x = centerX + r * sin(i * 4 * M_PI / 5);
-        CGFloat y = centerY - r * cos(i * 4 * M_PI / 5);
-        CGContextAddLineToPoint(ctx, x, y);
-    }
-    CGContextClosePath(ctx); CGContextFillPath(ctx);
-    annot.overlayImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    // iOS 17+: UIGraphicsImageRenderer
+    UIGraphicsImageRenderer *_starRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(150, 150)];
+    annot.overlayImage = [_starRenderer imageWithActions:^(UIGraphicsImageRendererContext *_rc) {
+        CGContextRef ctx = _rc.CGContext;
+        CGContextSetFillColorWithColor(ctx, [UIColor yellowColor].CGColor);
+        CGFloat centerX = 75, centerY = 75, r = 70;
+        CGContextMoveToPoint(ctx, centerX, centerY - r);
+        for (int i=1; i<5; i++) {
+            CGFloat x = centerX + r * sin(i * 4 * M_PI / 5);
+            CGFloat y = centerY - r * cos(i * 4 * M_PI / 5);
+            CGContextAddLineToPoint(ctx, x, y);
+        }
+        CGContextClosePath(ctx); CGContextFillPath(ctx);
+    }];
 
     [page addAnnotation:annot]; [self.pdfView setNeedsDisplay];
 }
@@ -753,17 +767,18 @@
     PDFPage *page = self.pdfView.currentPage; if (!page) return;
     AdvancedAnnotation *annot = [[AdvancedAnnotation alloc] initWithBounds:CGRectMake(100, 100, 200, 100) forType:PDFAnnotationSubtypeStamp withProperties:nil];
 
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(200, 100), NO, 0);
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    CGContextSetStrokeColorWithColor(ctx, [UIColor blackColor].CGColor);
-    CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
-    CGContextSetLineWidth(ctx, 2.0);
-    CGRect rect = CGRectMake(5, 5, 190, 70);
-    UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:10];
-    [path moveToPoint:CGPointMake(100, 75)]; [path addLineToPoint:CGPointMake(90, 95)]; [path addLineToPoint:CGPointMake(110, 75)];
-    [path fill]; [path stroke];
-    annot.overlayImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    // iOS 17+: UIGraphicsImageRenderer
+    UIGraphicsImageRenderer *_calloutRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(200, 100)];
+    annot.overlayImage = [_calloutRenderer imageWithActions:^(UIGraphicsImageRendererContext *_rc) {
+        CGContextRef ctx = _rc.CGContext;
+        CGContextSetStrokeColorWithColor(ctx, [UIColor blackColor].CGColor);
+        CGContextSetFillColorWithColor(ctx, [UIColor whiteColor].CGColor);
+        CGContextSetLineWidth(ctx, 2.0);
+        CGRect rect = CGRectMake(5, 5, 190, 70);
+        UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:10];
+        [path moveToPoint:CGPointMake(100, 75)]; [path addLineToPoint:CGPointMake(90, 95)]; [path addLineToPoint:CGPointMake(110, 75)];
+        [path fill]; [path stroke];
+    }];
 
     [page addAnnotation:annot]; [self.pdfView setNeedsDisplay];
 }

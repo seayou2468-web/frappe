@@ -46,7 +46,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = self.isAfc2 ? @"System Root" : @"Media Staging";
-    self.view.backgroundColor = [UIColor blackColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     [self setupUI];
     [self connectAfc];
 }
@@ -104,7 +104,7 @@
     [self.view addSubview:self.bottomMenu];
 
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    self.spinner.color = [UIColor whiteColor];
+    self.spinner.color = [ThemeEngine accent];
     self.spinner.translatesAutoresizingMaskIntoConstraints = NO;
     self.spinner.hidesWhenStopped = YES;
     [self.view addSubview:self.spinner];
@@ -178,11 +178,11 @@
             for (size_t i = 0; i < count; i++) {
                 NSString *name = [NSString stringWithUTF8String:entries[i]];
                 if ([name isEqualToString:@"."] || [name isEqualToString:@".."]) continue;
-
+                
                 NSString *full = [path isEqualToString:@"/"] ? [@"/" stringByAppendingString:name] : [path stringByAppendingPathComponent:name];
                 struct AfcFileInfo info = {0};
                 struct IdeviceFfiError *e2 = afc_get_file_info(self.afc, [full UTF8String], &info);
-
+                
                 BOOL isDir = NO;
                 if (!e2) {
                     if (info.st_ifmt && (strstr(info.st_ifmt, "DIR") || strstr(info.st_ifmt, "directory"))) isDir = YES;
@@ -412,10 +412,21 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"] ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell"];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
+        cell.backgroundColor = [UIColor clearColor];
+        cell.textLabel.textColor = [ThemeEngine textPrimary];
+        cell.textLabel.font = [ThemeEngine fontBody];
+        cell.detailTextLabel.textColor = [ThemeEngine textTertiary];
+        cell.detailTextLabel.font = [ThemeEngine fontCaption];
+        UIView *_selBg = [[UIView alloc] init];
+        _selBg.backgroundColor = [[ThemeEngine accent] colorWithAlphaComponent:0.12];
+        cell.selectedBackgroundView = _selBg;
+    }
     NSDictionary *item = self.items[indexPath.row];
-    cell.backgroundColor = [UIColor clearColor]; cell.textLabel.textColor = [UIColor whiteColor];
-    cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    cell.backgroundColor = [UIColor clearColor]; cell.textLabel.textColor = [ThemeEngine textPrimary];
+    cell.textLabel.font = [ThemeEngine fontBody];
     cell.textLabel.text = item[@"name"];
     BOOL isDir = [item[@"isDir"] boolValue];
     cell.imageView.image = [UIImage systemImageNamed:isDir ? @"folder.fill" : @"doc"];

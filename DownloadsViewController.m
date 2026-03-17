@@ -11,14 +11,15 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"ダウンロード";
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
 
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    self.tableView.separatorColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1];
+    self.tableView.separatorColor = [ThemeEngine border];
     [self.view addSubview:self.tableView];
 
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"すべて消去" style:UIBarButtonItemStylePlain target:self action:@selector(clearAll)];
@@ -45,13 +46,18 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellId];
         cell.backgroundColor = [UIColor clearColor];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.textLabel.textColor = [ThemeEngine textPrimary];
+        cell.textLabel.font = [ThemeEngine fontBody];
+        cell.detailTextLabel.textColor = [ThemeEngine textSecondary];
+        cell.detailTextLabel.font = [ThemeEngine fontCaption];
+        UIView *_selBg = [[UIView alloc] init];
+        _selBg.backgroundColor = [[ThemeEngine accent] colorWithAlphaComponent:0.12];
+        cell.selectedBackgroundView = _selBg;
 
         UIProgressView *pv = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
         pv.tag = 100;
         pv.translatesAutoresizingMaskIntoConstraints = NO;
-        pv.progressTintColor = [ThemeEngine liquidColor];
+        pv.progressTintColor = [ThemeEngine accent];
         [cell.contentView addSubview:pv];
 
         [NSLayoutConstraint activateConstraints:@[

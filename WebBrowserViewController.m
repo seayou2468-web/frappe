@@ -60,7 +60,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     [self setupUI];
     if (self.initialURL) {
         NSURL *url = [NSURL URLWithString:self.initialURL];
@@ -123,39 +123,61 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [refreshControl addTarget:self action:@selector(handleRefresh:) forControlEvents:UIControlEventValueChanged];
     self.webView.scrollView.refreshControl = refreshControl;
 
-    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 240, 36)];
-    self.urlField.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12];
-    self.urlField.textColor = [UIColor whiteColor];
-    self.urlField.layer.cornerRadius = 12;
-    self.urlField.layer.borderWidth = 1.0;
-    self.urlField.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.2].CGColor;
+    // ── URL pill field (iOS 26 design) ──────────────────────────────────────
+    UIView *urlPillContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 38)];
+    [ThemeEngine applyGlassToView:urlPillContainer radius:19];
+    urlPillContainer.layer.shadowColor = [UIColor blackColor].CGColor;
+    urlPillContainer.layer.shadowOffset = CGSizeMake(0,3);
+    urlPillContainer.layer.shadowOpacity = 0.35;
+    urlPillContainer.layer.shadowRadius = 8;
+
+    self.urlField = [[UITextField alloc] initWithFrame:CGRectMake(8, 0, 248, 38)];
+    self.urlField.backgroundColor = [UIColor clearColor];
+    self.urlField.textColor = [ThemeEngine textPrimary];
     self.urlField.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     self.urlField.keyboardType = UIKeyboardTypeURL;
     self.urlField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.urlField.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.urlField.returnKeyType = UIReturnKeyGo;
     self.urlField.delegate = self;
     self.urlField.textAlignment = NSTextAlignmentCenter;
-    self.urlField.placeholder = @"検索またはURLを入力";
+    self.urlField.attributedPlaceholder = [[NSAttributedString alloc]
+        initWithString:@"検索またはURLを入力"
+        attributes:@{NSForegroundColorAttributeName: [ThemeEngine textTertiary]}];
 
-    UIImageView *searchIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]];
-    searchIcon.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
-    searchIcon.contentMode = UIViewContentModeScaleAspectFit;
-    UIView *leftPadding = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 20)];
-    searchIcon.frame = CGRectMake(10, 0, 16, 20);
-    [leftPadding addSubview:searchIcon];
-    self.urlField.leftView = leftPadding;
+    // Lock icon left view
+    UIImageSymbolConfiguration *lockCfg = [UIImageSymbolConfiguration
+        configurationWithPointSize:12 weight:UIImageSymbolWeightMedium];
+    UIImageView *lockIcon = [[UIImageView alloc] initWithImage:
+        [UIImage systemImageNamed:@"magnifyingglass" withConfiguration:lockCfg]];
+    lockIcon.tintColor = [ThemeEngine textTertiary];
+    lockIcon.contentMode = UIViewContentModeScaleAspectFit;
+    UIView *leftPad = [[UIView alloc] initWithFrame:CGRectMake(0,0,30,20)];
+    lockIcon.frame = CGRectMake(10,0,14,20);
+    [leftPad addSubview:lockIcon];
+    self.urlField.leftView = leftPad;
     self.urlField.leftViewMode = UITextFieldViewModeAlways;
 
-    self.navigationItem.titleView = self.urlField;
+    [urlPillContainer addSubview:self.urlField];
+    self.navigationItem.titleView = urlPillContainer;
 
-    UIBarButtonItem *menuBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showBrowserOthersMenu)];
+    UIBarButtonItem *menuBtn = [[UIBarButtonItem alloc]
+        initWithImage:[UIImage systemImageNamed:@"ellipsis.circle.fill"]
+                style:UIBarButtonItemStylePlain target:self action:@selector(showBrowserOthersMenu)];
+    menuBtn.tintColor = [ThemeEngine accent];
     self.navigationItem.leftBarButtonItem = menuBtn;
 
-    UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"terminal"] style:UIBarButtonItemStylePlain target:self action:@selector(prepareAndShowInspector)];
+    UIBarButtonItem *inspectorBtn = [[UIBarButtonItem alloc]
+        initWithImage:[UIImage systemImageNamed:@"terminal"]
+                style:UIBarButtonItemStylePlain target:self action:@selector(prepareAndShowInspector)];
+    inspectorBtn.tintColor = [ThemeEngine textSecondary];
     self.navigationItem.rightBarButtonItem = inspectorBtn;
 
+    // ── Progress bar ─────────────────────────────────────────────────────
     self.progressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
     self.progressView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.progressView.progressTintColor = [ThemeEngine accent];
+    self.progressView.trackTintColor = [UIColor clearColor];
     [self.view addSubview:self.progressView];
 
     self.bottomMenu = [[BottomMenuView alloc] initWithMode:BottomMenuModeWeb];
@@ -260,8 +282,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
 - (void)refreshUI {
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-        self.startPage.backgroundColor = [ThemeEngine mainBackgroundColor];
+        self.view.backgroundColor = [ThemeEngine bg];
+        self.startPage.backgroundColor = [ThemeEngine bg];
         [self.bottomMenu setupUI];
         // Other UI updates if needed
     });

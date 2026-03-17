@@ -25,10 +25,9 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     self.title = [self.path lastPathComponent];
 
-    self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
     self.navigationController.navigationBar.translucent = YES;
 
     [self setupUI];
@@ -37,11 +36,10 @@
 - (void)setupUI {
     self.searchBar = [[UISearchBar alloc] init];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.placeholder = @"16進数または文字列を検索";
     self.searchBar.delegate = self;
     self.searchBar.backgroundImage = [[UIImage alloc] init];
-    self.searchBar.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.searchBar.backgroundColor = [ThemeEngine bg];
     [self.view addSubview:self.searchBar];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -64,7 +62,7 @@
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
     ]];
 
-    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(saveChanges)];
+    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.down"] style:UIBarButtonItemStylePlain target:self action:@selector(saveChanges)];
     UIBarButtonItem *toggleBtn = [[UIBarButtonItem alloc] initWithTitle:@"A/H" style:UIBarButtonItemStylePlain target:self action:@selector(toggleMode)];
     self.navigationItem.rightBarButtonItems = @[saveBtn, toggleBtn];
 }

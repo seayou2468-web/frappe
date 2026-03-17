@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>LDEBundleIdentifier</key>
-	<string>com.frappe.rn</string>
+	<string>com.frappev.rn</string>
 	<key>LDEBundleInfo</key>
 	<dict>
 		<key>UIApplicationSceneManifest</key>
@@ -24,8 +24,6 @@
 			</dict>
 		</dict>
 	</dict>
-		<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location is required for simulation and original position recovery.</string>
 	<key>LDEBundleShortVersion</key>
 	<string>1.0</string>
 	<key>LDEBundleVersion</key>
@@ -35,7 +33,7 @@
 		<string>-fobjc-arc</string>
 	</array>
 	<key>LDEDisplayName</key>
-	<string>frappe</string>
+	<string>frappe本来</string>
 	<key>LDEExecutable</key>
 	<string>frappe</string>
 	<key>LDELinkerFlags</key>
@@ -45,9 +43,9 @@
 		<string>-framework</string>
 		<string>Foundation</string>
 		<string>-framework</string>
+		<string>Security</string>
+		<string>-framework</string>
 		<string>UIKit</string>
-		<string>CoreLocation</string>
-		<string>MapKit</string>
 		<string>-framework</string>
 		<string>CoreGraphics</string>
 		<string>-framework</string>
@@ -71,7 +69,14 @@
 		<string>-framework</string>
 		<string>CoreServices</string>
 		<string>-framework</string>
+		<string>CoreLocation</string>
+		<string>-framework</string>
+		<string>MapKit</string>
+		<string>-framework</string>
+		<string>JavaScriptCore</string>
+		<string>-framework</string>
 		<string>MobileCoreServices</string>
+		<string>-lidevice_ffi</string>
 		<string>-lclang_rt.ios</string>
     <string>-lsqlite3</string>
 	</array>

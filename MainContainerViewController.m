@@ -18,7 +18,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshUI) name:@"SettingsChanged" object:nil];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
 
         if ([TabManager sharedManager].tabs.count == 0) {
         NSString *startPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"DefaultStartPath"] ?: NSHomeDirectory();
@@ -57,7 +57,28 @@
         }
         [nav setViewControllers:vcs animated:NO];
         nav.interactivePopGestureRecognizer.delegate = self;
-        nav.navigationBar.barStyle = UIBarStyleBlack;
+        // iOS 26: premium dark navigation bar
+        UINavigationBarAppearance *_navAppearance = [[UINavigationBarAppearance alloc] init];
+        [_navAppearance configureWithTransparentBackground];
+        _navAppearance.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+        _navAppearance.titleTextAttributes = @{
+            NSFontAttributeName: [ThemeEngine fontHeadline],
+            NSForegroundColorAttributeName: [ThemeEngine textPrimary]
+        };
+        _navAppearance.largeTitleTextAttributes = @{
+            NSFontAttributeName: [ThemeEngine fontTitle],
+            NSForegroundColorAttributeName: [ThemeEngine textPrimary]
+        };
+        UINavigationBarAppearance *_navAppearanceBlur = [_navAppearance copy];
+        [_navAppearanceBlur configureWithDefaultBackground];
+        _navAppearanceBlur.backgroundEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+        _navAppearanceBlur.backgroundColor = [[ThemeEngine bg] colorWithAlphaComponent:0.85];
+        _navAppearanceBlur.titleTextAttributes = _navAppearance.titleTextAttributes;
+        nav.navigationBar.standardAppearance = _navAppearanceBlur;
+        nav.navigationBar.scrollEdgeAppearance = _navAppearance;
+        nav.navigationBar.compactAppearance = _navAppearanceBlur;
+        nav.navigationBar.tintColor = [ThemeEngine accent];
+        nav.navigationBar.prefersLargeTitles = NO;
         active.viewController = nav;
     }
 
@@ -71,9 +92,11 @@
 - (void)showTabSwitcher {
     TabInfo *active = [[TabManager sharedManager] activeTab];
     if (active && self.currentContentController) {
-        UIGraphicsBeginImageContextWithOptions(self.view.bounds.size, YES, 0);
-        [self.view drawViewHierarchyInRect:self.view.bounds afterScreenUpdates:YES];
-        active.screenshot = UIGraphicsGetImageFromCurrentImageContext();
+        // iOS 17+: UIGraphicsImageRenderer replaces deprecated UIGraphicsBeginImageContextWithOptions
+        UIGraphicsImageRenderer *_renderer = [[UIGraphicsImageRenderer alloc] initWithBounds:self.view.bounds];
+        active.screenshot = [_renderer imageWithActions:^(UIGraphicsImageRendererContext *_ctx) {
+            [self.view drawViewHierarchyInRect:self.view.bounds afterScreenUpdates:YES];
+        }];
         if (active.type == TabTypeWebBrowser) {
             UINavigationController *nav = (UINavigationController *)self.currentContentController;
             WebBrowserViewController *webVC = (WebBrowserViewController *)nav.topViewController;
@@ -81,7 +104,6 @@
                 active.currentPath = webVC.webView.URL.absoluteString;
             }
         }
-        UIGraphicsEndImageContext();
     }
 
     TabSwitcherViewController *switcher = [[TabSwitcherViewController alloc] init];
@@ -140,7 +162,7 @@
 
 - (void)refreshUI {
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+        self.view.backgroundColor = [ThemeEngine bg];
         // Add other UI components that need refreshing
     });
 }

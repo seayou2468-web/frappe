@@ -11,7 +11,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"履歴";
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.backgroundColor = [UIColor clearColor];
@@ -39,8 +39,8 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
         cell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.textLabel.textColor = [ThemeEngine textPrimary];
+        cell.detailTextLabel.textColor = [ThemeEngine textSecondary];
     }
     NSDictionary *entry = [WebHistoryManager sharedManager].history[indexPath.row];
     cell.textLabel.text = entry[@"title"];

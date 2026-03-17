@@ -11,7 +11,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Cookies";
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.backgroundColor = [UIColor clearColor];
@@ -19,7 +19,7 @@
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
 
-    UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addCookie)];
+    UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"] style:UIBarButtonItemStylePlain target:self action:@selector(addCookie)];
     UIBarButtonItem *exportBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.up"] style:UIBarButtonItemStylePlain target:self action:@selector(exportCookies)];
     UIBarButtonItem *importBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.down"] style:UIBarButtonItemStylePlain target:self action:@selector(importCookies)];
     self.navigationItem.rightBarButtonItems = @[addBtn, exportBtn, importBtn];
@@ -47,8 +47,8 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"Cell"];
         cell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.textLabel.textColor = [ThemeEngine textPrimary];
+        cell.detailTextLabel.textColor = [ThemeEngine textSecondary];
     }
     NSHTTPCookie *cookie = self.cookies[indexPath.row];
     cell.textLabel.text = cookie.name;

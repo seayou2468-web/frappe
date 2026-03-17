@@ -11,7 +11,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"システムログ";
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
 
     self.textView = [[UITextView alloc] initWithFrame:self.view.bounds];
     self.textView.backgroundColor = [UIColor blackColor];
@@ -28,7 +28,7 @@
         [self.textView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
-    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadLogs)];
+    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.clockwise"] style:UIBarButtonItemStylePlain target:self action:@selector(loadLogs)];
     self.navigationItem.rightBarButtonItem = refreshBtn;
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(loadLogs) name:@"NewLogAdded" object:nil];

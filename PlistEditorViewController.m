@@ -56,7 +56,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     self.title = _currentKey ?: [_path lastPathComponent];
 
     [self setupUI];
@@ -70,10 +70,10 @@
     self.tableView.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.tableView];
 
-    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(savePlist)];
-    UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addItem)];
-    UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemUndo target:self action:@selector(undoAction)];
-    UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRedo target:self action:@selector(redoAction)];
+    UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.and.arrow.down"] style:UIBarButtonItemStylePlain target:self action:@selector(savePlist)];
+    UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"] style:UIBarButtonItemStylePlain target:self action:@selector(addItem)];
+    UIBarButtonItem *undoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.backward"] style:UIBarButtonItemStylePlain target:self action:@selector(undoAction)];
+    UIBarButtonItem *redoBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.forward"] style:UIBarButtonItemStylePlain target:self action:@selector(redoAction)];
 
     UIBarButtonItem *resetBtn = [[UIBarButtonItem alloc] initWithTitle:@"リセット" style:UIBarButtonItemStylePlain target:self action:@selector(resetPlist)];
 
@@ -185,8 +185,8 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellId];
         cell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        cell.textLabel.textColor = [ThemeEngine textPrimary];
+        cell.detailTextLabel.textColor = [ThemeEngine textSecondary];
     }
     id key = _keys[indexPath.row];
     id value = ([_currentObject isKindOfClass:[NSDictionary class]]) ? _currentObject[key] : _currentObject[[key integerValue]];

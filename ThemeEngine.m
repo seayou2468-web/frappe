@@ -1,124 +1,141 @@
 #import "ThemeEngine.h"
 
-
+// ─── Palette ──────────────────────────────────────────────────────────────────
+static UIColor *hexRGB(uint32_t v) {
+    return [UIColor colorWithRed:((v>>16)&0xFF)/255.0
+                           green:((v>>8)&0xFF)/255.0
+                            blue:(v&0xFF)/255.0
+                           alpha:1.0];
+}
 
 @implementation ThemeEngine
 
-+ (UIColor *)mainBackgroundColor {
-    return [UIColor colorWithRed:0.12 green:0.12 blue:0.14 alpha:1.0]; // Dark theme
++ (UIColor *)bg           { return hexRGB(0x09090F); }
++ (UIColor *)surface      { return [UIColor colorWithWhite:1 alpha:0.055]; }
++ (UIColor *)surfaceHigh  { return [UIColor colorWithWhite:1 alpha:0.10]; }
++ (UIColor *)border       { return [UIColor colorWithWhite:1 alpha:0.10]; }
++ (UIColor *)textPrimary  { return [UIColor colorWithWhite:1 alpha:0.96]; }
++ (UIColor *)textSecondary{ return [UIColor colorWithWhite:1 alpha:0.50]; }
++ (UIColor *)textTertiary { return [UIColor colorWithWhite:1 alpha:0.28]; }
+
++ (UIColor *)accent {
+    NSString *c = [[NSUserDefaults standardUserDefaults] stringForKey:@"AccentColor"];
+    if ([c isEqualToString:@"red"])    return [UIColor systemRedColor];
+    if ([c isEqualToString:@"green"])  return [UIColor systemGreenColor];
+    if ([c isEqualToString:@"purple"]) return [UIColor systemPurpleColor];
+    if ([c isEqualToString:@"orange"]) return [UIColor systemOrangeColor];
+    if ([c isEqualToString:@"cyan"])   return [UIColor systemCyanColor];
+    if ([c isEqualToString:@"pink"])   return [UIColor systemPinkColor];
+    return [UIColor systemBlueColor];
 }
 
-+ (UIColor *)liquidColor {
-    NSString *colorName = [[NSUserDefaults standardUserDefaults] stringForKey:@"AccentColor"];
-    if ([colorName isEqualToString:@"red"]) return [UIColor systemRedColor];
-    if ([colorName isEqualToString:@"green"]) return [UIColor systemGreenColor];
-    if ([colorName isEqualToString:@"purple"]) return [UIColor systemPurpleColor];
-    return [UIColor systemBlueColor]; // Default
+// ─── File type tints ──────────────────────────────────────────────────────────
++ (UIColor *)tintForFolder { return hexRGB(0x4A9EFF); }
+
++ (UIColor *)tintForExtension:(NSString *)ext {
+    ext = ext.lowercaseString;
+    if ([@[@"png",@"jpg",@"jpeg",@"gif",@"heic",@"bmp",@"webp"] containsObject:ext]) return hexRGB(0xFF9F0A);
+    if ([@[@"mp4",@"mov",@"avi",@"mkv",@"m4v"] containsObject:ext])                  return hexRGB(0xBF5AF2);
+    if ([@[@"mp3",@"wav",@"m4a",@"flac",@"aac"] containsObject:ext])                 return hexRGB(0xFF375F);
+    if ([@[@"zip",@"rar",@"7z",@"tar",@"gz",@"bz2"] containsObject:ext])             return hexRGB(0xFFD60A);
+    if ([ext isEqualToString:@"pdf"])                                                  return hexRGB(0xFF453A);
+    if ([@[@"db",@"sqlite",@"sql"] containsObject:ext])                               return hexRGB(0x30D158);
+    if ([@[@"plist",@"xml"] containsObject:ext])                                      return hexRGB(0xFF9F0A);
+    if ([@[@"json",@"yaml",@"yml"] containsObject:ext])                               return hexRGB(0x64D2FF);
+    if ([@[@"html",@"htm",@"css",@"js"] containsObject:ext])                         return hexRGB(0xFF6961);
+    if ([@[@"c",@"cpp",@"h",@"m",@"mm",@"py",@"sh",@"swift"] containsObject:ext])    return hexRGB(0x34C759);
+    if ([@[@"csv",@"tsv",@"xlsx",@"xls"] containsObject:ext])                        return hexRGB(0x30D158);
+    return [UIColor colorWithWhite:1 alpha:0.55];
 }
 
-+ (void)applyLiquidStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
-    view.backgroundColor = [self liquidColor];
-    view.layer.cornerRadius = radius;
++ (NSString *)symbolForExtension:(NSString *)ext {
+    ext = ext.lowercaseString;
+    if ([@[@"png",@"jpg",@"jpeg",@"gif",@"heic",@"bmp",@"webp"] containsObject:ext]) return @"photo.fill";
+    if ([@[@"mp4",@"mov",@"avi",@"mkv",@"m4v"] containsObject:ext])                  return @"play.rectangle.fill";
+    if ([@[@"mp3",@"wav",@"m4a",@"flac",@"aac"] containsObject:ext])                 return @"music.note";
+    if ([@[@"zip",@"rar",@"7z",@"tar",@"gz",@"bz2"] containsObject:ext])             return @"archivebox.fill";
+    if ([ext isEqualToString:@"pdf"])                                                  return @"doc.richtext.fill";
+    if ([@[@"db",@"sqlite",@"sql"] containsObject:ext])                               return @"cylinder.fill";
+    if ([@[@"plist",@"xml",@"json",@"yaml",@"yml"] containsObject:ext])               return @"curlybraces";
+    if ([@[@"html",@"htm",@"css",@"js"] containsObject:ext])                          return @"globe";
+    if ([@[@"c",@"cpp",@"h",@"m",@"mm",@"py",@"sh",@"swift"] containsObject:ext])    return @"chevron.left.forwardslash.chevron.right";
+    if ([@[@"csv",@"tsv",@"xlsx",@"xls"] containsObject:ext])                        return @"tablecells.fill";
+    return @"doc.fill";
+}
 
-    // Outer shadow
+// ─── Glass surface ────────────────────────────────────────────────────────────
++ (void)applyGlassToView:(UIView *)view radius:(CGFloat)r {
+    // Remove old blur if any
+    for (UIView *sv in view.subviews) {
+        if ([sv isKindOfClass:[UIVisualEffectView class]]) { [sv removeFromSuperview]; break; }
+    }
+    UIVisualEffectView *blur = [self makeBlurView:UIBlurEffectStyleSystemUltraThinMaterialDark radius:r];
+    blur.frame = view.bounds;
+    blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [view insertSubview:blur atIndex:0];
+
+    view.backgroundColor = [UIColor colorWithWhite:1 alpha:0.04];
+    view.layer.cornerRadius = r;
+    view.layer.borderWidth = 0.6;
+    view.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+}
+
++ (UIVisualEffectView *)makeBlurView:(UIBlurEffectStyle)style radius:(CGFloat)r {
+    UIVisualEffectView *v = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:style]];
+    v.layer.cornerRadius = r;
+    v.clipsToBounds = YES;
+    return v;
+}
+
+// ─── Typography ───────────────────────────────────────────────────────────────
++ (UIFont *)fontTitle    { return [UIFont systemFontOfSize:28 weight:UIFontWeightBold]; }
++ (UIFont *)fontHeadline { return [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]; }
++ (UIFont *)fontBody     { return [UIFont systemFontOfSize:15 weight:UIFontWeightRegular]; }
++ (UIFont *)fontSubhead  { return [UIFont systemFontOfSize:13 weight:UIFontWeightMedium]; }
++ (UIFont *)fontCaption  { return [UIFont systemFontOfSize:11 weight:UIFontWeightRegular]; }
++ (UIFont *)fontMono     { return [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular]; }
+
+// ─── Legacy compat shims ──────────────────────────────────────────────────────
++ (UIColor *)mainBackgroundColor { return [self bg]; }
++ (UIColor *)liquidColor         { return [self accent]; }
++ (void)applyLiquidStyleToView:(UIView *)view cornerRadius:(CGFloat)r {
+    view.backgroundColor = [self accent];
+    view.layer.cornerRadius = r;
     view.layer.shadowColor = [UIColor blackColor].CGColor;
-    view.layer.shadowOffset = CGSizeMake(4, 4);
-    view.layer.shadowOpacity = 0.5;
-    view.layer.shadowRadius = 8;
-
-    // Inner shadow is harder with just layers, often requires extra layers or drawing
+    view.layer.shadowOffset = CGSizeMake(0, 4);
+    view.layer.shadowOpacity = 0.4;
+    view.layer.shadowRadius = 10;
 }
-
-+ (void)applyGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)radius {
-    view.backgroundColor = [UIColor clearColor];
-    UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
-    blurEffectView.frame = view.bounds;
-    blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    CGFloat alpha = [[NSUserDefaults standardUserDefaults] floatForKey:@"GlassAlpha"];
-    if (alpha == 0) alpha = 0.5;
-    blurEffectView.alpha = alpha;
-    view.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:alpha * 0.3].CGColor;
-    blurEffectView.layer.cornerRadius = radius;
-    blurEffectView.clipsToBounds = YES;
-    [view insertSubview:blurEffectView atIndex:0];
-
-    view.layer.cornerRadius = radius;
-    // view.layer.borderColor reset removed
-    view.layer.borderWidth = 0.5;
++ (void)applyGlassStyleToView:(UIView *)view cornerRadius:(CGFloat)r {
+    [self applyGlassToView:view radius:r];
 }
-
 @end
 
+// ─── LiquidGlassView (legacy compat) ─────────────────────────────────────────
 @implementation LiquidGlassView {
-    CAShapeLayer *_innerShadowTop;
-    CAShapeLayer *_innerShadowBottom;
+    CAShapeLayer *_hl;
 }
-
-- (instancetype)initWithFrame:(CGRect)frame cornerRadius:(CGFloat)radius {
-    self = [super initWithFrame:frame];
-    if (self) {
-        _cornerRadius = radius;
-        [self setupUI];
-    }
+- (instancetype)initWithFrame:(CGRect)f cornerRadius:(CGFloat)r {
+    self = [super initWithFrame:f];
+    if (self) { _cornerRadius = r; [self setup]; }
     return self;
 }
-
-- (void)setupUI {
-    self.backgroundColor = [ThemeEngine liquidColor];
+- (void)setup {
+    self.backgroundColor = [ThemeEngine accent];
     self.layer.cornerRadius = _cornerRadius;
-
-    // Outer Shadow
     self.layer.shadowColor = [UIColor blackColor].CGColor;
-    self.layer.shadowOffset = CGSizeMake(6, 6);
+    self.layer.shadowOffset = CGSizeMake(0,5);
     self.layer.shadowOpacity = 0.4;
-    self.layer.shadowRadius = 10;
-
-    // Inner Shadow Layers
-    _innerShadowTop = [CAShapeLayer layer];
-    _innerShadowBottom = [CAShapeLayer layer];
-    [self.layer addSublayer:_innerShadowTop];
-    [self.layer addSublayer:_innerShadowBottom];
+    self.layer.shadowRadius = 12;
+    _hl = [CAShapeLayer layer];
+    _hl.fillColor = [UIColor colorWithWhite:1 alpha:0.18].CGColor;
+    [self.layer addSublayer:_hl];
 }
-
 - (void)layoutSubviews {
     [super layoutSubviews];
-    [self updateInnerShadows];
+    CGRect t = CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height * 0.45);
+    _hl.path = [UIBezierPath bezierPathWithRoundedRect:t
+        byRoundingCorners:UIRectCornerTopLeft|UIRectCornerTopRight
+        cornerRadii:CGSizeMake(_cornerRadius,_cornerRadius)].CGPath;
 }
-
-- (void)updateInnerShadows {
-    CGRect rect = self.bounds;
-    UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:_cornerRadius];
-
-    // Top Inner Shadow (Highlight)
-    UIBezierPath *topPath = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(rect, -5, -5) cornerRadius:_cornerRadius];
-    [topPath appendPath:path];
-    topPath.usesEvenOddFillRule = YES;
-
-    _innerShadowTop.path = topPath.CGPath;
-    _innerShadowTop.fillRule = kCAFillRuleEvenOdd;
-    _innerShadowTop.fillColor = [[UIColor whiteColor] colorWithAlphaComponent:0.1].CGColor;
-    _innerShadowTop.shadowColor = [UIColor whiteColor].CGColor;
-    _innerShadowTop.shadowOffset = CGSizeMake(-4, -4);
-    _innerShadowTop.shadowOpacity = 0.5;
-    _innerShadowTop.shadowRadius = 4;
-    _innerShadowTop.masksToBounds = YES;
-    _innerShadowTop.frame = rect;
-
-    // Bottom Inner Shadow (Dark)
-    UIBezierPath *bottomPath = [UIBezierPath bezierPathWithRoundedRect:CGRectInset(rect, -5, -5) cornerRadius:_cornerRadius];
-    [bottomPath appendPath:path];
-    bottomPath.usesEvenOddFillRule = YES;
-
-    _innerShadowBottom.path = bottomPath.CGPath;
-    _innerShadowBottom.fillRule = kCAFillRuleEvenOdd;
-    _innerShadowBottom.fillColor = [[UIColor blackColor] colorWithAlphaComponent:0.1].CGColor;
-    _innerShadowBottom.shadowColor = [UIColor blackColor].CGColor;
-    _innerShadowBottom.shadowOffset = CGSizeMake(4, 4);
-    _innerShadowBottom.shadowOpacity = 0.8;
-    _innerShadowBottom.shadowRadius = 6;
-    _innerShadowBottom.masksToBounds = YES;
-    _innerShadowBottom.frame = rect;
-}
-
 @end
-

@@ -944,165 +944,22 @@ static BOOL omegaWriteMemory(OmegaSession *s,
         info.isSystem = isSystem;
         plist_t bidNode = plist_dict_get_item(item, "CFBundleIdentifier");
         if (bidNode) {
-            char *val = NULL; plist_get_string_val(bidNode, &val);
+            char *val = NULL;
+            plist_get_string_val(bidNode, &val);
             if (val) { info.bundleId = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
         }
         if (!info.bundleId) continue;
-
         plist_t nameNode = plist_dict_get_item(item, "CFBundleDisplayName");
         if (!nameNode) nameNode = plist_dict_get_item(item, "CFBundleName");
         if (nameNode) {
-            char *val = NULL; plist_get_string_val(nameNode, &val);
+            char *val = NULL;
+            plist_get_string_val(nameNode, &val);
             if (val) { info.name = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
         }
         if (!info.name) info.name = info.bundleId;
-
-        plist_t verNode = plist_dict_get_item(item, "CFBundleShortVersionString");
-        if (!verNode) verNode = plist_dict_get_item(item, "CFBundleVersion");
-        if (verNode) {
-            char *val = NULL; plist_get_string_val(verNode, &val);
-            if (val) { info.version = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
-        }
-
-        plist_t pathNode = plist_dict_get_item(item, "Path");
-        if (pathNode) {
-            char *val = NULL; plist_get_string_val(pathNode, &val);
-            if (val) { info.path = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
-        }
-
-        plist_t signerNode = plist_dict_get_item(item, "SignerIdentity");
-        if (signerNode) {
-            char *val = NULL; plist_get_string_val(signerNode, &val);
-            if (val) { info.signer = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
-        }
-
-        plist_t typeNode = plist_dict_get_item(item, "ApplicationType");
-        if (typeNode) {
-            char *val = NULL; plist_get_string_val(typeNode, &val);
-            if (val) { info.type = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
-        }
-
-        plist_t containerNode = plist_dict_get_item(item, "Container");
-        if (containerNode) {
-            char *val = NULL; plist_get_string_val(containerNode, &val);
-            if (val) { info.container = [NSString stringWithUTF8String:val]; plist_mem_free(val); }
-        }
-
-        plist_t usageNode = plist_dict_get_item(item, "StaticDiskUsage");
-        if (usageNode) {
-            uint64_t bytes = 0; plist_get_uint_val(usageNode, &bytes);
-            if (bytes > 0) {
-                if (bytes > 1024*1024*1024) info.diskUsage = [NSString stringWithFormat:@"%.2f GB", (double)bytes/(1024*1024*1024)];
-                else if (bytes > 1024*1024) info.diskUsage = [NSString stringWithFormat:@"%.2f MB", (double)bytes/(1024*1024)];
-                else info.diskUsage = [NSString stringWithFormat:@"%llu KB", bytes/1024];
-            }
-        }
         [list addObject:info];
     }
     idevice_plist_array_free(result_array, result_count);
-}
-
-
-static void instproxy_callback(uint64_t progress, void *user_data) {
-    void (^progressBlock)(double, NSString *) = (__bridge void (^)(double, NSString *))user_data;
-    if (progressBlock) {
-        double val = 0.5 + (0.5 * ((double)progress / 100.0));
-        dispatch_async(dispatch_get_main_queue(), ^{
-            progressBlock(val, [NSString stringWithFormat:@"Installing (%llu%%)...", progress]);
-        });
-    }
-}
-
-- (void)installAppWithURL:(NSURL *)url
-                 provider:(struct IdeviceProviderHandle *)provider
-                 progress:(void (^)(double progress, NSString *status))progress
-               completion:(void (^)(BOOL success, NSString *error))completion
-{
-    if (!url || !provider) {
-        if (completion) completion(NO, @"Missing URL or provider");
-        return;
-    }
-
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        struct AfcClientHandle *afc = NULL;
-        struct IdeviceFfiError *err = afc_client_connect(provider, &afc);
-        if (err) {
-            NSString *msg = [NSString stringWithFormat:@"AFC connect failed: %s", err->message];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
-            return;
-        }
-
-        afc_make_directory(afc, "/PublicStaging");
-        NSString *fileName = [url lastPathComponent];
-        NSString *remotePath = [NSString stringWithFormat:@"/PublicStaging/%@", fileName];
-        if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(0.1, @"Uploading IPA..."); });
-
-        NSData *data = [NSData dataWithContentsOfURL:url];
-        if (!data) {
-            afc_client_free(afc);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, @"Failed to read IPA data"); });
-            return;
-        }
-
-        struct AfcFileHandle *file = NULL;
-        err = afc_file_open(afc, [remotePath UTF8String], AfcWrOnly, &file);
-        if (err) {
-            afc_client_free(afc);
-            NSString *msg = [NSString stringWithFormat:@"AFC open failed: %s", err->message];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
-            return;
-        }
-
-        const uint8_t *bytes = (const uint8_t *)[data bytes];
-        size_t total = data.length;
-        size_t uploaded = 0;
-        size_t chunkSize = 1024 * 64;
-        while (uploaded < total) {
-            size_t toWrite = MIN(chunkSize, total - uploaded);
-            err = afc_file_write(file, bytes + uploaded, toWrite);
-            if (err) break;
-            uploaded += toWrite;
-            if (progress) {
-                double p = 0.1 + (0.4 * ((double)uploaded / total));
-                dispatch_async(dispatch_get_main_queue(), ^{ progress(p, [NSString stringWithFormat:@"Uploading (%.0f%%)...", p*100]); });
-            }
-        }
-        afc_file_close(file);
-
-        if (err) {
-            afc_client_free(afc);
-            NSString *msg = [NSString stringWithFormat:@"Upload failed: %s", err->message];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
-            return;
-        }
-        afc_client_free(afc);
-
-        if (progress) dispatch_async(dispatch_get_main_queue(), ^{ progress(0.5, @"Starting Installation..."); });
-
-        struct InstallationProxyClientHandle *inst = NULL;
-        err = installation_proxy_connect(provider, &inst);
-        if (err) {
-            NSString *msg = [NSString stringWithFormat:@"InstProxy connect failed: %s", err->message];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
-            return;
-        }
-
-        void (^progressCopy)(double, NSString *) = [progress copy];
-        err = installation_proxy_install_with_callback(inst, [remotePath UTF8String], NULL, instproxy_callback, (__bridge void *)progressCopy);
-        installation_proxy_client_free(inst);
-
-        if (err) {
-            NSString *msg = [NSString stringWithFormat:@"Install failed: %s", err->message];
-            idevice_error_free(err);
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(NO, msg); });
-        } else {
-            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(YES, nil); });
-        }
-    });
 }
 
 - (void)launchApp:(NSString *)bundleId
@@ -1235,7 +1092,7 @@ static void instproxy_callback(uint64_t progress, void *user_data) {
             }
             struct IdeviceFfiError *err =
                 process_control_launch_app(procControl, [bid UTF8String],
-                                           env, (uint32_t)envCnt, NULL, 0, NO, YES, &pid);
+                                           env, (uintptr_t)envCnt, NULL, 0, false, true, &pid);
             if (env) { for (NSUInteger i = 0; i < envCnt; i++) free((void *)env[i]); free(env); }
             if (err) {
                 NSString *msg = [NSString stringWithFormat:@"Launch Error: %@", omegaErrNSString(err)];
@@ -1246,7 +1103,8 @@ static void instproxy_callback(uint64_t progress, void *user_data) {
         }
 
         if (jitMode != JitModeNone && pid > 0) {
-            process_control_disable_memory_limit(procControl, pid);
+            struct IdeviceFfiError *_memErr = process_control_disable_memory_limit(procControl, pid);
+            if (_memErr) { NSLog(@"[AppManager] disable_memory_limit: %s", omegaSafeErrCString(_memErr)); idevice_error_free(_memErr); }
             process_control_free(procControl); remote_server_free(remoteServer);
             procControl = NULL; remoteServer = NULL;
 
@@ -1566,5 +1424,87 @@ static void instproxy_callback(uint64_t progress, void *user_data) {
 
     NSLog(@"[JIT-JS] Session complete.");
 }
+
+// ─── iOS 26+ / Modern: fetch apps via app_service (RSD) ──────────────────────
+- (void)fetchAppsViaAppServiceWithAdapter:(struct AdapterHandle *)adapter
+                                handshake:(struct RsdHandshakeHandle *)handshake
+                               completion:(void (^)(NSArray<AppInfo *> *apps, NSString *error))completion
+{
+    if (!adapter || !handshake) {
+        if (completion) completion(nil, @"Missing adapter or handshake");
+        return;
+    }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        struct AppServiceHandle *appSvc = NULL;
+        struct IdeviceFfiError *err = app_service_connect_rsd(adapter, handshake, &appSvc);
+        if (err) {
+            NSString *msg = omegaErrNSString(err);
+            idevice_error_free(err);
+            // Fallback: let caller try installation_proxy
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            return;
+        }
+
+        struct AppListEntryC *entries = NULL;
+        uintptr_t count = 0;
+        // include removable (user) apps, hidden=0, internal=0, default(system)=1
+        err = app_service_list_apps(appSvc,
+            /*app_clips*/0, /*removable*/1, /*hidden*/0,
+            /*internal*/0, /*default*/1,
+            &entries, &count);
+        if (err) {
+            NSString *msg = omegaErrNSString(err);
+            idevice_error_free(err);
+            app_service_free(appSvc);
+            if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, msg); });
+            return;
+        }
+
+        NSMutableArray<AppInfo *> *result = [NSMutableArray arrayWithCapacity:(NSUInteger)count];
+        for (uintptr_t i = 0; i < count; i++) {
+            struct AppListEntryC *e = &entries[i];
+            if (!e->bundle_identifier) continue;
+            AppInfo *info = [AppInfo new];
+            info.bundleId = [NSString stringWithUTF8String:e->bundle_identifier];
+            if (e->name) info.name = [NSString stringWithUTF8String:e->name];
+            else info.name = info.bundleId;
+            if (e->bundle_version) info.version = [NSString stringWithUTF8String:e->bundle_version];
+            info.isSystem = (e->is_first_party != 0);
+            [result addObject:info];
+        }
+        if (entries) app_service_free_app_list(entries, count);
+
+        // Fetch icons for top 50 user apps (async, non-blocking for list display)
+        NSArray<AppInfo *> *snapshot = [result copy];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_BACKGROUND, 0), ^{
+            NSUInteger limit = MIN(50, snapshot.count);
+            for (NSUInteger i = 0; i < limit; i++) {
+                AppInfo *info = snapshot[i];
+                if (info.isSystem) continue;
+                struct IconDataC *iconData = NULL;
+                struct IdeviceFfiError *iconErr = app_service_fetch_app_icon(
+                    appSvc, [info.bundleId UTF8String],
+                    60.0f, 60.0f, 2.0f, 1, &iconData);
+                if (!iconErr && iconData && iconData->data && iconData->data_len > 0) {
+                    NSData *imgData = [NSData dataWithBytes:iconData->data length:iconData->data_len];
+                    UIImage *img = [UIImage imageWithData:imgData];
+                    if (img) {
+                        info.icon = img;
+                    }
+                    app_service_free_icon_data(iconData);
+                }
+                if (iconErr) idevice_error_free(iconErr);
+            }
+        });
+
+        app_service_free(appSvc);
+
+        if (completion) {
+            NSArray<AppInfo *> *final = [result copy];
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(final, nil); });
+        }
+    });
+}
+
 
 @end

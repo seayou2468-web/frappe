@@ -20,7 +20,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"デベロッパーツール";
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
+    self.view.backgroundColor = [ThemeEngine bg];
     self.commandHistory = [NSMutableArray array];
 
     [self setupHeader];
@@ -135,7 +135,7 @@
     self.activeTabIndex = index;
     for (UIButton *btn in self.tabButtons) {
         BOOL active = (btn.tag == index);
-        btn.tintColor = active ? [ThemeEngine liquidColor] : [UIColor grayColor];
+        btn.tintColor = active ? [ThemeEngine accent] : [UIColor grayColor];
         btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:active ? UIFontWeightBold : UIFontWeightMedium];
     }
     self.inputContainer.hidden = (index != 1);
@@ -144,7 +144,6 @@
         if (!self.elementsSearch) {
             self.elementsSearch = [[UISearchBar alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 44)];
             self.elementsSearch.delegate = self;
-            self.elementsSearch.barStyle = UIBarStyleBlack;
             self.elementsSearch.placeholder = @"要素を検索...";
             self.elementsSearch.searchTextField.font = [UIFont systemFontOfSize:12];
         }
@@ -228,7 +227,7 @@
         cell.detailTextLabel.font = [UIFont fontWithName:@"Menlo" size:9];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     }
-    cell.textLabel.textColor = [UIColor whiteColor];
+    cell.textLabel.textColor = [ThemeEngine textPrimary];
     cell.detailTextLabel.textColor = [UIColor grayColor];
 
     switch (self.activeTabIndex) {

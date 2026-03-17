@@ -35,6 +35,161 @@
 - (void)createNewSpreadsheet;
 @end
 
+// ─── FileItemCell (Premium card-style cell) ───────────────────────────────────
+@interface FileItemCell : UITableViewCell
+- (void)configureWithItem:(FileItem *)item;
+@end
+
+@implementation FileItemCell {
+    UIView        *_iconBox;
+    UIImageView   *_iconView;
+    UILabel       *_nameLabel;
+    UILabel       *_detailLabel;
+    UIImageView   *_chevron;
+    UIView        *_separator;
+}
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)ri {
+    self = [super initWithStyle:style reuseIdentifier:ri];
+    if (!self) return nil;
+    self.backgroundColor = [UIColor clearColor];
+    self.selectedBackgroundView = [[UIView alloc] init];
+    self.selectedBackgroundView.backgroundColor = [UIColor clearColor];
+
+    UIView *cv = self.contentView;
+    cv.backgroundColor = [UIColor clearColor];
+
+    // ── Icon box ──────────────────────────────────────────────────────────
+    _iconBox = [[UIView alloc] init];
+    _iconBox.translatesAutoresizingMaskIntoConstraints = NO;
+    _iconBox.layer.cornerRadius = kCornerS;
+    _iconBox.clipsToBounds = YES;
+    [cv addSubview:_iconBox];
+
+    _iconView = [[UIImageView alloc] init];
+    _iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    _iconView.contentMode = UIViewContentModeScaleAspectFit;
+    [_iconBox addSubview:_iconView];
+
+    // ── Text ──────────────────────────────────────────────────────────────
+    _nameLabel = [[UILabel alloc] init];
+    _nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _nameLabel.font = [ThemeEngine fontBody];
+    _nameLabel.textColor = [ThemeEngine textPrimary];
+    _nameLabel.numberOfLines = 1;
+    [cv addSubview:_nameLabel];
+
+    _detailLabel = [[UILabel alloc] init];
+    _detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _detailLabel.font = [ThemeEngine fontCaption];
+    _detailLabel.textColor = [ThemeEngine textTertiary];
+    [cv addSubview:_detailLabel];
+
+    // ── Chevron ───────────────────────────────────────────────────────────
+    _chevron = [[UIImageView alloc] init];
+    _chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration
+        configurationWithPointSize:11 weight:UIImageSymbolWeightMedium];
+    _chevron.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:cfg];
+    _chevron.tintColor = [ThemeEngine textTertiary];
+    _chevron.contentMode = UIViewContentModeScaleAspectFit;
+    [cv addSubview:_chevron];
+
+    // ── Separator line ────────────────────────────────────────────────────
+    _separator = [[UIView alloc] init];
+    _separator.translatesAutoresizingMaskIntoConstraints = NO;
+    _separator.backgroundColor = [ThemeEngine border];
+    [cv addSubview:_separator];
+
+    [NSLayoutConstraint activateConstraints:@[
+        // Icon box: 42×42, left edge
+        [_iconBox.leadingAnchor constraintEqualToAnchor:cv.leadingAnchor constant:16],
+        [_iconBox.centerYAnchor constraintEqualToAnchor:cv.centerYAnchor],
+        [_iconBox.widthAnchor constraintEqualToConstant:42],
+        [_iconBox.heightAnchor constraintEqualToConstant:42],
+
+        // Icon inside box
+        [_iconView.centerXAnchor constraintEqualToAnchor:_iconBox.centerXAnchor],
+        [_iconView.centerYAnchor constraintEqualToAnchor:_iconBox.centerYAnchor],
+        [_iconView.widthAnchor constraintEqualToConstant:22],
+        [_iconView.heightAnchor constraintEqualToConstant:22],
+
+        // Chevron right edge
+        [_chevron.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-16],
+        [_chevron.centerYAnchor constraintEqualToAnchor:cv.centerYAnchor],
+        [_chevron.widthAnchor constraintEqualToConstant:14],
+
+        // Name
+        [_nameLabel.leadingAnchor constraintEqualToAnchor:_iconBox.trailingAnchor constant:12],
+        [_nameLabel.trailingAnchor constraintEqualToAnchor:_chevron.leadingAnchor constant:-8],
+        [_nameLabel.topAnchor constraintEqualToAnchor:cv.centerYAnchor constant:-12],
+
+        // Detail
+        [_detailLabel.leadingAnchor constraintEqualToAnchor:_nameLabel.leadingAnchor],
+        [_detailLabel.trailingAnchor constraintEqualToAnchor:_nameLabel.trailingAnchor],
+        [_detailLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:2],
+
+        // Separator at bottom, inset from icon
+        [_separator.leadingAnchor constraintEqualToAnchor:_nameLabel.leadingAnchor],
+        [_separator.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor],
+        [_separator.bottomAnchor constraintEqualToAnchor:cv.bottomAnchor],
+        [_separator.heightAnchor constraintEqualToConstant:0.4],
+    ]];
+    return self;
+}
+
+- (void)configureWithItem:(FileItem *)item {
+    _nameLabel.text = item.name;
+
+    if (item.isDirectory) {
+        UIColor *folderTint = [ThemeEngine tintForFolder];
+        _iconBox.backgroundColor = [folderTint colorWithAlphaComponent:0.18];
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration
+            configurationWithPointSize:20 weight:UIImageSymbolWeightMedium];
+        _iconView.image = [UIImage systemImageNamed:
+            (item.isLocked ? @"lock.fill" : @"folder.fill") withConfiguration:cfg];
+        _iconView.tintColor = folderTint;
+        _chevron.hidden = NO;
+        _detailLabel.text = item.isSymbolicLink ? @"Alias" : @"";
+    } else {
+        NSString *ext = item.name.pathExtension;
+        UIColor *tint = [ThemeEngine tintForExtension:ext];
+        _iconBox.backgroundColor = [tint colorWithAlphaComponent:0.15];
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration
+            configurationWithPointSize:20 weight:UIImageSymbolWeightMedium];
+        _iconView.image = [UIImage systemImageNamed:[ThemeEngine symbolForExtension:ext]
+                                  withConfiguration:cfg];
+        _iconView.tintColor = tint;
+        _chevron.hidden = YES;
+
+        // File size / detail
+        NSDictionary *attrs = [[NSFileManager defaultManager]
+            attributesOfItemAtPath:item.fullPath error:nil];
+        uint64_t sz = [[attrs objectForKey:NSFileSize] unsignedLongLongValue];
+        _detailLabel.text = [self formattedSize:sz];
+    }
+}
+
+- (NSString *)formattedSize:(uint64_t)bytes {
+    if (bytes == 0) return @"";
+    if (bytes < 1024) return [NSString stringWithFormat:@"%llu B", bytes];
+    if (bytes < 1024*1024) return [NSString stringWithFormat:@"%.1f KB", bytes/1024.0];
+    if (bytes < 1024*1024*1024) return [NSString stringWithFormat:@"%.1f MB", bytes/(1024.0*1024)];
+    return [NSString stringWithFormat:@"%.2f GB", bytes/(1024.0*1024*1024)];
+}
+
+- (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
+    [super setHighlighted:highlighted animated:animated];
+    [UIView animateWithDuration:animated ? 0.15 : 0 animations:^{
+        self.contentView.alpha = highlighted ? 0.6 : 1.0;
+        self.contentView.transform = highlighted ?
+            CGAffineTransformMakeScale(0.97, 0.97) : CGAffineTransformIdentity;
+        self->_iconBox.transform = highlighted ?
+            CGAffineTransformMakeScale(0.90, 0.90) : CGAffineTransformIdentity;
+    }];
+}
+@end
+
 @implementation FileBrowserViewController
 
 - (instancetype)initWithPath:(NSString *)path {
@@ -45,8 +200,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [ThemeEngine mainBackgroundColor];
-    self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
+    self.view.backgroundColor = [ThemeEngine bg];
     self.navigationController.navigationBar.translucent = YES;
     [self setupUI];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloadData) name:@"SettingsChanged" object:nil];
@@ -60,6 +214,7 @@
     self.tableView.dataSource = self;
     self.tableView.backgroundColor = [UIColor clearColor];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    [self.tableView registerClass:[FileItemCell class] forCellReuseIdentifier:@"FileItemCell"];
     [self.view addSubview:self.tableView];
 
     self.pathBar = [[PathBarView alloc] initWithFrame:CGRectZero];
@@ -77,7 +232,6 @@
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchBar.placeholder = @"検索...";
     self.searchBar.delegate = self;
-    self.searchBar.barStyle = UIBarStyleBlack;
     self.searchBar.hidden = YES;
     self.searchBar.backgroundImage = [[UIImage alloc] init];
     self.searchBar.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
@@ -121,7 +275,7 @@
 
     UIBarButtonItem *moreBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(showMoreMenu)];
     UIBarButtonItem *selectBtn = [[UIBarButtonItem alloc] initWithTitle:@"選択" style:UIBarButtonItemStylePlain target:self action:@selector(toggleSelectionMode)];
-    UIBarButtonItem *searchBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSearch target:self action:@selector(toggleSearch)];
+    UIBarButtonItem *searchBtn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(toggleSearch)];
     self.navigationItem.rightBarButtonItems = @[moreBtn, selectBtn, searchBtn];
 
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
@@ -171,36 +325,12 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.items.count; }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FileCell"];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"FileCell"];
-        cell.backgroundColor = [UIColor clearColor];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-        UIView *selectedBg = [[UIView alloc] init];
-        UIView *selectedInner = [[UIView alloc] initWithFrame:CGRectMake(10, 5, self.view.bounds.size.width-20, 60)];
-        selectedInner.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.15];
-        selectedInner.layer.cornerRadius = 15;
-        selectedInner.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        [selectedBg addSubview:selectedInner];
-        cell.selectedBackgroundView = selectedBg;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    }
-    FileItem *item = self.items[indexPath.row];
-    cell.textLabel.text = item.name;
-    if (item.isDirectory) {
-        cell.imageView.image = [UIImage systemImageNamed:item.isLocked ? @"lock.fill" : @"folder.fill"];
-        cell.imageView.tintColor = [ThemeEngine liquidColor];
-    } else {
-        NSString *ext = item.name.pathExtension;
-        cell.imageView.image = [UIImage systemImageNamed:[self iconNameForExtension:ext]];
-        cell.imageView.tintColor = [self iconColorForExtension:ext];
-    }
-    cell.detailTextLabel.text = item.isSymbolicLink ? [NSString stringWithFormat:@" Alias ➜ %@", item.linkTarget] : nil;
+    FileItemCell *cell = (FileItemCell *)[tableView dequeueReusableCellWithIdentifier:@"FileItemCell" forIndexPath:indexPath];
+    [cell configureWithItem:self.items[indexPath.row]];
     return cell;
 }
 
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath { return 70; }
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath { return 66; }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (self.tableView.isEditing) return;
@@ -354,7 +484,21 @@
     CustomMenuView *menu = [CustomMenuView menuWithTitle:@"操作"];
     if ([FileManagerCore sharedManager].clipboardPaths.count > 0) { NSString *title = [FileManagerCore sharedManager].isMoveOperation ? @"ここに移動" : @"ここに貼り付け"; [menu addAction:[CustomMenuAction actionWithTitle:title systemImage:@"doc.on.clipboard.fill" style:CustomMenuActionStyleDefault handler:^{ [self performPaste]; }]]; }
     [menu addAction:[CustomMenuAction actionWithTitle:@"新規フォルダ" systemImage:@"folder.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:YES]; }]];
-    [menu addAction:[CustomMenuAction actionWithTitle:@"新規ファイル" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:NO]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規テキストファイル" systemImage:@"doc.text.badge.plus" style:CustomMenuActionStyleDefault handler:^{
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"新規テキストファイル"
+            message:nil preferredStyle:UIAlertControllerStyleAlert];
+        [a addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.text = @"新規ファイル.txt"; [tf selectAll:nil]; }];
+        [a addAction:[UIAlertAction actionWithTitle:@"作成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+            NSString *name = [a.textFields.firstObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            if (name.length == 0) return;
+            NSString *path = [self.currentPath stringByAppendingPathComponent:name];
+            [[NSFileManager defaultManager] createFileAtPath:path contents:[NSData data] attributes:nil];
+            [self reloadData];
+        }]];
+        [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:a animated:YES completion:nil];
+    }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"新規ファイル (拡張子指定)" systemImage:@"doc.badge.plus" style:CustomMenuActionStyleDefault handler:^{ [self promptForNewItem:NO]; }]];
     [menu showInView:self.view];
 }
 
@@ -377,6 +521,7 @@
 
 - (void)showContextMenuForItem:(FileItem *)item {
     CustomMenuView *menu = [CustomMenuView menuWithTitle:item.name];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"名前変更" systemImage:@"pencil" style:CustomMenuActionStyleDefault handler:^{ [self renameItem:item]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"お気に入りに追加" systemImage:@"star" style:CustomMenuActionStyleDefault handler:^{ [[BookmarksManager sharedManager] addBookmark:item.fullPath]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"詳細情報" systemImage:@"info.circle" style:CustomMenuActionStyleDefault handler:^{ [self showInfoForItem:item]; }]];
     if (item.isSymbolicLink) { [menu addAction:[CustomMenuAction actionWithTitle:@"リンクを編集" systemImage:@"link" style:CustomMenuActionStyleDefault handler:^{ [self showEditLinkForItem:item]; }]]; }
@@ -386,6 +531,39 @@
     [menu addAction:[CustomMenuAction actionWithTitle:@"共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{ UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:item.fullPath]] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"削除" systemImage:@"trash" style:CustomMenuActionStyleDestructive handler:^{ [self removeItemAtPath:item.fullPath]; }]];
     [menu showInView:self.view];
+}
+
+- (void)renameItem:(FileItem *)item {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"名前変更"
+        message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+        tf.text = item.name;
+        tf.autocorrectionType = UITextAutocorrectionTypeNo;
+        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        [tf selectAll:nil];
+    }];
+    __weak typeof(self) ws = self;
+    [a addAction:[UIAlertAction actionWithTitle:@"変更" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *_) {
+            NSString *newName = [a.textFields.firstObject.text
+                stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            if (newName.length == 0 || [newName isEqualToString:item.name]) return;
+            NSString *dest = [[item.fullPath stringByDeletingLastPathComponent]
+                stringByAppendingPathComponent:newName];
+            NSError *err;
+            if ([[FileManagerCore sharedManager] moveItemAtPath:item.fullPath toPath:dest error:&err]) {
+                [ws reloadData];
+            } else {
+                UIAlertController *errAlert = [UIAlertController
+                    alertControllerWithTitle:@"エラー" message:err.localizedDescription
+                    preferredStyle:UIAlertControllerStyleAlert];
+                [errAlert addAction:[UIAlertAction actionWithTitle:@"OK"
+                    style:UIAlertActionStyleDefault handler:nil]];
+                [ws presentViewController:errAlert animated:YES completion:nil];
+            }
+        }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)showInfoForItem:(FileItem *)item { FileInfoViewController *vc = [[FileInfoViewController alloc] initWithItem:item]; [self.navigationController pushViewController:vc animated:YES]; }
