@@ -4,6 +4,8 @@
 #import "ExcelViewerViewController.h"
 #import "ThemeEngine.h"
 #import "CustomMenuView.h"
+#import "Office/XLSXCompatibilityReader.h"
+#import <float.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma mark - Cell Model
@@ -94,6 +96,10 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
 + (NSString *)evaluate:(NSString *)formula sheet:(SpreadSheet *)sheet;
 + (double)numberValue:(NSString *)s;
 + (NSArray<NSArray *> *)rangeForSpec:(NSString *)spec sheet:(SpreadSheet *)sheet;
++ (NSArray<NSString *> *)splitArguments:(NSString *)args;
++ (NSString *)cleanArg:(NSString *)arg;
++ (NSString *)stringValueForArg:(NSString *)arg sheet:(SpreadSheet *)sheet;
++ (BOOL)criteria:(NSString *)crit match:(double)value;
 @end
 
 @implementation FormulaEngine
@@ -178,6 +184,254 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
         fmt.dateFormat=@"yyyy-MM-dd";
         return [fmt stringFromDate:[NSDate date]];
     }
+    if ([f hasPrefix:@"=DATE("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<3) return @"#ERR";
+        NSDateComponents *dc=[NSDateComponents new];
+        dc.year=(NSInteger)[self numberValue:p[0]]; dc.month=(NSInteger)[self numberValue:p[1]]; dc.day=(NSInteger)[self numberValue:p[2]];
+        NSDate *d=[[NSCalendar currentCalendar] dateFromComponents:dc]; if(!d) return @"#ERR";
+        NSDateFormatter *fmt=[NSDateFormatter new]; fmt.dateFormat=@"yyyy-MM-dd"; return [fmt stringFromDate:d];
+    }
+    if ([f hasPrefix:@"=TIME("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<3) return @"#ERR";
+        return [NSString stringWithFormat:@"%02ld:%02ld:%02ld",(long)(NSInteger)[self numberValue:p[0]],(long)(NSInteger)[self numberValue:p[1]],(long)(NSInteger)[self numberValue:p[2]]];
+    }
+    if ([f hasPrefix:@"=YEAR("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; if(s.length<4) return @"0"; return [s substringToIndex:4];
+    }
+    if ([f hasPrefix:@"=MONTH("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSArray *a=[s componentsSeparatedByString:@"-"]; return a.count>1?a[1]:@"0";
+    }
+    if ([f hasPrefix:@"=DAY("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSArray *a=[s componentsSeparatedByString:@"-"]; return a.count>2?a[2]:@"0";
+    }
+    if ([f hasPrefix:@"=HOUR("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSArray *a=[s componentsSeparatedByString:@":"]; return a.count>0?a[0]:@"0";
+    }
+    if ([f hasPrefix:@"=MINUTE("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSArray *a=[s componentsSeparatedByString:@":"]; return a.count>1?a[1]:@"0";
+    }
+    if ([f hasPrefix:@"=SECOND("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSArray *a=[s componentsSeparatedByString:@":"]; return a.count>2?a[2]:@"0";
+    }
+    if ([f hasPrefix:@"=PRODUCT("]) {
+        NSArray *vals=[self valuesForRange:[self argFrom:f] sheet:sheet];
+        if(!vals.count) return @"0";
+        double p=1; for(NSNumber *n in vals) p*=n.doubleValue;
+        return [self formatNum:p];
+    }
+    if ([f hasPrefix:@"=MEDIAN("]) {
+        NSArray<NSNumber *> *vals=[self valuesForRange:[self argFrom:f] sheet:sheet];
+        if(!vals.count) return @"0";
+        NSArray *sorted=[vals sortedArrayUsingSelector:@selector(compare:)];
+        NSInteger c=sorted.count;
+        if(c%2==1) return [self formatNum:[sorted[c/2] doubleValue]];
+        return [self formatNum:([sorted[c/2-1] doubleValue]+[sorted[c/2] doubleValue])/2.0];
+    }
+    if ([f hasPrefix:@"=SUMSQ("]) {
+        double s=0; for(NSNumber *n in [self valuesForRange:[self argFrom:f] sheet:sheet]) s+=n.doubleValue*n.doubleValue;
+        return [self formatNum:s];
+    }
+    if ([f hasPrefix:@"=INT("]) return [self formatNum:floor([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=TRUNC("]) return [self formatNum:trunc([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=SIGN("]) { double v=[self numberValue:[self argFrom:f]]; return v>0?@"1":(v<0?@"-1":@"0"); }
+    if ([f hasPrefix:@"=EXP("]) return [self formatNum:exp([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=LN("]) { double v=[self numberValue:[self argFrom:f]]; return v>0?[self formatNum:log(v)]:@"#NUM!"; }
+    if ([f hasPrefix:@"=LOG10("]) { double v=[self numberValue:[self argFrom:f]]; return v>0?[self formatNum:log10(v)]:@"#NUM!"; }
+    if ([f hasPrefix:@"=SIN("]) return [self formatNum:sin([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=COS("]) return [self formatNum:cos([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=TAN("]) return [self formatNum:tan([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=ASIN("]) return [self formatNum:asin([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=ACOS("]) return [self formatNum:acos([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=ATAN("]) return [self formatNum:atan([self numberValue:[self argFrom:f]])];
+    if ([f hasPrefix:@"=PI("]) return [self formatNum:M_PI];
+    if ([f hasPrefix:@"=RADIANS("]) return [self formatNum:[self numberValue:[self argFrom:f]]*M_PI/180.0];
+    if ([f hasPrefix:@"=DEGREES("]) return [self formatNum:[self numberValue:[self argFrom:f]]*180.0/M_PI];
+    if ([f hasPrefix:@"=RAND("]) return [self formatNum:((double)arc4random()/UINT32_MAX)];
+    if ([f hasPrefix:@"=RANDBETWEEN("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSInteger a=(NSInteger)[self numberValue:p[0]], b=(NSInteger)[self numberValue:p[1]];
+        if(b<a){NSInteger t=a;a=b;b=t;} uint32_t range=(uint32_t)(b-a+1);
+        return [NSString stringWithFormat:@"%ld",(long)(a+(NSInteger)arc4random_uniform(MAX(range,1)))];
+    }
+    if ([f hasPrefix:@"=MOD("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double a=[self numberValue:p[0]], b=[self numberValue:p[1]];
+        if(b==0) return @"#DIV/0!";
+        return [self formatNum:fmod(a,b)];
+    }
+    if ([f hasPrefix:@"=MROUND("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]], m=[self numberValue:p[1]]; if(m==0) return @"0";
+        return [self formatNum:round(x/m)*m];
+    }
+    if ([f hasPrefix:@"=ROUNDUP("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]]; NSInteger d=(NSInteger)[self numberValue:p[1]]; double f10=pow(10,d);
+        return [self formatNum:ceil(x*f10)/f10];
+    }
+    if ([f hasPrefix:@"=ROUNDDOWN("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]]; NSInteger d=(NSInteger)[self numberValue:p[1]]; double f10=pow(10,d);
+        return [self formatNum:floor(x*f10)/f10];
+    }
+    if ([f hasPrefix:@"=CEILING("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]], m=[self numberValue:p[1]]; if(m==0) return @"0";
+        return [self formatNum:ceil(x/m)*m];
+    }
+    if ([f hasPrefix:@"=FLOOR("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]], m=[self numberValue:p[1]]; if(m==0) return @"0";
+        return [self formatNum:floor(x/m)*m];
+    }
+    if ([f hasPrefix:@"=PROPER("]) return [[self stringValueForArg:[self argFrom:f] sheet:sheet].lowercaseString capitalizedString];
+    if ([f hasPrefix:@"=TRIM("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet];
+        NSRegularExpression *re=[NSRegularExpression regularExpressionWithPattern:@"\\s+" options:0 error:nil];
+        s=[re stringByReplacingMatchesInString:s options:0 range:NSMakeRange(0,s.length) withTemplate:@" "];
+        return [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+    if ([f hasPrefix:@"=LEFT("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; NSString *s=[self stringValueForArg:p.firstObject?:@"" sheet:sheet];
+        NSInteger n=p.count>1?(NSInteger)[self numberValue:p[1]]:1; n=MAX(0,MIN(n,(NSInteger)s.length)); return [s substringToIndex:n];
+    }
+    if ([f hasPrefix:@"=RIGHT("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; NSString *s=[self stringValueForArg:p.firstObject?:@"" sheet:sheet];
+        NSInteger n=p.count>1?(NSInteger)[self numberValue:p[1]]:1; n=MAX(0,MIN(n,(NSInteger)s.length)); return [s substringFromIndex:s.length-n];
+    }
+    if ([f hasPrefix:@"=MID("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<3) return @"";
+        NSString *s=[self stringValueForArg:p[0] sheet:sheet]; NSInteger start=(NSInteger)[self numberValue:p[1]]-1; NSInteger len=(NSInteger)[self numberValue:p[2]];
+        if(start<0) start=0; if(start>=(NSInteger)s.length||len<=0) return @""; len=MIN(len,(NSInteger)s.length-start);
+        return [s substringWithRange:NSMakeRange(start, len)];
+    }
+    if ([f hasPrefix:@"=SUBSTITUTE("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<3) return @"";
+        NSString *s=[self stringValueForArg:p[0] sheet:sheet], *old=[self stringValueForArg:p[1] sheet:sheet], *newv=[self stringValueForArg:p[2] sheet:sheet];
+        return [s stringByReplacingOccurrencesOfString:old withString:newv];
+    }
+    if ([f hasPrefix:@"=REPLACE("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<4) return @"";
+        NSMutableString *s=[[self stringValueForArg:p[0] sheet:sheet] mutableCopy]; NSInteger start=(NSInteger)[self numberValue:p[1]]-1; NSInteger len=(NSInteger)[self numberValue:p[2]];
+        NSString *rep=[self stringValueForArg:p[3] sheet:sheet]; if(start<0) start=0; if(start>(NSInteger)s.length) start=s.length; len=MAX(0,MIN(len,(NSInteger)s.length-start));
+        [s replaceCharactersInRange:NSMakeRange(start,len) withString:rep]; return s;
+    }
+    if ([f hasPrefix:@"=FIND("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"#VALUE!";
+        NSString *needle=[self stringValueForArg:p[0] sheet:sheet], *hay=[self stringValueForArg:p[1] sheet:sheet];
+        NSRange r=[hay rangeOfString:needle]; return r.location==NSNotFound?@"#VALUE!":[NSString stringWithFormat:@"%ld",(long)r.location+1];
+    }
+    if ([f hasPrefix:@"=SEARCH("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"#VALUE!";
+        NSString *needle=[[self stringValueForArg:p[0] sheet:sheet] lowercaseString], *hay=[[self stringValueForArg:p[1] sheet:sheet] lowercaseString];
+        NSRange r=[hay rangeOfString:needle]; return r.location==NSNotFound?@"#VALUE!":[NSString stringWithFormat:@"%ld",(long)r.location+1];
+    }
+    if ([f hasPrefix:@"=REPT("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"";
+        NSString *s=[self stringValueForArg:p[0] sheet:sheet]; NSInteger n=MAX(0,(NSInteger)[self numberValue:p[1]]);
+        NSMutableString *out=[NSMutableString string]; for(NSInteger i=0;i<n;i++) [out appendString:s]; return out;
+    }
+    if ([f hasPrefix:@"=CHAR("]) {
+        NSInteger code=(NSInteger)[self numberValue:[self argFrom:f]];
+        return [NSString stringWithFormat:@"%C", (unichar)MAX(0, MIN(65535, code))];
+    }
+    if ([f hasPrefix:@"=CODE("]) {
+        NSString *s=[self stringValueForArg:[self argFrom:f] sheet:sheet];
+        if(!s.length) return @"0";
+        return [NSString stringWithFormat:@"%d", [s characterAtIndex:0]];
+    }
+    if ([f hasPrefix:@"=VALUE("]) return [self formatNum:[self numberValue:[self argFrom:f]]];
+    if ([f hasPrefix:@"=CONCAT("]) return [self evaluateCONCAT:[f stringByReplacingOccurrencesOfString:@"=CONCAT(" withString:@"=CONCATENATE("] sheet:sheet];
+    if ([f hasPrefix:@"=TEXTJOIN("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<3) return @"";
+        NSString *sep=[self stringValueForArg:p[0] sheet:sheet]; NSMutableArray *vals=[NSMutableArray array];
+        for(NSInteger i=2;i<(NSInteger)p.count;i++) [vals addObject:[self stringValueForArg:p[i] sheet:sheet]?:@""];
+        return [vals componentsJoinedByString:sep];
+    }
+    if ([f hasPrefix:@"=EXACT("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"FALSE";
+        return [[self stringValueForArg:p[0] sheet:sheet] isEqualToString:[self stringValueForArg:p[1] sheet:sheet]] ? @"TRUE" : @"FALSE";
+    }
+    if ([f hasPrefix:@"=AND("]) { NSArray *p=[self splitArguments:[self argFrom:f]]; for(NSString *a in p) if([self numberValue:a]==0) return @"FALSE"; return @"TRUE"; }
+    if ([f hasPrefix:@"=OR("]) { NSArray *p=[self splitArguments:[self argFrom:f]]; for(NSString *a in p) if([self numberValue:a]!=0) return @"TRUE"; return @"FALSE"; }
+    if ([f hasPrefix:@"=NOT("]) return [self numberValue:[self argFrom:f]]==0?@"TRUE":@"FALSE";
+    if ([f hasPrefix:@"=IFERROR("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"";
+        NSString *v=[self stringValueForArg:p[0] sheet:sheet]; if([v hasPrefix:@"#"]) return [self stringValueForArg:p[1] sheet:sheet]; return v;
+    }
+    if ([f hasPrefix:@"=ISBLANK("]) return [self stringValueForArg:[self argFrom:f] sheet:sheet].length?@"FALSE":@"TRUE";
+    if ([f hasPrefix:@"=ISNUMBER("]) {
+        NSString *v=[self stringValueForArg:[self argFrom:f] sheet:sheet]; NSScanner *sc=[NSScanner scannerWithString:v]; double d;
+        return ([sc scanDouble:&d] && sc.isAtEnd) ? @"TRUE" : @"FALSE";
+    }
+    if ([f hasPrefix:@"=COUNTA("]) {
+        NSString *arg=[self argFrom:f]; NSArray *parts=[arg componentsSeparatedByString:@":"]; NSInteger count=0;
+        if(parts.count==2){ NSInteger r1,c1,r2,c2; [self parseRef:parts[0] row:&r1 col:&c1]; [self parseRef:parts[1] row:&r2 col:&c2];
+            for(NSInteger r=r1;r<=r2;r++) for(NSInteger c=c1;c<=c2;c++){ SpreadCell *cell=[sheet cellAtRow:r col:c]; if(cell.display.length) count++; } }
+        else if([self stringValueForArg:arg sheet:sheet].length) count=1;
+        return [NSString stringWithFormat:@"%ld",(long)count];
+    }
+    if ([f hasPrefix:@"=COUNTBLANK("]) {
+        NSString *arg=[self argFrom:f]; NSArray *parts=[arg componentsSeparatedByString:@":"]; NSInteger count=0;
+        if(parts.count==2){ NSInteger r1,c1,r2,c2; [self parseRef:parts[0] row:&r1 col:&c1]; [self parseRef:parts[1] row:&r2 col:&c2];
+            for(NSInteger r=r1;r<=r2;r++) for(NSInteger c=c1;c<=c2;c++){ SpreadCell *cell=[sheet cellAtRow:r col:c]; if(!cell.display.length) count++; } }
+        return [NSString stringWithFormat:@"%ld",(long)count];
+    }
+    if ([f hasPrefix:@"=COUNTIF("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSArray *vals=[self valuesForRange:p[0] sheet:sheet]; NSString *crit=[self cleanArg:p[1]];
+        NSInteger cnt=0; for(NSNumber *n in vals){ if([self criteria:crit match:n.doubleValue]) cnt++; }
+        return [NSString stringWithFormat:@"%ld",(long)cnt];
+    }
+    if ([f hasPrefix:@"=SUMIF("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSArray *vals=[self valuesForRange:p[0] sheet:sheet]; NSString *crit=[self cleanArg:p[1]];
+        double s=0; for(NSNumber *n in vals){ if([self criteria:crit match:n.doubleValue]) s+=n.doubleValue; }
+        return [self formatNum:s];
+    }
+    if ([f hasPrefix:@"=SMALL("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSArray<NSNumber *> *vals=[[self valuesForRange:p[0] sheet:sheet] sortedArrayUsingSelector:@selector(compare:)];
+        NSInteger k=MAX(1,(NSInteger)[self numberValue:p[1]]); if(k>(NSInteger)vals.count) return @"#NUM!";
+        return [self formatNum:[vals[k-1] doubleValue]];
+    }
+    if ([f hasPrefix:@"=LARGE("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSArray<NSNumber *> *vals=[[self valuesForRange:p[0] sheet:sheet] sortedArrayUsingComparator:^NSComparisonResult(NSNumber *a, NSNumber *b){ return [b compare:a]; }];
+        NSInteger k=MAX(1,(NSInteger)[self numberValue:p[1]]); if(k>(NSInteger)vals.count) return @"#NUM!";
+        return [self formatNum:[vals[k-1] doubleValue]];
+    }
+    if ([f hasPrefix:@"=RANK("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        double x=[self numberValue:p[0]];
+        NSArray<NSNumber *> *vals=[[self valuesForRange:p[1] sheet:sheet] sortedArrayUsingComparator:^NSComparisonResult(NSNumber *a, NSNumber *b){ return [b compare:a]; }];
+        NSInteger rank=1; for(NSNumber *n in vals){ if(n.doubleValue>x) rank++; }
+        return [NSString stringWithFormat:@"%ld",(long)rank];
+    }
+    if ([f hasPrefix:@"=FACT("]) {
+        NSInteger n=MAX(0,(NSInteger)[self numberValue:[self argFrom:f]]); double r=1; for(NSInteger i=2;i<=n;i++) r*=i; return [self formatNum:r];
+    }
+    if ([f hasPrefix:@"=GCD("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSInteger a=labs((NSInteger)[self numberValue:p[0]]), b=labs((NSInteger)[self numberValue:p[1]]);
+        while(b!=0){ NSInteger t=b; b=a%b; a=t; }
+        return [NSString stringWithFormat:@"%ld",(long)a];
+    }
+    if ([f hasPrefix:@"=LCM("]) {
+        NSArray *p=[self splitArguments:[self argFrom:f]]; if(p.count<2) return @"0";
+        NSInteger x=labs((NSInteger)[self numberValue:p[0]]), y=labs((NSInteger)[self numberValue:p[1]]);
+        NSInteger a=x,b=y; while(b!=0){ NSInteger t=b; b=a%b; a=t; }
+        if(a==0) return @"0";
+        return [NSString stringWithFormat:@"%ld",(long)(x/a*y)];
+    }
+    if ([f hasPrefix:@"=EVEN("]) {
+        NSInteger v=(NSInteger)ceil(fabs([self numberValue:[self argFrom:f]])); if(v%2) v++; return [NSString stringWithFormat:@"%ld",(long)v];
+    }
+    if ([f hasPrefix:@"=ODD("]) {
+        NSInteger v=(NSInteger)ceil(fabs([self numberValue:[self argFrom:f]])); if(v%2==0) v++; return [NSString stringWithFormat:@"%ld",(long)v];
+    }
+    if ([f hasPrefix:@"=ROW("]) { NSInteger r,c; if([self parseRef:[self argFrom:f] row:&r col:&c]) return [NSString stringWithFormat:@"%ld",(long)r+1]; return @"0"; }
+    if ([f hasPrefix:@"=COLUMN("]) { NSInteger r,c; if([self parseRef:[self argFrom:f] row:&r col:&c]) return [NSString stringWithFormat:@"%ld",(long)c+1]; return @"0"; }
     // Simple arithmetic: =A1+B1, =A1*2, etc.
     if ([f hasPrefix:@"="]) {
         return [self evalArithmetic:[f substringFromIndex:1] sheet:sheet];
@@ -331,6 +585,46 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
 
 + (NSArray *)rangeForSpec:(NSString *)spec sheet:(SpreadSheet *)sheet {
     return @[];
+}
+
++ (NSArray<NSString *> *)splitArguments:(NSString *)args {
+    NSMutableArray<NSString *> *out=[NSMutableArray array];
+    NSInteger depth=0; BOOL quote=NO; NSMutableString *cur=[NSMutableString string];
+    for(NSInteger i=0;i<(NSInteger)args.length;i++) {
+        unichar ch=[args characterAtIndex:i];
+        if(ch=='\"') quote=!quote;
+        if(!quote) {
+            if(ch=='(') depth++;
+            else if(ch==')'&&depth>0) depth--;
+            else if(ch==','&&depth==0) { [out addObject:[self cleanArg:cur]]; [cur setString:@""]; continue; }
+        }
+        [cur appendFormat:@"%C", ch];
+    }
+    if(cur.length || out.count) [out addObject:[self cleanArg:cur]];
+    return out;
+}
+
++ (NSString *)cleanArg:(NSString *)arg {
+    NSString *v=[arg stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if(v.length>=2 && [v hasPrefix:@"\""] && [v hasSuffix:@"\""]) return [v substringWithRange:NSMakeRange(1, v.length-2)];
+    return v;
+}
+
++ (NSString *)stringValueForArg:(NSString *)arg sheet:(SpreadSheet *)sheet {
+    NSString *clean=[self cleanArg:arg ?: @""];
+    SpreadCell *c=[self cellFromRef:clean sheet:sheet];
+    return c ? (c.display ?: @"") : clean;
+}
+
++ (BOOL)criteria:(NSString *)crit match:(double)value {
+    NSString *c=[crit stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if([c hasPrefix:@">="]) return value >= [[c substringFromIndex:2] doubleValue];
+    if([c hasPrefix:@"<="]) return value <= [[c substringFromIndex:2] doubleValue];
+    if([c hasPrefix:@"<>"]) return value != [[c substringFromIndex:2] doubleValue];
+    if([c hasPrefix:@">"]) return value > [[c substringFromIndex:1] doubleValue];
+    if([c hasPrefix:@"<"]) return value < [[c substringFromIndex:1] doubleValue];
+    if([c hasPrefix:@"="]) return value == [[c substringFromIndex:1] doubleValue];
+    return value == [c doubleValue];
 }
 
 @end
@@ -627,6 +921,21 @@ static const CGFloat kRowHeaderW = 40;
         @[@"↩",@"undo"],@[@"↪",@"redo"],@[@"📊",@"chart"],
         @[@"📋",@"copy"],@[@"📌",@"paste"],@[@"🗑",@"clear"],
         @[@"📈",@"autofit"],@[@"+⬜",@"addSheet"],
+        @[@"🧹",@"clearFilters"],@[@"⤓",@"fillDown"],@[@"⤏",@"fillRight"],
+        @[@"⎘R",@"dupRow"],@[@"⎘C",@"dupCol"],@[@"↔︎",@"transpose"],
+        @[@"📅",@"dateStamp"],@[@"⏱",@"timeStamp"],@[@"🎲",@"randomFill"],
+        @[@"A↔︎Z",@"toggleCase"],
+        @[@"EVAL",@"recalcAll"],@[@"CLRf",@"clearFormats"],@[@"↥R",@"selectRow"],
+        @[@"↦C",@"selectCol"],@[@"TOP",@"freezeTop"],@[@"COL",@"freezeFirstCol"],
+        @[@"UNF",@"unfreeze"],@[@"⇠S",@"sheetLeft"],@[@"S⇢",@"sheetRight"],
+        @[@"⎘S",@"dupSheet"],@[@"REN",@"renameSheet"],@[@"TX+",@"prependText"],
+        @[@"+TX",@"appendText"],
+        @[@"SER",@"fillSeries"],@[@"TRM",@"trimCells"],@[@"DED",@"dedupeRows"],
+        @[@"RM0",@"removeEmptyRows"],@[@"ΣR",@"addTotalsRow"],@[@"#C",@"addIndexColumn"],
+        @[@"RNDi",@"randomIntFill"],@[@"NORM",@"normalizeNumbers"],
+        @[@"SRTS",@"sortRowsBySelection"],@[@"NWS",@"duplicateToNewSheet"],
+        @[@"COL#",@"seriesByColumn"],@[@"F↑",@"fillBlanksFromAbove"],
+        @[@"R2",@"round2Decimals"],@[@"AVG+",@"addAverageRow"],
     ];
 
     UIStackView *stack=[[UIStackView alloc] init];
@@ -732,6 +1041,80 @@ static const CGFloat kRowHeaderW = 40;
         [self addNewSheet];
     } else if([action isEqualToString:@"merge"]){
         [self mergeCells];
+    } else if([action isEqualToString:@"clearFilters"]){
+        [self.filters removeAllObjects]; [self.hiddenRows removeAllObjects];
+    } else if([action isEqualToString:@"fillDown"]){
+        [self fillDownSelection];
+    } else if([action isEqualToString:@"fillRight"]){
+        [self fillRightSelection];
+    } else if([action isEqualToString:@"dupRow"]){
+        [self saveUndo]; [self duplicateCurrentRow];
+    } else if([action isEqualToString:@"dupCol"]){
+        [self saveUndo]; [self duplicateCurrentColumn];
+    } else if([action isEqualToString:@"transpose"]){
+        [self saveUndo]; [self transposeSelection];
+    } else if([action isEqualToString:@"dateStamp"]){
+        [self saveUndo]; [self insertCurrentDate];
+    } else if([action isEqualToString:@"timeStamp"]){
+        [self saveUndo]; [self insertCurrentTime];
+    } else if([action isEqualToString:@"randomFill"]){
+        [self saveUndo]; [self fillSelectionWithRandom];
+    } else if([action isEqualToString:@"toggleCase"]){
+        [self saveUndo]; [self toggleSelectionCase];
+    } else if([action isEqualToString:@"recalcAll"]){
+        [self recalculateAllFormulas];
+    } else if([action isEqualToString:@"clearFormats"]){
+        [self saveUndo]; [self clearFormatsInSelection];
+    } else if([action isEqualToString:@"selectRow"]){
+        [self selectCurrentRow];
+    } else if([action isEqualToString:@"selectCol"]){
+        [self selectCurrentColumn];
+    } else if([action isEqualToString:@"freezeTop"]){
+        sheet.frozenRows=1;
+    } else if([action isEqualToString:@"freezeFirstCol"]){
+        sheet.frozenCols=1;
+    } else if([action isEqualToString:@"unfreeze"]){
+        sheet.frozenRows=0; sheet.frozenCols=0;
+    } else if([action isEqualToString:@"sheetLeft"]){
+        [self moveCurrentSheetBy:-1];
+    } else if([action isEqualToString:@"sheetRight"]){
+        [self moveCurrentSheetBy:1];
+    } else if([action isEqualToString:@"dupSheet"]){
+        [self duplicateSheet:self.currentSheetIndex];
+    } else if([action isEqualToString:@"renameSheet"]){
+        [self renameSheet:self.currentSheetIndex];
+    } else if([action isEqualToString:@"prependText"]){
+        [self promptAffixText:YES];
+    } else if([action isEqualToString:@"appendText"]){
+        [self promptAffixText:NO];
+    } else if([action isEqualToString:@"fillSeries"]){
+        [self saveUndo]; [self fillSeriesInSelection];
+    } else if([action isEqualToString:@"trimCells"]){
+        [self saveUndo]; [self trimCellsInSelection];
+    } else if([action isEqualToString:@"dedupeRows"]){
+        [self saveUndo]; [self dedupeRowsBySelection];
+    } else if([action isEqualToString:@"removeEmptyRows"]){
+        [self saveUndo]; [self removeEmptyRowsInSelectionRange];
+    } else if([action isEqualToString:@"addTotalsRow"]){
+        [self saveUndo]; [self addTotalsRowForSelection];
+    } else if([action isEqualToString:@"addIndexColumn"]){
+        [self saveUndo]; [self addIndexColumnBeforeSelection];
+    } else if([action isEqualToString:@"randomIntFill"]){
+        [self saveUndo]; [self fillSelectionWithRandomIntegers];
+    } else if([action isEqualToString:@"normalizeNumbers"]){
+        [self saveUndo]; [self normalizeNumbersInSelection];
+    } else if([action isEqualToString:@"sortRowsBySelection"]){
+        [self saveUndo]; [self sortRowsBySelectionColumns];
+    } else if([action isEqualToString:@"duplicateToNewSheet"]){
+        [self saveUndo]; [self duplicateSelectionToNewSheet];
+    } else if([action isEqualToString:@"seriesByColumn"]){
+        [self saveUndo]; [self fillSeriesByColumnInSelection];
+    } else if([action isEqualToString:@"fillBlanksFromAbove"]){
+        [self saveUndo]; [self fillBlanksFromAboveInSelection];
+    } else if([action isEqualToString:@"round2Decimals"]){
+        [self saveUndo]; [self roundNumericCellsInSelectionTo:2];
+    } else if([action isEqualToString:@"addAverageRow"]){
+        [self saveUndo]; [self addAverageRowForSelection];
     }
     [self reloadGrid];
     self.isDirty=YES;
@@ -1133,6 +1516,325 @@ static const CGFloat kRowHeaderW = 40;
         SpreadCell *cell=[sheet cellAtRow:r col:c];
         if(cell){cell.raw=@"";cell.display=@"";}
     }
+}
+
+- (void)fillDownSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    for(NSInteger c=c1;c<=c2;c++) {
+        SpreadCell *src=[sheet cellAtRow:r1 col:c];
+        for(NSInteger r=r1+1;r<=r2;r++) {
+            SpreadCell *dst=[sheet cellAtRow:r col:c]?:[SpreadCell new];
+            dst.raw=src.raw?:@""; dst.display=src.display?:@"";
+            [sheet setCell:dst row:r col:c];
+        }
+    }
+}
+
+- (void)fillRightSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    for(NSInteger r=r1;r<=r2;r++) {
+        SpreadCell *src=[sheet cellAtRow:r col:c1];
+        for(NSInteger c=c1+1;c<=c2;c++) {
+            SpreadCell *dst=[sheet cellAtRow:r col:c]?:[SpreadCell new];
+            dst.raw=src.raw?:@""; dst.display=src.display?:@"";
+            [sheet setCell:dst row:r col:c];
+        }
+    }
+}
+
+- (void)duplicateCurrentRow {
+    [self insertRowAt:self.selRow+1];
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(NSInteger c=0;c<sheet.colCount;c++) {
+        SpreadCell *src=[sheet cellAtRow:self.selRow col:c];
+        if(src) [sheet setCell:[src copy] row:self.selRow+1 col:c];
+    }
+}
+
+- (void)duplicateCurrentColumn {
+    [self insertColAt:self.selCol+1];
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(NSInteger r=0;r<sheet.rowCount;r++) {
+        SpreadCell *src=[sheet cellAtRow:r col:self.selCol];
+        if(src) [sheet setCell:[src copy] row:r col:self.selCol+1];
+    }
+}
+
+- (void)transposeSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    NSInteger h=r2-r1+1, w=c2-c1+1;
+    NSMutableArray *buffer=[NSMutableArray array];
+    for(NSInteger r=0;r<h;r++) {
+        NSMutableArray *row=[NSMutableArray array];
+        for(NSInteger c=0;c<w;c++) {
+            SpreadCell *src=[sheet cellAtRow:r1+r col:c1+c];
+            [row addObject:src?[src copy]:[NSNull null]];
+        }
+        [buffer addObject:row];
+    }
+    for(NSInteger r=0;r<h;r++) for(NSInteger c=0;c<w;c++) {
+        NSArray *row = buffer[r];
+        id v=row[c];
+        NSInteger tr=r1+c, tc=c1+r;
+        if(v==[NSNull null]) [sheet.cells removeObjectForKey:[sheet keyForRow:tr col:tc]];
+        else [sheet setCell:v row:tr col:tc];
+    }
+}
+
+- (void)insertCurrentDate {
+    NSDateFormatter *fmt=[NSDateFormatter new]; fmt.dateFormat=@"yyyy-MM-dd";
+    [self setCellDisplay:[fmt stringFromDate:[NSDate date]] atRow:self.selRow col:self.selCol];
+}
+
+- (void)insertCurrentTime {
+    NSDateFormatter *fmt=[NSDateFormatter new]; fmt.dateFormat=@"HH:mm:ss";
+    [self setCellDisplay:[fmt stringFromDate:[NSDate date]] atRow:self.selRow col:self.selCol];
+}
+
+- (void)fillSelectionWithRandom {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        double v=((double)arc4random()/UINT32_MAX);
+        [self setCellDisplay:[NSString stringWithFormat:@"%.6f",v] atRow:r col:c];
+    }
+}
+
+- (void)toggleSelectionCase {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c]; if(!cell.display.length) continue;
+        BOOL hasLower=![[cell.display lowercaseString] isEqualToString:cell.display];
+        NSString *n=hasLower ? [cell.display uppercaseString] : [cell.display lowercaseString];
+        [self setCellDisplay:n atRow:r col:c];
+    }
+}
+
+- (void)setCellDisplay:(NSString *)text atRow:(NSInteger)row col:(NSInteger)col {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    SpreadCell *cell=[sheet cellAtRow:row col:col]?:[SpreadCell new];
+    cell.raw=text?:@""; cell.display=text?:@""; cell.type=[self isNumeric:cell.display]?CellTypeNumber:CellTypeText;
+    [sheet setCell:cell row:row col:col];
+}
+
+- (void)recalculateAllFormulas {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(SpreadCell *cell in sheet.cells.allValues) {
+        if ([cell.raw hasPrefix:@"="]) {
+            cell.type=CellTypeFormula;
+            cell.display=[FormulaEngine evaluate:cell.raw sheet:sheet];
+        }
+    }
+}
+
+- (void)clearFormatsInSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c]; if(!cell) continue;
+        cell.bold=NO; cell.italic=NO; cell.fontSize=13;
+        cell.textColor=[UIColor whiteColor]; cell.bgColor=[UIColor clearColor];
+        cell.alignment=CellAlignLeft;
+        cell.hasTopBorder=cell.hasBottomBorder=cell.hasLeftBorder=cell.hasRightBorder=NO;
+    }
+}
+
+- (void)selectCurrentRow {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    self.selEndRow=self.selRow; self.selCol=0; self.selEndCol=MAX(0,sheet.colCount-1);
+}
+
+- (void)selectCurrentColumn {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    self.selEndCol=self.selCol; self.selRow=0; self.selEndRow=MAX(0,sheet.rowCount-1);
+}
+
+- (void)moveCurrentSheetBy:(NSInteger)delta {
+    NSInteger from=self.currentSheetIndex;
+    NSInteger to=MAX(0,MIN((NSInteger)self.sheets.count-1,from+delta));
+    if(from==to) return;
+    SpreadSheet *s=self.sheets[from];
+    [self.sheets removeObjectAtIndex:from];
+    [self.sheets insertObject:s atIndex:to];
+    self.currentSheetIndex=to;
+    [self reloadSheetTabs];
+}
+
+- (void)promptAffixText:(BOOL)prefix {
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:(prefix?@"先頭文字列":@"末尾文字列") message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf){ tf.placeholder=prefix?@"prefix":@"suffix"; }];
+    [a addAction:[UIAlertAction actionWithTitle:@"適用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){
+        NSString *t=a.textFields.firstObject.text?:@"";
+        if(!t.length) return;
+        [self saveUndo];
+        SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+        for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+        for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+            SpreadCell *cell=[sheet cellAtRow:r col:c]?:[SpreadCell new];
+            NSString *base=cell.display?:@"";
+            NSString *v=prefix?[t stringByAppendingString:base]:[base stringByAppendingString:t];
+            cell.raw=v; cell.display=v;
+            [sheet setCell:cell row:r col:c];
+        }
+        [self reloadGrid];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)fillSeriesInSelection {
+    NSInteger n=1;
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        [self setCellDisplay:[NSString stringWithFormat:@"%ld",(long)n++] atRow:r col:c];
+    }
+}
+
+- (void)trimCellsInSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSCharacterSet *ws=[NSCharacterSet whitespaceAndNewlineCharacterSet];
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c]; if(!cell.display.length) continue;
+        NSString *v=[cell.display stringByTrimmingCharactersInSet:ws];
+        cell.raw=v; cell.display=v;
+    }
+}
+
+- (void)dedupeRowsBySelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    NSMutableSet *seen=[NSMutableSet set];
+    for(NSInteger r=r2;r>=r1;r--) {
+        NSMutableArray *vals=[NSMutableArray array];
+        for(NSInteger c=c1;c<=c2;c++) [vals addObject:([sheet cellAtRow:r col:c].display?:@"")];
+        NSString *key=[vals componentsJoinedByString:@"\u241F"];
+        if([seen containsObject:key]) [self deleteRowAt:r];
+        else [seen addObject:key];
+    }
+}
+
+- (void)removeEmptyRowsInSelectionRange {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    for(NSInteger r=r2;r>=r1;r--) {
+        BOOL has=NO;
+        for(NSInteger c=c1;c<=c2;c++) if([sheet cellAtRow:r col:c].display.length){has=YES;break;}
+        if(!has) [self deleteRowAt:r];
+    }
+}
+
+- (void)addTotalsRowForSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r2=MAX(self.selRow,self.selEndRow), c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    [self insertRowAt:r2+1];
+    for(NSInteger c=c1;c<=c2;c++) {
+        NSString *f=[NSString stringWithFormat:@"=SUM(%@%ld:%@%ld)",[self colName:c],(long)(MIN(self.selRow,self.selEndRow)+1),[self colName:c],(long)(r2+1)];
+        [self setCellDisplay:f atRow:r2+1 col:c];
+    }
+    [self recalculateAllFormulas];
+}
+
+- (void)addIndexColumnBeforeSelection {
+    NSInteger c=MIN(self.selCol,self.selEndCol);
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    [self insertColAt:c];
+    for(NSInteger r=r1;r<=r2;r++) [self setCellDisplay:[NSString stringWithFormat:@"%ld",(long)(r-r1+1)] atRow:r col:c];
+}
+
+- (void)fillSelectionWithRandomIntegers {
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        [self setCellDisplay:[NSString stringWithFormat:@"%u",arc4random_uniform(1000)] atRow:r col:c];
+    }
+}
+
+- (void)normalizeNumbersInSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    double minV=DBL_MAX,maxV=-DBL_MAX;
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c]; if(![self isNumeric:cell.display]) continue;
+        double v=cell.display.doubleValue; minV=MIN(minV,v); maxV=MAX(maxV,v);
+    }
+    double span=maxV-minV; if(span<=0||minV==DBL_MAX) return;
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c]; if(![self isNumeric:cell.display]) continue;
+        double n=(cell.display.doubleValue-minV)/span;
+        [self setCellDisplay:[NSString stringWithFormat:@"%.6f",n] atRow:r col:c];
+    }
+}
+
+- (void)sortRowsBySelectionColumns {
+    [self sortByCol:MIN(self.selCol,self.selEndCol) ascending:YES];
+}
+
+- (void)duplicateSelectionToNewSheet {
+    [self addNewSheet];
+    NSInteger startR=MIN(self.selRow,self.selEndRow), endR=MAX(self.selRow,self.selEndRow);
+    NSInteger startC=MIN(self.selCol,self.selEndCol), endC=MAX(self.selCol,self.selEndCol);
+    SpreadSheet *target=self.sheets[self.currentSheetIndex];
+    SpreadSheet *source=self.sheets[MAX(0,self.currentSheetIndex-1)];
+    for(NSInteger r=startR;r<=endR;r++) for(NSInteger c=startC;c<=endC;c++) {
+        SpreadCell *src=[source cellAtRow:r col:c]; if(!src) continue;
+        [target setCell:[src copy] row:r-startR col:c-startC];
+    }
+    [self reloadGrid];
+}
+
+- (void)fillSeriesByColumnInSelection {
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    for(NSInteger c=c1;c<=c2;c++) for(NSInteger r=r1;r<=r2;r++) {
+        [self setCellDisplay:[NSString stringWithFormat:@"%ld",(long)(r-r1+1)] atRow:r col:c];
+    }
+}
+
+- (void)fillBlanksFromAboveInSelection {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    for(NSInteger c=c1;c<=c2;c++) {
+        for(NSInteger r=r1+1;r<=r2;r++) {
+            SpreadCell *cell=[sheet cellAtRow:r col:c];
+            if(cell.display.length) continue;
+            SpreadCell *up=[sheet cellAtRow:r-1 col:c];
+            if(!up.display.length) continue;
+            [self setCellDisplay:up.display atRow:r col:c];
+        }
+    }
+}
+
+- (void)roundNumericCellsInSelectionTo:(NSInteger)digits {
+    SpreadSheet *sheet=self.sheets[self.currentSheetIndex];
+    NSString *fmt=[NSString stringWithFormat:@"%%.%ldf",(long)MAX(0,digits)];
+    for(NSInteger r=MIN(self.selRow,self.selEndRow);r<=MAX(self.selRow,self.selEndRow);r++)
+    for(NSInteger c=MIN(self.selCol,self.selEndCol);c<=MAX(self.selCol,self.selEndCol);c++) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c];
+        if(![self isNumeric:cell.display]) continue;
+        [self setCellDisplay:[NSString stringWithFormat:fmt,cell.display.doubleValue] atRow:r col:c];
+    }
+}
+
+- (void)addAverageRowForSelection {
+    NSInteger r1=MIN(self.selRow,self.selEndRow), r2=MAX(self.selRow,self.selEndRow);
+    NSInteger c1=MIN(self.selCol,self.selEndCol), c2=MAX(self.selCol,self.selEndCol);
+    [self insertRowAt:r2+1];
+    for(NSInteger c=c1;c<=c2;c++) {
+        NSString *f=[NSString stringWithFormat:@"=AVERAGE(%@%ld:%@%ld)",[self colName:c],(long)(r1+1),[self colName:c],(long)(r2+1)];
+        [self setCellDisplay:f atRow:r2+1 col:c];
+    }
+    [self recalculateAllFormulas];
 }
 
 - (void)copyCells {
@@ -1614,6 +2316,11 @@ static const CGFloat kRowHeaderW = 40;
     [a addAction:[UIAlertAction actionWithTitle:@"📊 Export as TSV" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self exportTSV];}]];
     [a addAction:[UIAlertAction actionWithTitle:@"🖨 Print" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self printSheet];}]];
     [a addAction:[UIAlertAction actionWithTitle:@"📋 Copy All as Text" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self copyAllAsText];}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"🧮 Recalculate All" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self recalculateAllFormulas];[self reloadGrid];}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"🧹 Clear Filters" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self.filters removeAllObjects];[self.hiddenRows removeAllObjects];[self reloadGrid];}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"🔠 Uppercase Selection" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self saveUndo];[self toggleSelectionCase];[self reloadGrid];}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"📌 Date Stamp" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self saveUndo];[self insertCurrentDate];[self reloadGrid];}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"⏱ Time Stamp" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){[self saveUndo];[self insertCurrentTime];[self reloadGrid];}]];
     [a addAction:[UIAlertAction actionWithTitle:@"🗑 Clear All" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *_){[self clearAll];}]];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     a.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItems.lastObject;
@@ -1687,6 +2394,12 @@ static const CGFloat kRowHeaderW = 40;
 
 - (void)loadData {
     NSString *ext=[self.filePath.pathExtension lowercaseString];
+    NSSet *ooxmlExts=[NSSet setWithArray:@[@"xlsx",@"xlsm",@"xltx",@"xltm"]];
+    if ([ooxmlExts containsObject:ext]) {
+        [self loadXLSXData];
+        return;
+    }
+
     NSString *content=[NSString stringWithContentsOfFile:self.filePath encoding:NSUTF8StringEncoding error:nil];
 
     SpreadSheet *sheet=[[SpreadSheet alloc] initWithName:@"Sheet1" rows:200 cols:26];
@@ -1729,6 +2442,72 @@ static const CGFloat kRowHeaderW = 40;
     }
 }
 
+- (void)loadXLSXData {
+    [self.sheets removeAllObjects];
+    self.currentSheetIndex = 0;
+
+    NSDictionary *workbook = [XLSXCompatibilityReader readWorkbookFromOOXMLPath:self.filePath];
+    NSArray<NSDictionary *> *sheetsData = workbook[@"sheets"] ?: @[];
+    BOOL hasMacros = [workbook[@"hasMacros"] boolValue];
+    NSArray<NSString *> *vbaEntries = workbook[@"vbaEntries"] ?: @[];
+
+    if (sheetsData.count == 0) {
+        SpreadSheet *sheet=[[SpreadSheet alloc] initWithName:@"Sheet1" rows:200 cols:26];
+        [self.sheets addObject:sheet];
+    }
+
+    for (NSDictionary *sheetInfo in sheetsData) {
+        SpreadSheet *sheet = [[SpreadSheet alloc] initWithName:sheetInfo[@"name"] ?: @"Sheet" rows:200 cols:26];
+        NSInteger maxRow = [sheetInfo[@"maxRow"] integerValue];
+        NSInteger maxCol = [sheetInfo[@"maxCol"] integerValue];
+        NSArray<NSDictionary *> *cells = sheetInfo[@"cells"] ?: @[];
+
+        for (NSDictionary *entry in cells) {
+            NSInteger row = [entry[@"row"] integerValue];
+            NSInteger col = [entry[@"col"] integerValue];
+            NSString *value = entry[@"value"] ?: @"";
+
+            SpreadCell *cell = [SpreadCell new];
+            cell.raw = value;
+            if ([value hasPrefix:@"="]) {
+                cell.type = CellTypeFormula;
+                cell.display = [FormulaEngine evaluate:value sheet:sheet];
+            } else {
+                cell.type = [self isNumeric:value] ? CellTypeNumber : CellTypeText;
+                cell.display = value;
+            }
+            [sheet setCell:cell row:row col:col];
+        }
+
+        sheet.rowCount = MAX(200, maxRow + 20);
+        sheet.colCount = MAX(26, maxCol + 5);
+        while ((NSInteger)sheet.colWidths.count < sheet.colCount) [sheet.colWidths addObject:@(90)];
+        while ((NSInteger)sheet.rowHeights.count < sheet.rowCount) [sheet.rowHeights addObject:@(28)];
+        [self.sheets addObject:sheet];
+    }
+
+    if (hasMacros) {
+        SpreadSheet *vbaSheet=[[SpreadSheet alloc] initWithName:@"VBA" rows:MAX(20, (NSInteger)vbaEntries.count + 5) cols:3];
+        NSArray<NSString *> *lines = @[@"Macro-enabled workbook detected", self.filePath.lastPathComponent?:@"", @"VBA project entries"];
+        for (NSInteger i=0; i<(NSInteger)lines.count; i++) {
+            SpreadCell *cell=[SpreadCell new];
+            cell.raw=lines[i]; cell.display=lines[i]; cell.type=CellTypeText;
+            [vbaSheet setCell:cell row:i col:0];
+        }
+        for (NSInteger i=0; i<(NSInteger)vbaEntries.count; i++) {
+            SpreadCell *cell=[SpreadCell new];
+            cell.raw=vbaEntries[i]; cell.display=vbaEntries[i]; cell.type=CellTypeText;
+            [vbaSheet setCell:cell row:i+3 col:0];
+        }
+        [self.sheets addObject:vbaSheet];
+    }
+
+    if (self.sheets.count == 0) {
+        SpreadSheet *sheet=[[SpreadSheet alloc] initWithName:@"Sheet1" rows:200 cols:26];
+        [self.sheets addObject:sheet];
+    }
+}
+
 - (NSArray<NSString *> *)parseCSVLine:(NSString *)line delimiter:(NSString *)delim {
     NSMutableArray *parts=[NSMutableArray array];
     NSMutableString *current=[NSMutableString string];
@@ -1747,6 +2526,21 @@ static const CGFloat kRowHeaderW = 40;
 }
 
 - (void)saveData {
+    NSString *ext = self.filePath.pathExtension.lowercaseString;
+    if ([@[@"xlsx",@"xlsm",@"xltx",@"xltm"] containsObject:ext]) {
+        NSString *fallbackCSV = [[[self.filePath stringByDeletingPathExtension] stringByAppendingString:@".csv"] copy];
+        NSString *csv=[self sheetsToCSV];
+        NSError *fallbackErr=nil;
+        [csv writeToFile:fallbackCSV atomically:YES encoding:NSUTF8StringEncoding error:&fallbackErr];
+        if(!fallbackErr) {
+            self.isDirty=NO;
+            UIAlertController *a=[UIAlertController alertControllerWithTitle:@"互換保存" message:[NSString stringWithFormat:@"%@ の完全保存は実装中のため、%@ に保存しました。", [@"." stringByAppendingString:ext], fallbackCSV.lastPathComponent] preferredStyle:UIAlertControllerStyleAlert];
+            [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:a animated:YES completion:nil];
+        }
+        return;
+    }
+
     NSString *csv=[self sheetsToCSV];
     NSError *err=nil;
     [csv writeToFile:self.filePath atomically:YES encoding:NSUTF8StringEncoding error:&err];

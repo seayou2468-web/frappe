@@ -27,6 +27,10 @@
     [self displayActiveTab];
 }
 
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 - (void)displayActiveTab {
     TabInfo *active = [[TabManager sharedManager] activeTab];
     if (!active) return;
@@ -163,9 +167,8 @@
 - (void)refreshUI {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.view.backgroundColor = [ThemeEngine bg];
-        // Add other UI components that need refreshing
+        [self displayActiveTab];
     });
 }
 
 @end
-

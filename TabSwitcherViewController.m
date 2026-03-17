@@ -79,6 +79,10 @@
     [_closeBtn addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.contentView addSubview:_closeBtn];
 
+    UISwipeGestureRecognizer *swipeToDelete = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(closeTapped)];
+    swipeToDelete.direction = UISwipeGestureRecognizerDirectionLeft;
+    [self.contentView addGestureRecognizer:swipeToDelete];
+
     [NSLayoutConstraint activateConstraints:@[
         [_closeBtn.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
         [_closeBtn.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-10],
@@ -123,6 +127,7 @@
 // ─── TabSwitcherViewController ────────────────────────────────────────────────
 @interface TabSwitcherViewController () <UICollectionViewDelegate, UICollectionViewDataSource>
 @property (strong) UICollectionView *grid;
+@property (strong) UICollectionViewFlowLayout *gridLayout;
 @property (strong) UIVisualEffectView *bgBlur;
 @end
 
@@ -170,17 +175,10 @@
     [header addSubview:newBtn];
 
     // Collection view
-    CGFloat pad = 16, gap = 14;
-    CGFloat w = (self.view.bounds.size.width > 0 ? self.view.bounds.size.width : 390);
-    CGFloat cellW = (w - pad*2 - gap) / 2.0;
+    _gridLayout = [[UICollectionViewFlowLayout alloc] init];
+    [self updateGridLayoutForSize:self.view.bounds.size];
 
-    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
-    layout.itemSize = CGSizeMake(cellW, cellW * 1.4);
-    layout.sectionInset = UIEdgeInsetsMake(16, pad, 30, pad);
-    layout.minimumInteritemSpacing = gap;
-    layout.minimumLineSpacing = gap + 6;
-
-    _grid = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
+    _grid = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:_gridLayout];
     _grid.translatesAutoresizingMaskIntoConstraints = NO;
     _grid.backgroundColor = [UIColor clearColor];
     _grid.delegate = self;
@@ -221,6 +219,49 @@
     } completion:nil];
 }
 
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self updateGridLayoutForSize:self.view.bounds.size];
+}
+
+- (void)updateGridLayoutForSize:(CGSize)size {
+    if (!self.gridLayout) return;
+    CGFloat pad = 16;
+    CGFloat gap = 14;
+    CGFloat width = MAX(320, size.width);
+    NSInteger columns = (width >= 900) ? 4 : ((width >= 600) ? 3 : 2);
+    CGFloat available = width - (pad * 2) - (gap * (columns - 1));
+    CGFloat cellW = floor(available / columns);
+    self.gridLayout.itemSize = CGSizeMake(cellW, cellW * 1.4);
+    self.gridLayout.sectionInset = UIEdgeInsetsMake(16, pad, 30, pad);
+    self.gridLayout.minimumInteritemSpacing = gap;
+    self.gridLayout.minimumLineSpacing = gap + 6;
+    [self.gridLayout invalidateLayout];
+}
+
+- (void)closeTabForCell:(TabCardCell *)cell {
+    NSIndexPath *indexPath = [self.grid indexPathForCell:cell];
+    if (!indexPath) return;
+
+    NSInteger index = indexPath.item;
+    if (index < 0 || index >= [TabManager sharedManager].tabs.count) {
+        [self.grid reloadData];
+        return;
+    }
+
+    [[TabManager sharedManager] removeTabAtIndex:index];
+
+    __weak typeof(self) weakSelf = self;
+    [self.grid performBatchUpdates:^{
+        [self.grid deleteItemsAtIndexPaths:@[indexPath]];
+    } completion:^(BOOL finished) {
+        [weakSelf.grid reloadData];
+        if ([TabManager sharedManager].tabs.count == 0 && weakSelf.onNewTabRequested) {
+            weakSelf.onNewTabRequested();
+        }
+    }];
+}
+
 // ─── Collection ───────────────────────────────────────────────────────────────
 - (NSInteger)collectionView:(UICollectionView *)cv numberOfItemsInSection:(NSInteger)s {
     return [TabManager sharedManager].tabs.count;
@@ -230,17 +271,18 @@
                   cellForItemAtIndexPath:(NSIndexPath *)ip {
     TabCardCell *cell = [cv dequeueReusableCellWithReuseIdentifier:@"TabCard" forIndexPath:ip];
     NSArray *tabs = [TabManager sharedManager].tabs;
-    if (ip.item >= tabs.count) return nil;
+    if (ip.item >= tabs.count) {
+        [cv reloadData];
+        return cell;
+    }
     TabInfo *tab = tabs[ip.item];
     BOOL active = (ip.item == [TabManager sharedManager].activeTabIndex);
     [cell configureWithTab:tab isActive:active];
-    __weak typeof(self) ws = self;
+    __weak typeof(self) weakSelf = self;
+    __weak TabCardCell *weakCell = cell;
     cell.onClose = ^{
-        [[TabManager sharedManager] removeTabAtIndex:ip.item];
-        [cv performBatchUpdates:^{ [cv deleteItemsAtIndexPaths:@[ip]]; } completion:nil];
-        if ([TabManager sharedManager].tabs.count == 0 && ws.onNewTabRequested) {
-            ws.onNewTabRequested();
-        }
+        if (!weakSelf || !weakCell) return;
+        [weakSelf closeTabForCell:weakCell];
     };
     return cell;
 }

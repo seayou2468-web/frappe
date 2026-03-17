@@ -7,6 +7,7 @@
 #import <objc/runtime.h>
 #import "ThemeEngine.h"
 #import "CustomMenuView.h"
+#import "Office/PPTXCompatibilityReader.h"
 #import <PDFKit/PDFKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -702,6 +703,19 @@ typedef NS_ENUM(NSUInteger, ShapeType) {
         @[@"🔀",@"transition"],@[@"📝",@"notes"],
         @[@"🔍+",@"zoomIn"],@[@"🔍-",@"zoomOut"],
         @[@"⛶",@"fitScreen"],
+        @[@"↻",@"rotate+"],@[@"↺",@"rotate-"],@[@"◧",@"opacity+"],@[@"◨",@"opacity-"],
+        @[@"↥",@"nudgeUp"],@[@"↧",@"nudgeDown"],@[@"↤",@"nudgeLeft"],@[@"↦",@"nudgeRight"],
+        @[@"⎘E",@"dupElement"],@[@"🔤",@"upperText"],@[@"🔡",@"lowerText"],@[@"🧲",@"snapGrid"],
+        @[@"1:1",@"resetZoom"],@[@"＋S",@"addSlideAfter"],@[@"⇄",@"reverseSlides"],
+        @[@"TOP",@"alignTop"],@[@"MID",@"alignMiddle"],@[@"BOT",@"alignBottom"],
+        @[@"←L",@"alignLeftEdge"],@[@"CEN",@"alignHorizontalCenter"],@[@"→R",@"alignRightEdge"],
+        @[@"W+",@"widen"],@[@"W-",@"narrow"],@[@"H+",@"taller"],@[@"H-",@"shorter"],
+        @[@"FIT",@"fitElement"],@[@"RST",@"resetElement"],@[@"DUP2",@"duplicateSlide2"],
+        @[@"CTR",@"centerElement"],@[@"BG=E",@"bgFromElement"],@[@"DUP5",@"duplicateSlide5"],
+        @[@"⇤",@"slideToFirst"],@[@"⇥",@"slideToLast"],@[@"RNDt",@"randomTransitions"],
+        @[@"RNDb",@"randomBackgrounds"],@[@"TXT←",@"allTextLeft"],@[@"No.",@"numberSlides"],
+        @[@"CLN",@"cleanEmptyText"],@[@"G↘",@"snapAllToGrid"],@[@"IN",@"fitAllInBounds"],
+        @[@"TXT◎",@"centerAllText"],@[@"T=",@"unifyTextSize"],
     ];
 
     UIStackView *stack = [[UIStackView alloc] init];
@@ -761,6 +775,48 @@ typedef NS_ENUM(NSUInteger, ShapeType) {
     else if ([action isEqualToString:@"zoomIn"]) [self zoom:1.2];
     else if ([action isEqualToString:@"zoomOut"]) [self zoom:1.0/1.2];
     else if ([action isEqualToString:@"fitScreen"]) [self fitToScreen];
+    else if ([action isEqualToString:@"rotate+"]) [self rotateSelectedElementBy:15];
+    else if ([action isEqualToString:@"rotate-"]) [self rotateSelectedElementBy:-15];
+    else if ([action isEqualToString:@"opacity+"]) [self adjustSelectedOpacityBy:0.1];
+    else if ([action isEqualToString:@"opacity-"]) [self adjustSelectedOpacityBy:-0.1];
+    else if ([action isEqualToString:@"nudgeUp"]) [self nudgeSelectedByX:0 y:-0.01];
+    else if ([action isEqualToString:@"nudgeDown"]) [self nudgeSelectedByX:0 y:0.01];
+    else if ([action isEqualToString:@"nudgeLeft"]) [self nudgeSelectedByX:-0.01 y:0];
+    else if ([action isEqualToString:@"nudgeRight"]) [self nudgeSelectedByX:0.01 y:0];
+    else if ([action isEqualToString:@"dupElement"]) [self duplicateSelectedElement];
+    else if ([action isEqualToString:@"upperText"]) [self transformSelectedTextUpper:YES];
+    else if ([action isEqualToString:@"lowerText"]) [self transformSelectedTextUpper:NO];
+    else if ([action isEqualToString:@"snapGrid"]) [self snapSelectedElementToGrid];
+    else if ([action isEqualToString:@"resetZoom"]) [self.canvasScroll setZoomScale:1.0 animated:YES];
+    else if ([action isEqualToString:@"addSlideAfter"]) [self insertSlideAfterCurrent];
+    else if ([action isEqualToString:@"reverseSlides"]) [self reverseSlidesOrder];
+    else if ([action isEqualToString:@"alignTop"]) [self alignSelectedToTop];
+    else if ([action isEqualToString:@"alignMiddle"]) [self alignSelectedToMiddle];
+    else if ([action isEqualToString:@"alignBottom"]) [self alignSelectedToBottom];
+    else if ([action isEqualToString:@"alignLeftEdge"]) [self alignSelectedToLeftEdge];
+    else if ([action isEqualToString:@"alignHorizontalCenter"]) [self alignSelectedToHorizontalCenter];
+    else if ([action isEqualToString:@"alignRightEdge"]) [self alignSelectedToRightEdge];
+    else if ([action isEqualToString:@"widen"]) [self scaleSelectedW:1.1 h:1.0];
+    else if ([action isEqualToString:@"narrow"]) [self scaleSelectedW:0.9 h:1.0];
+    else if ([action isEqualToString:@"taller"]) [self scaleSelectedW:1.0 h:1.1];
+    else if ([action isEqualToString:@"shorter"]) [self scaleSelectedW:1.0 h:0.9];
+    else if ([action isEqualToString:@"fitElement"]) [self fitSelectedElementIntoSlide];
+    else if ([action isEqualToString:@"resetElement"]) [self resetSelectedElementStyleAndTransform];
+    else if ([action isEqualToString:@"duplicateSlide2"]) { [self duplicateCurrentSlide]; [self duplicateCurrentSlide]; }
+    else if ([action isEqualToString:@"centerElement"]) [self alignSelectedToCenterBoth];
+    else if ([action isEqualToString:@"bgFromElement"]) [self setSlideBackgroundFromSelectedElement];
+    else if ([action isEqualToString:@"duplicateSlide5"]) { for(NSInteger i=0;i<5;i++) [self duplicateCurrentSlide]; }
+    else if ([action isEqualToString:@"slideToFirst"]) [self moveCurrentSlideToIndex:0];
+    else if ([action isEqualToString:@"slideToLast"]) [self moveCurrentSlideToIndex:self.slides.count-1];
+    else if ([action isEqualToString:@"randomTransitions"]) [self randomizeAllTransitions];
+    else if ([action isEqualToString:@"randomBackgrounds"]) [self randomizeAllBackgrounds];
+    else if ([action isEqualToString:@"allTextLeft"]) [self alignAllTextElementsLeft];
+    else if ([action isEqualToString:@"numberSlides"]) [self numberAllSlides];
+    else if ([action isEqualToString:@"cleanEmptyText"]) [self removeEmptyTextElements];
+    else if ([action isEqualToString:@"snapAllToGrid"]) [self snapAllElementsToGrid];
+    else if ([action isEqualToString:@"fitAllInBounds"]) [self keepAllElementsInBounds];
+    else if ([action isEqualToString:@"centerAllText"]) [self centerAllTextElements];
+    else if ([action isEqualToString:@"unifyTextSize"]) [self normalizeAllTextFontSizes];
 }
 
 #pragma mark - Notes Panel
@@ -994,6 +1050,304 @@ typedef NS_ENUM(NSUInteger, ShapeType) {
     [self saveUndo];
     [self.slides[self.currentSlideIndex].elements removeObjectAtIndex:self.selectedElementIndex];
     self.selectedElementIndex = -1;
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)duplicateSelectedElement {
+    SlideElement *el = [self selectedElement]; if (!el) return;
+    [self saveUndo];
+    SlideElement *dup = [el mutableCopy];
+    dup.frame = CGRectOffset(dup.frame, 0.02, 0.02);
+    dup.zIndex = (NSInteger)self.slides[self.currentSlideIndex].elements.count;
+    [self.slides[self.currentSlideIndex].elements addObject:dup];
+    self.selectedElementIndex = (NSInteger)self.slides[self.currentSlideIndex].elements.count - 1;
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)rotateSelectedElementBy:(CGFloat)deg {
+    SlideElement *el = [self selectedElement]; if (!el) return;
+    [self saveUndo];
+    el.rotation += deg;
+    [self.canvas reloadSlide];
+}
+
+- (void)adjustSelectedOpacityBy:(CGFloat)delta {
+    SlideElement *el = [self selectedElement]; if (!el) return;
+    [self saveUndo];
+    el.opacity = MAX(0.05, MIN(1.0, el.opacity + delta));
+    [self.canvas reloadSlide];
+}
+
+- (void)nudgeSelectedByX:(CGFloat)dx y:(CGFloat)dy {
+    SlideElement *el = [self selectedElement]; if (!el) return;
+    [self saveUndo];
+    CGRect f = el.frame;
+    f.origin.x = MAX(0, MIN(1.0 - f.size.width, f.origin.x + dx));
+    f.origin.y = MAX(0, MIN(1.0 - f.size.height, f.origin.y + dy));
+    el.frame = f;
+    [self.canvas reloadSlide];
+}
+
+- (void)transformSelectedTextUpper:(BOOL)upper {
+    SlideElement *el = [self selectedElement]; if (!el || el.type != SlideElementText) return;
+    [self saveUndo];
+    el.text = upper ? el.text.uppercaseString : el.text.lowercaseString;
+    [self.canvas reloadSlide];
+}
+
+- (void)snapSelectedElementToGrid {
+    SlideElement *el = [self selectedElement]; if (!el) return;
+    [self saveUndo];
+    CGFloat grid = 0.05;
+    CGRect f = el.frame;
+    f.origin.x = round(f.origin.x / grid) * grid;
+    f.origin.y = round(f.origin.y / grid) * grid;
+    f.size.width = MAX(grid, round(f.size.width / grid) * grid);
+    f.size.height = MAX(grid, round(f.size.height / grid) * grid);
+    if (f.origin.x + f.size.width > 1.0) f.origin.x = 1.0 - f.size.width;
+    if (f.origin.y + f.size.height > 1.0) f.origin.y = 1.0 - f.size.height;
+    el.frame = f;
+    [self.canvas reloadSlide];
+}
+
+- (void)insertSlideAfterCurrent {
+    [self saveUndo];
+    Slide *s = [[Slide alloc] init];
+    s.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.12 alpha:1];
+    SlideElement *t = [[SlideElement alloc] init];
+    t.type = SlideElementText;
+    t.text = @"New Slide";
+    t.bold = YES;
+    t.textAlignment = NSTextAlignmentCenter;
+    t.font = [UIFont boldSystemFontOfSize:24];
+    t.frame = CGRectMake(0.1, 0.35, 0.8, 0.2);
+    [s.elements addObject:t];
+    NSInteger insertIndex = MIN(self.currentSlideIndex + 1, (NSInteger)self.slides.count);
+    [self.slides insertObject:s atIndex:insertIndex];
+    [self selectSlide:insertIndex];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)reverseSlidesOrder {
+    if (self.slides.count <= 1) return;
+    [self saveUndo];
+    NSArray *rev = [[self.slides reverseObjectEnumerator] allObjects];
+    self.slides = [rev mutableCopy];
+    self.currentSlideIndex = (NSInteger)self.slides.count - 1 - self.currentSlideIndex;
+    [self selectSlide:self.currentSlideIndex];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)alignSelectedToTop {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.y=0; el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToMiddle {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.y=(1.0-f.size.height)/2.0; el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToBottom {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.y=MAX(0,1.0-f.size.height); el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToLeftEdge {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.x=0; el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToHorizontalCenter {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.x=(1.0-f.size.width)/2.0; el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToRightEdge {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo]; CGRect f=el.frame; f.origin.x=MAX(0,1.0-f.size.width); el.frame=f; [self.canvas reloadSlide];
+}
+
+- (void)scaleSelectedW:(CGFloat)sw h:(CGFloat)sh {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo];
+    CGRect f=el.frame;
+    CGFloat cx=f.origin.x+f.size.width/2.0, cy=f.origin.y+f.size.height/2.0;
+    f.size.width=MAX(0.05,MIN(1.0,f.size.width*sw));
+    f.size.height=MAX(0.05,MIN(1.0,f.size.height*sh));
+    f.origin.x=MAX(0,MIN(1.0-f.size.width,cx-f.size.width/2.0));
+    f.origin.y=MAX(0,MIN(1.0-f.size.height,cy-f.size.height/2.0));
+    el.frame=f;
+    [self.canvas reloadSlide];
+}
+
+- (void)fitSelectedElementIntoSlide {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo];
+    el.frame=CGRectMake(0.05,0.05,0.9,0.9);
+    [self.canvas reloadSlide];
+}
+
+- (void)resetSelectedElementStyleAndTransform {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo];
+    el.rotation=0; el.opacity=1.0; el.bold=NO; el.italic=NO; el.underline=NO;
+    if(el.type==SlideElementText){ el.textAlignment=NSTextAlignmentLeft; el.font=[UIFont systemFontOfSize:18]; }
+    if(el.type==SlideElementShape){ el.fillColor=[UIColor colorWithRed:0.2 green:0.6 blue:1 alpha:0.35]; }
+    [self.canvas reloadSlide];
+}
+
+- (void)alignSelectedToCenterBoth {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo];
+    CGRect f=el.frame;
+    f.origin.x=(1.0-f.size.width)/2.0;
+    f.origin.y=(1.0-f.size.height)/2.0;
+    el.frame=f;
+    [self.canvas reloadSlide];
+}
+
+- (void)setSlideBackgroundFromSelectedElement {
+    SlideElement *el=[self selectedElement]; if(!el) return;
+    [self saveUndo];
+    if(el.type==SlideElementShape && el.fillColor) self.slides[self.currentSlideIndex].backgroundColor=el.fillColor;
+    else if(el.type==SlideElementText && el.textColor) self.slides[self.currentSlideIndex].backgroundColor=el.textColor;
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)moveCurrentSlideToIndex:(NSInteger)newIndex {
+    if(self.currentSlideIndex<0||self.currentSlideIndex>=(NSInteger)self.slides.count) return;
+    newIndex=MAX(0,MIN((NSInteger)self.slides.count-1,newIndex));
+    if(newIndex==self.currentSlideIndex) return;
+    [self saveUndo];
+    Slide *s=self.slides[self.currentSlideIndex];
+    [self.slides removeObjectAtIndex:self.currentSlideIndex];
+    [self.slides insertObject:s atIndex:newIndex];
+    [self selectSlide:newIndex];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)randomizeAllTransitions {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) {
+        s.transitionType = arc4random_uniform(6);
+        s.transitionDuration = 0.25 + ((double)arc4random_uniform(150))/100.0;
+    }
+}
+
+- (void)randomizeAllBackgrounds {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) {
+        CGFloat r=((double)arc4random_uniform(256))/255.0;
+        CGFloat g=((double)arc4random_uniform(256))/255.0;
+        CGFloat b=((double)arc4random_uniform(256))/255.0;
+        s.backgroundColor=[UIColor colorWithRed:r green:g blue:b alpha:1.0];
+    }
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)alignAllTextElementsLeft {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) for(SlideElement *el in s.elements) {
+        if(el.type==SlideElementText) el.textAlignment=NSTextAlignmentLeft;
+    }
+    [self.canvas reloadSlide];
+}
+
+- (void)numberAllSlides {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(NSInteger i=0;i<(NSInteger)self.slides.count;i++) {
+        Slide *s=self.slides[i];
+        NSString *prefix=[NSString stringWithFormat:@"%ld. ",(long)(i+1)];
+        SlideElement *title=nil;
+        for(SlideElement *el in s.elements) {
+            if(el.type==SlideElementText){ title=el; break; }
+        }
+        if(title) {
+            if(![title.text hasPrefix:prefix]) title.text=[prefix stringByAppendingString:title.text?:@""];
+        } else {
+            SlideElement *el=[SlideElement new];
+            el.type=SlideElementText; el.bold=YES; el.text=prefix;
+            el.frame=CGRectMake(0.03,0.03,0.3,0.08); el.font=[UIFont boldSystemFontOfSize:16];
+            [s.elements addObject:el];
+        }
+    }
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)removeEmptyTextElements {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) {
+        NSIndexSet *idx=[s.elements indexesOfObjectsPassingTest:^BOOL(SlideElement *obj, NSUInteger idx, BOOL *stop) {
+            return obj.type==SlideElementText && obj.text.length==0;
+        }];
+        if(idx.count) [s.elements removeObjectsAtIndexes:idx];
+    }
+    self.selectedElementIndex=-1;
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)snapAllElementsToGrid {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) for(SlideElement *el in s.elements) {
+        CGRect f=el.frame;
+        f.origin.x=round(f.origin.x*20.0)/20.0;
+        f.origin.y=round(f.origin.y*20.0)/20.0;
+        el.frame=f;
+    }
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)keepAllElementsInBounds {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) for(SlideElement *el in s.elements) {
+        CGRect f=el.frame;
+        f.size.width=MAX(0.05,MIN(1.0,f.size.width));
+        f.size.height=MAX(0.05,MIN(1.0,f.size.height));
+        f.origin.x=MAX(0,MIN(1.0-f.size.width,f.origin.x));
+        f.origin.y=MAX(0,MIN(1.0-f.size.height,f.origin.y));
+        el.frame=f;
+    }
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)centerAllTextElements {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) for(SlideElement *el in s.elements) {
+        if(el.type!=SlideElementText) continue;
+        CGRect f=el.frame;
+        f.origin.x=(1.0-f.size.width)/2.0;
+        el.frame=f;
+        el.textAlignment=NSTextAlignmentCenter;
+    }
+    [self.canvas reloadSlide];
+    [self.thumbnailCollection reloadData];
+}
+
+- (void)normalizeAllTextFontSizes {
+    if(!self.slides.count) return;
+    [self saveUndo];
+    for(Slide *s in self.slides) for(SlideElement *el in s.elements) {
+        if(el.type!=SlideElementText) continue;
+        BOOL isBold=(el.font.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold) != 0;
+        el.font=isBold?[UIFont boldSystemFontOfSize:24]:[UIFont systemFontOfSize:24];
+    }
     [self.canvas reloadSlide];
     [self.thumbnailCollection reloadData];
 }
@@ -1381,6 +1735,12 @@ contextMenuConfigurationForItemAtIndexPath:(NSIndexPath *)ip point:(CGPoint)pt {
 #pragma mark - Load / Save
 
 - (void)loadPresentation {
+    NSString *ext = self.filePath.pathExtension.lowercaseString;
+    if ([@[@"pptx",@"pptm",@"potx",@"potm"] containsObject:ext]) {
+        [self loadPPTXPresentation];
+        return;
+    }
+
     // Try to load JSON-based PPTX-like format; fall back to default
     NSData *data = [NSData dataWithContentsOfFile:self.filePath];
     if (data) {
@@ -1393,6 +1753,80 @@ contextMenuConfigurationForItemAtIndexPath:(NSIndexPath *)ip point:(CGPoint)pt {
     }
     // Default: 3 sample slides
     [self createDefaultPresentation];
+}
+
+- (void)loadPPTXPresentation {
+    [self.slides removeAllObjects];
+    NSDictionary *presentation = [PPTXCompatibilityReader readPresentationFromOOXMLPath:self.filePath];
+    NSArray<NSArray<NSString *> *> *slidesText = presentation[@"slides"] ?: @[];
+    BOOL hasMacros = [presentation[@"hasMacros"] boolValue];
+    NSArray<NSString *> *vbaEntries = presentation[@"vbaEntries"] ?: @[];
+
+    for (NSArray<NSString *> *texts in slidesText) {
+
+        Slide *s = [[Slide alloc] init];
+        s.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.12 alpha:1];
+
+        SlideElement *title = [[SlideElement alloc] init];
+        title.type = SlideElementText;
+        title.bold = YES;
+        title.textAlignment = NSTextAlignmentCenter;
+        title.font = [UIFont boldSystemFontOfSize:28];
+        title.frame = CGRectMake(0.05,0.12,0.9,0.18);
+        title.text = texts.count > 0 ? texts.firstObject : @"";
+        title.zIndex = 1;
+
+        SlideElement *body = [[SlideElement alloc] init];
+        body.type = SlideElementText;
+        body.textAlignment = NSTextAlignmentLeft;
+        body.font = [UIFont systemFontOfSize:16];
+        body.frame = CGRectMake(0.05,0.35,0.9,0.55);
+        body.text = texts.count > 1 ? [[texts subarrayWithRange:NSMakeRange(1, texts.count - 1)] componentsJoinedByString:@"\n"] : @"";
+        body.zIndex = 2;
+
+        if (title.text.length) [s.elements addObject:title];
+        if (body.text.length) [s.elements addObject:body];
+        if (s.elements.count == 0) {
+            SlideElement *fallback = [[SlideElement alloc] init];
+            fallback.type = SlideElementText;
+            fallback.text = @"(empty slide)";
+            fallback.frame = CGRectMake(0.05,0.4,0.9,0.2);
+            fallback.textAlignment = NSTextAlignmentCenter;
+            fallback.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+            [s.elements addObject:fallback];
+        }
+
+        [self.slides addObject:s];
+    }
+
+    if (hasMacros) {
+        Slide *macroSlide = [[Slide alloc] init];
+        macroSlide.backgroundColor = [UIColor colorWithRed:0.12 green:0.08 blue:0.08 alpha:1];
+
+        SlideElement *title = [[SlideElement alloc] init];
+        title.type = SlideElementText;
+        title.bold = YES;
+        title.textAlignment = NSTextAlignmentCenter;
+        title.font = [UIFont boldSystemFontOfSize:24];
+        title.frame = CGRectMake(0.05,0.08,0.9,0.12);
+        title.text = @"Macro-enabled presentation detected";
+        [macroSlide.elements addObject:title];
+
+        SlideElement *body = [[SlideElement alloc] init];
+        body.type = SlideElementText;
+        body.textAlignment = NSTextAlignmentLeft;
+        body.font = [UIFont systemFontOfSize:14];
+        body.frame = CGRectMake(0.05,0.24,0.9,0.68);
+        NSString *entriesText = vbaEntries.count ? [vbaEntries componentsJoinedByString:@"\n"] : @"(no VBA entry names found)";
+        body.text = [NSString stringWithFormat:@"File: %@\n\nVBA-related package entries:\n%@", self.filePath.lastPathComponent ?: @"", entriesText];
+        [macroSlide.elements addObject:body];
+
+        [self.slides addObject:macroSlide];
+    }
+
+    if (self.slides.count == 0) {
+        [self createDefaultPresentation];
+    }
 }
 
 - (void)createDefaultPresentation {
@@ -1424,6 +1858,20 @@ contextMenuConfigurationForItemAtIndexPath:(NSIndexPath *)ip point:(CGPoint)pt {
 }
 
 - (void)savePresentation {
+    NSString *ext = self.filePath.pathExtension.lowercaseString;
+    if ([@[@"pptx",@"pptm",@"potx",@"potm"] containsObject:ext]) {
+        NSString *fallbackJSON = [[[self.filePath stringByDeletingPathExtension] stringByAppendingString:@".json"] copy];
+        NSString *oldPath = self.filePath;
+        self.filePath = fallbackJSON;
+        [self savePresentation];
+        self.filePath = oldPath;
+
+        UIAlertController *a=[UIAlertController alertControllerWithTitle:@"互換保存" message:[NSString stringWithFormat:@"%@ の完全保存は実装中のため、%@ に保存しました。", [@"." stringByAppendingString:ext], fallbackJSON.lastPathComponent] preferredStyle:UIAlertControllerStyleAlert];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:a animated:YES completion:nil];
+        return;
+    }
+
     NSMutableArray *data = [NSMutableArray array];
     for (Slide *s in self.slides) {
         NSMutableDictionary *sd = [NSMutableDictionary dictionary];

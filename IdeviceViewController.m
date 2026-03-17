@@ -675,7 +675,8 @@ typedef NS_ENUM(NSUInteger, IDevTool) {
         case IDevToolOsTrace:
             [self showOsTrace]; break;
         default:
-            [self log:@"[TODO] Tool not implemented yet." isError:NO];
+            [self log:[NSString stringWithFormat:@"[WARN] Tool not implemented yet (id=%lu).", (unsigned long)tool]
+                 isError:NO];
     }
 }
 

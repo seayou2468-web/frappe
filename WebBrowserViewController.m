@@ -17,6 +17,7 @@
 #import "FileManagerCore.h"
 
 static WKWebsiteDataStore *_nonPersistentStore = nil;
+static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
 @interface WeakScriptMessageProxy : NSObject <WKScriptMessageHandler>
 @property (nonatomic, weak) id<WKScriptMessageHandler> delegate;
@@ -37,6 +38,8 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *networkLogs;
 @property (nonatomic, assign) BOOL isPrivateMode;
 @property (nonatomic, assign) BOOL isAdBlockEnabled;
+@property (nonatomic, assign) BOOL isDesktopMode;
+@property (nonatomic, assign) BOOL javaScriptEnabled;
 @end
 
 @implementation WebBrowserViewController
@@ -62,6 +65,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [super viewDidLoad];
     self.view.backgroundColor = [ThemeEngine bg];
     [self setupUI];
+    [self applySettingsAndRefreshWebViewIfNeeded:NO];
     if (self.initialURL) {
         NSURL *url = [NSURL URLWithString:self.initialURL];
         if (url) [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
@@ -74,9 +78,10 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"logger"];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"network"];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (void)setupUI {
+- (WKUserContentController *)configuredUserContentController {
     WKUserContentController *userContent = [[WKUserContentController alloc] init];
     WeakScriptMessageProxy *proxy = [[WeakScriptMessageProxy alloc] init];
     proxy.delegate = self;
@@ -104,24 +109,44 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
     WKUserScript *script = [[WKUserScript alloc] initWithSource:js injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO];
     [userContent addUserScript:script];
+    return userContent;
+}
 
+- (WKWebsiteDataStore *)effectiveDataStoreForURLString:(NSString *)urlString {
+    if (self.isPrivateMode) return [WKWebsiteDataStore nonPersistentDataStore];
+    if ([[PersistenceManager sharedManager] isDomainPersistent:urlString]) return [WKWebsiteDataStore defaultDataStore];
+    return [WebBrowserViewController sharedDataStore];
+}
+
+- (WKWebView *)buildWebViewWithDataStore:(WKWebsiteDataStore *)dataStore {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-    config.userContentController = userContent;
-    if ([[PersistenceManager sharedManager] isDomainPersistent:self.initialURL]) { config.websiteDataStore = [WKWebsiteDataStore defaultDataStore]; }
-    else { config.websiteDataStore = [WebBrowserViewController sharedDataStore]; }
+    config.userContentController = [self configuredUserContentController];
+    config.preferences.javaScriptEnabled = self.javaScriptEnabled;
+    config.websiteDataStore = dataStore;
 
-    self.webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
-    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.webView.navigationDelegate = self;
-    self.webView.UIDelegate = self;
-    self.webView.allowsBackForwardNavigationGestures = YES;
-    self.webView.backgroundColor = [UIColor clearColor];
-    self.webView.opaque = NO;
-    [self.view addSubview:self.webView];
+    WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
+    webView.translatesAutoresizingMaskIntoConstraints = NO;
+    webView.navigationDelegate = self;
+    webView.UIDelegate = self;
+    webView.allowsBackForwardNavigationGestures = YES;
+    webView.customUserAgent = self.isDesktopMode ? kDesktopUserAgent : nil;
+    webView.backgroundColor = [UIColor clearColor];
+    webView.opaque = NO;
 
     UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
     [refreshControl addTarget:self action:@selector(handleRefresh:) forControlEvents:UIControlEventValueChanged];
-    self.webView.scrollView.refreshControl = refreshControl;
+    webView.scrollView.refreshControl = refreshControl;
+    return webView;
+}
+
+- (void)setupUI {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    self.javaScriptEnabled = [defaults objectForKey:@"WebJavaScript"] ? [defaults boolForKey:@"WebJavaScript"] : YES;
+    self.isAdBlockEnabled = [defaults boolForKey:@"AdBlocker"];
+    self.isDesktopMode = [defaults boolForKey:@"DesktopMode"];
+
+    self.webView = [self buildWebViewWithDataStore:[self effectiveDataStoreForURLString:self.initialURL]];
+    [self.view addSubview:self.webView];
 
     // ── URL pill field (iOS 26 design) ──────────────────────────────────────
     UIView *urlPillContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 280, 38)];
@@ -203,6 +228,10 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         [self.startPage.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor], [self.startPage.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [self.startPage.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor], [self.startPage.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
     ]];
     self.startPage.hidden = (self.initialURL != nil);
+
+    if (self.isAdBlockEnabled) {
+        [self applyAdBlockRules];
+    }
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -278,12 +307,56 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     return YES;
 }
 
+- (void)applySettingsAndRefreshWebViewIfNeeded:(BOOL)allowReload {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL newDesktopMode = [defaults boolForKey:@"DesktopMode"];
+    BOOL newAdBlock = [defaults boolForKey:@"AdBlocker"];
+    BOOL newJavaScriptEnabled = [defaults objectForKey:@"WebJavaScript"] ? [defaults boolForKey:@"WebJavaScript"] : YES;
+
+    BOOL javaScriptChanged = (newJavaScriptEnabled != self.javaScriptEnabled);
+    self.isDesktopMode = newDesktopMode;
+    self.webView.customUserAgent = self.isDesktopMode ? kDesktopUserAgent : nil;
+
+    if (newAdBlock != self.isAdBlockEnabled) {
+        self.isAdBlockEnabled = newAdBlock;
+        if (self.isAdBlockEnabled) [self applyAdBlockRules];
+        else [self removeAdBlockRules];
+    }
+
+    if (allowReload && javaScriptChanged) {
+        self.javaScriptEnabled = newJavaScriptEnabled;
+        NSURL *currentURL = self.webView.URL;
+        [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
+        [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"logger"];
+        [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"network"];
+        [self.webView removeFromSuperview];
+
+        self.webView = [self buildWebViewWithDataStore:[self effectiveDataStoreForURLString:currentURL.absoluteString ?: self.initialURL]];
+        [self.view insertSubview:self.webView belowSubview:self.progressView];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.webView.topAnchor constraintEqualToAnchor:self.progressView.bottomAnchor],
+            [self.webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+            [self.webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+            [self.webView.bottomAnchor constraintEqualToAnchor:self.bottomMenu.topAnchor],
+        ]];
+
+        [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
+
+        NSURL *target = currentURL ?: [NSURL URLWithString:@"about:blank"];
+        [self.webView loadRequest:[NSURLRequest requestWithURL:target]];
+    } else {
+        self.javaScriptEnabled = newJavaScriptEnabled;
+    }
+}
+
 
 
 - (void)refreshUI {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.view.backgroundColor = [ThemeEngine bg];
         self.startPage.backgroundColor = [ThemeEngine bg];
+        [self applySettingsAndRefreshWebViewIfNeeded:YES];
         [self.bottomMenu setupUI];
         // Other UI updates if needed
     });
@@ -365,7 +438,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 }
 
 - (void)applyUserAgent:(BOOL)desktop {
-    NSString *ua = desktop ? @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15" : nil;
+    NSString *ua = desktop ? kDesktopUserAgent : nil;
     self.webView.customUserAgent = ua;
     [self.webView reload];
     [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] User-Agent changed to: %@", desktop ? @"Desktop" : @"Mobile"]];
@@ -385,25 +458,13 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     self.isPrivateMode = !self.isPrivateMode;
     [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Private Mode: %@", self.isPrivateMode ? @"ON" : @"OFF"]];
 
-    // Re-initialize WebView with correct data store
-    [self.webView removeFromSuperview];
+    NSURL *previousURL = self.webView.URL;
     [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"logger"];
+    [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"network"];
+    [self.webView removeFromSuperview];
 
-    WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-    config.websiteDataStore = self.isPrivateMode ? [WKWebsiteDataStore nonPersistentDataStore] : [WKWebsiteDataStore defaultDataStore];
-
-    // Restore message handlers
-    WKUserContentController *userContent = [[WKUserContentController alloc] init];
-    WeakScriptMessageProxy *proxy = [[WeakScriptMessageProxy alloc] init];
-    proxy.delegate = self;
-    [userContent addScriptMessageHandler:proxy name:@"logger"];
-    [userContent addScriptMessageHandler:proxy name:@"network"];
-    config.userContentController = userContent;
-
-    self.webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:config];
-    self.webView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.webView.navigationDelegate = self;
-    self.webView.UIDelegate = self;
+    self.webView = [self buildWebViewWithDataStore:[self effectiveDataStoreForURLString:previousURL.absoluteString ?: self.initialURL]];
     [self.view insertSubview:self.webView belowSubview:self.progressView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -415,7 +476,7 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
 
     [self.webView addObserver:self forKeyPath:@"estimatedProgress" options:NSKeyValueObservingOptionNew context:nil];
 
-    if (self.webView.URL) [self.webView reload];
+    if (previousURL) [self.webView loadRequest:[NSURLRequest requestWithURL:previousURL]];
     else [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
 }
 
@@ -450,7 +511,16 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
         case BottomMenuActionWebBack: [self.webView goBack]; break;
         case BottomMenuActionWebForward: [self.webView goForward]; break;
         case BottomMenuActionWebShare: { if (self.webView.URL) { UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[self.webView.URL] applicationActivities:nil]; [self presentViewController:avc animated:YES completion:nil]; } break; }
-        case BottomMenuActionWebHome: { [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]]; break; }
+        case BottomMenuActionWebHome: {
+            NSString *home = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebHomepage"] ?: @"about:blank";
+            NSURL *homeURL = [NSURL URLWithString:home];
+            if (!homeURL || (!homeURL.scheme && [home containsString:@"."])) {
+                homeURL = [NSURL URLWithString:[@"https://" stringByAppendingString:home]];
+            }
+            if (!homeURL) homeURL = [NSURL URLWithString:@"about:blank"];
+            [self.webView loadRequest:[NSURLRequest requestWithURL:homeURL]];
+            break;
+        }
         case BottomMenuActionOthers: [self showBrowserOthersMenu]; break;
         case BottomMenuActionDownloads: { DownloadsViewController *vc = [[DownloadsViewController alloc] init]; [self.navigationController pushViewController:vc animated:YES]; break; }
         case BottomMenuActionTabs: { MainContainerViewController *container = (MainContainerViewController *)self.view.window.rootViewController; if ([container isKindOfClass:[MainContainerViewController class]]) [container showTabSwitcher]; break; }
@@ -469,9 +539,15 @@ static WKWebsiteDataStore *_nonPersistentStore = nil;
     // is one that can be correctly relativized.
 
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
+    NSString *ua = self.webView.customUserAgent;
+    if (ua.length > 0) {
+        [request setValue:ua forHTTPHeaderField:@"User-Agent"];
+    }
     [self.webView.configuration.websiteDataStore.httpCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
-        [request setAllHTTPHeaderFields:[NSHTTPCookie requestHeaderFieldsWithCookies:cookies]];
+        NSDictionary *cookieHeaders = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
+        for (NSString *key in cookieHeaders) {
+            [request setValue:cookieHeaders[key] forHTTPHeaderField:key];
+        }
         dispatch_async(dispatch_get_main_queue(), ^{ [[DownloadManager sharedManager] downloadFileWithRequest:request toPath:downloadsPath];  });
     }];
 }
