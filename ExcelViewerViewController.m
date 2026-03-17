@@ -6,6 +6,7 @@
 #import "CustomMenuView.h"
 #import "Office/XLSXCompatibilityReader.h"
 #import <float.h>
+#import <math.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma mark - Cell Model
@@ -781,12 +782,17 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
 - (NSString *)executeVBAScript:(NSString *)script onSheet:(SpreadSheet *)targetSheet;
 - (NSString *)resolvedVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
 - (double)numericVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (NSArray<NSString *> *)splitVBAArguments:(NSString *)args;
+- (NSRange)topLevelOperatorRangeInExpression:(NSString *)expr operators:(NSArray<NSString *> *)operators;
+- (NSString *)evaluateVBABuiltinCall:(NSString *)name args:(NSArray<NSString *> *)args variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
 - (BOOL)parseCellReference:(NSString *)ref row:(NSInteger *)row col:(NSInteger *)col;
 - (void)setSheet:(SpreadSheet *)sheet cellRef:(NSString *)ref value:(NSString *)value;
 - (NSString *)cellRefFromVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
 - (NSString *)valueForVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
 - (void)setVBATarget:(NSString *)target value:(NSString *)value variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
 - (BOOL)evaluateVBACondition:(NSString *)condition variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (BOOL)booleanFromVBAValue:(NSString *)value;
+- (NSInteger)findVBAMatchingLoopFromLines:(NSArray<NSString *> *)lines start:(NSInteger)start;
 
 @end
 
@@ -2504,6 +2510,121 @@ static const CGFloat kRowHeaderW = 40;
     return nil;
 }
 
+- (NSArray<NSString *> *)splitVBAArguments:(NSString *)args {
+    NSMutableArray<NSString *> *result=[NSMutableArray array];
+    if(args.length==0) return result;
+    NSMutableString *current=[NSMutableString string];
+    NSInteger depth=0;
+    BOOL inQuote=NO;
+    for(NSUInteger i=0;i<args.length;i++) {
+        unichar ch=[args characterAtIndex:i];
+        if(ch=='"') {
+            inQuote=!inQuote;
+            [current appendFormat:@"%C", ch];
+            continue;
+        }
+        if(!inQuote) {
+            if(ch=='(') depth++;
+            else if(ch==')' && depth>0) depth--;
+            else if(ch==',' && depth==0) {
+                [result addObject:[current stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]];
+                [current setString:@""];
+                continue;
+            }
+        }
+        [current appendFormat:@"%C", ch];
+    }
+    NSString *tail=[current stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if(tail.length) [result addObject:tail];
+    return result;
+}
+
+- (NSRange)topLevelOperatorRangeInExpression:(NSString *)expr operators:(NSArray<NSString *> *)operators {
+    if(expr.length==0) return NSMakeRange(NSNotFound, 0);
+    NSInteger depth=0;
+    BOOL inQuote=NO;
+    for(NSUInteger i=0;i<expr.length;i++) {
+        unichar ch=[expr characterAtIndex:i];
+        if(ch=='"') { inQuote=!inQuote; continue; }
+        if(inQuote) continue;
+        if(ch=='(') { depth++; continue; }
+        if(ch==')') { if(depth>0) depth--; continue; }
+        if(depth>0) continue;
+        for(NSString *op in operators) {
+            NSUInteger len=op.length;
+            if(i+len>expr.length) continue;
+            NSString *candidate=[expr substringWithRange:NSMakeRange(i, len)];
+            if([candidate isEqualToString:op]) {
+                if([op isEqualToString:@"-"] || [op isEqualToString:@"+"]) {
+                    if(i==0) continue;
+                    NSString *prev=[expr substringWithRange:NSMakeRange(i-1, 1)];
+                    if([@[@"+",@"-",@"*",@"/",@"(",@"&"] containsObject:prev]) continue;
+                }
+                return NSMakeRange(i, len);
+            }
+        }
+    }
+    return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSString *)evaluateVBABuiltinCall:(NSString *)name args:(NSArray<NSString *> *)args variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *upper=name.uppercaseString;
+    if([upper isEqualToString:@"LEN"] && args.count>=1) return [NSString stringWithFormat:@"%lu", (unsigned long)[self resolvedVBAToken:args[0] variables:vars sheet:sheet].length];
+    if([upper isEqualToString:@"LEFT"] && args.count>=2) {
+        NSString *src=[self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+        NSInteger n=MAX(0, (NSInteger)llround([self numericVBAToken:args[1] variables:vars sheet:sheet]));
+        return [src substringToIndex:MIN((NSUInteger)n, src.length)];
+    }
+    if([upper isEqualToString:@"RIGHT"] && args.count>=2) {
+        NSString *src=[self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+        NSInteger n=MAX(0, (NSInteger)llround([self numericVBAToken:args[1] variables:vars sheet:sheet]));
+        if((NSUInteger)n>=src.length) return src;
+        return [src substringFromIndex:src.length-n];
+    }
+    if([upper isEqualToString:@"MID"] && args.count>=2) {
+        NSString *src=[self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+        NSInteger start=MAX(1, (NSInteger)llround([self numericVBAToken:args[1] variables:vars sheet:sheet]));
+        NSInteger len=(args.count>=3)?MAX(0, (NSInteger)llround([self numericVBAToken:args[2] variables:vars sheet:sheet])):(NSInteger)src.length;
+        NSUInteger idx=MIN((NSUInteger)(start-1), src.length);
+        NSUInteger maxLen=MIN((NSUInteger)len, src.length-idx);
+        return [src substringWithRange:NSMakeRange(idx, maxLen)];
+    }
+    if([upper isEqualToString:@"TRIM"] && args.count>=1) return [[self resolvedVBAToken:args[0] variables:vars sheet:sheet] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]?:@"";
+    if([upper isEqualToString:@"UCASE"] && args.count>=1) return [[self resolvedVBAToken:args[0] variables:vars sheet:sheet] uppercaseString]?:@"";
+    if([upper isEqualToString:@"LCASE"] && args.count>=1) return [[self resolvedVBAToken:args[0] variables:vars sheet:sheet] lowercaseString]?:@"";
+    if(([upper isEqualToString:@"CINT"] || [upper isEqualToString:@"CLNG"]) && args.count>=1) return [NSString stringWithFormat:@"%ld", (long)((NSInteger)llround([self numericVBAToken:args[0] variables:vars sheet:sheet]))];
+    if(([upper isEqualToString:@"CDBL"] || [upper isEqualToString:@"VAL"]) && args.count>=1) return [NSString stringWithFormat:@"%g", [self numericVBAToken:args[0] variables:vars sheet:sheet]];
+    if([upper isEqualToString:@"CSTR"] && args.count>=1) return [self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+    if([upper isEqualToString:@"ABS"] && args.count>=1) return [NSString stringWithFormat:@"%g", fabs([self numericVBAToken:args[0] variables:vars sheet:sheet])];
+    if([upper isEqualToString:@"INT"] && args.count>=1) return [NSString stringWithFormat:@"%g", floor([self numericVBAToken:args[0] variables:vars sheet:sheet])];
+    if([upper isEqualToString:@"ROUND"] && args.count>=1) {
+        double value=[self numericVBAToken:args[0] variables:vars sheet:sheet];
+        NSInteger digits=(args.count>=2)?(NSInteger)llround([self numericVBAToken:args[1] variables:vars sheet:sheet]):0;
+        double scale=pow(10.0, digits);
+        return [NSString stringWithFormat:@"%g", round(value*scale)/scale];
+    }
+    if([upper isEqualToString:@"STR"] && args.count>=1) return [NSString stringWithFormat:@"%g", [self numericVBAToken:args[0] variables:vars sheet:sheet]];
+    if([upper isEqualToString:@"ISNUMERIC"] && args.count>=1) {
+        NSString *v=[self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+        NSScanner *sc=[NSScanner scannerWithString:v]; double n=0; BOOL ok=[sc scanDouble:&n] && sc.isAtEnd;
+        return ok?@"True":@"False";
+    }
+    if([upper isEqualToString:@"NOW"]) return [[NSDate date] description];
+    if([upper isEqualToString:@"DATE"]) { NSDateFormatter *f=[NSDateFormatter new]; f.dateFormat=@"yyyy-MM-dd"; return [f stringFromDate:[NSDate date]]; }
+    if([upper isEqualToString:@"IIF"] && args.count>=3) {
+        BOOL cond=[self evaluateVBACondition:args[0] variables:vars sheet:sheet];
+        return [self resolvedVBAToken:(cond?args[1]:args[2]) variables:vars sheet:sheet]?:@"";
+    }
+    if([upper isEqualToString:@"INSTR"] && args.count>=2) {
+        NSString *hay=[self resolvedVBAToken:args[0] variables:vars sheet:sheet]?:@"";
+        NSString *needleText=[self resolvedVBAToken:args[1] variables:vars sheet:sheet]?:@"";
+        NSRange r=[hay rangeOfString:needleText options:NSCaseInsensitiveSearch];
+        return (r.location==NSNotFound)?@"0":[NSString stringWithFormat:@"%ld",(long)r.location+1];
+    }
+    if([upper isEqualToString:@"TIME"]) { NSDateFormatter *f=[NSDateFormatter new]; f.dateFormat=@"HH:mm:ss"; return [f stringFromDate:[NSDate date]]; }
+    return nil;
+}
+
 - (void)setVBATarget:(NSString *)target value:(NSString *)value variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
     NSString *ref=[self cellRefFromVBATarget:target variables:vars sheet:sheet];
     if(!ref.length) return;
@@ -2524,8 +2645,48 @@ static const CGFloat kRowHeaderW = 40;
 - (NSString *)resolvedVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
     NSString *trim=[token stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if(trim.length==0) return @"";
-    if([trim hasPrefix:@"\""] && [trim hasSuffix:@"\""] && trim.length>=2) {
-        return [trim substringWithRange:NSMakeRange(1, trim.length-2)];
+    if([trim hasPrefix:@"("] && [trim hasSuffix:@")"] && trim.length>=2) {
+        return [self resolvedVBAToken:[trim substringWithRange:NSMakeRange(1, trim.length-2)] variables:vars sheet:sheet];
+    }
+    if([trim hasPrefix:@"\""] && [trim hasSuffix:@"\""] && trim.length>=2) return [trim substringWithRange:NSMakeRange(1, trim.length-2)];
+    if([trim caseInsensitiveCompare:@"TRUE"]==NSOrderedSame) return @"True";
+    if([trim caseInsensitiveCompare:@"FALSE"]==NSOrderedSame) return @"False";
+    if([trim caseInsensitiveCompare:@"VBCRLF"]==NSOrderedSame) return @"\r\n";
+    if([trim caseInsensitiveCompare:@"VBCR"]==NSOrderedSame) return @"\r";
+    if([trim caseInsensitiveCompare:@"VBLF"]==NSOrderedSame) return @"\n";
+    if([trim caseInsensitiveCompare:@"VBTAB"]==NSOrderedSame) return @"\t";
+    if([trim caseInsensitiveCompare:@"NOTHING"]==NSOrderedSame) return @"";
+
+    NSRange concatRange=[self topLevelOperatorRangeInExpression:trim operators:@[@"&"]];
+    if(concatRange.location!=NSNotFound) {
+        NSString *left=[self resolvedVBAToken:[trim substringToIndex:concatRange.location] variables:vars sheet:sheet]?:@"";
+        NSString *right=[self resolvedVBAToken:[trim substringFromIndex:concatRange.location+concatRange.length] variables:vars sheet:sheet]?:@"";
+        return [left stringByAppendingString:right];
+    }
+
+    NSRange addSub=[self topLevelOperatorRangeInExpression:trim operators:@[@"+",@"-"]];
+    if(addSub.location!=NSNotFound) {
+        double left=[self numericVBAToken:[trim substringToIndex:addSub.location] variables:vars sheet:sheet];
+        double right=[self numericVBAToken:[trim substringFromIndex:addSub.location+addSub.length] variables:vars sheet:sheet];
+        double value=[[trim substringWithRange:addSub] isEqualToString:@"+"]?(left+right):(left-right);
+        return [NSString stringWithFormat:@"%g", value];
+    }
+
+    NSRange mulDiv=[self topLevelOperatorRangeInExpression:trim operators:@[@"*",@"/"]];
+    if(mulDiv.location!=NSNotFound) {
+        double left=[self numericVBAToken:[trim substringToIndex:mulDiv.location] variables:vars sheet:sheet];
+        double right=[self numericVBAToken:[trim substringFromIndex:mulDiv.location+mulDiv.length] variables:vars sheet:sheet];
+        double value=[[trim substringWithRange:mulDiv] isEqualToString:@"*"]?(left*right):((right==0)?0:(left/right));
+        return [NSString stringWithFormat:@"%g", value];
+    }
+
+    NSRegularExpression *callRe=[NSRegularExpression regularExpressionWithPattern:@"^([A-Za-z_][A-Za-z0-9_]*)\\s*\\((.*)\\)$" options:0 error:nil];
+    NSTextCheckingResult *call=[callRe firstMatchInString:trim options:0 range:NSMakeRange(0, trim.length)];
+    if(call.numberOfRanges==3) {
+        NSString *name=[trim substringWithRange:[call rangeAtIndex:1]];
+        NSString *argStr=[trim substringWithRange:[call rangeAtIndex:2]];
+        NSString *builtIn=[self evaluateVBABuiltinCall:name args:[self splitVBAArguments:argStr] variables:vars sheet:sheet];
+        if(builtIn) return builtIn;
     }
 
     NSString *targetValue=[self valueForVBATarget:trim variables:vars sheet:sheet];
@@ -2535,13 +2696,8 @@ static const CGFloat kRowHeaderW = 40;
     if(var) return var;
 
     NSInteger r=0,c=0;
-    if([self parseCellReference:trim row:&r col:&c]) {
-        SpreadCell *cell=[sheet cellAtRow:r col:c];
-        return cell.display?:@"";
-    }
-    if([trim hasPrefix:@"="]) {
-        return [FormulaEngine evaluate:trim sheet:sheet]?:@"";
-    }
+    if([self parseCellReference:trim row:&r col:&c]) return [sheet cellAtRow:r col:c].display?:@"";
+    if([trim hasPrefix:@"="]) return [FormulaEngine evaluate:trim sheet:sheet]?:@"";
     return trim;
 }
 
@@ -2553,8 +2709,50 @@ static const CGFloat kRowHeaderW = 40;
     return 0;
 }
 
+- (BOOL)booleanFromVBAValue:(NSString *)value {
+    NSString *trim=[[value?:@"" stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+    if(trim.length==0) return NO;
+    if([trim isEqualToString:@"TRUE"]) return YES;
+    if([trim isEqualToString:@"FALSE"]) return NO;
+    NSScanner *sc=[NSScanner scannerWithString:trim];
+    double n=0;
+    if([sc scanDouble:&n] && sc.isAtEnd) return n!=0;
+    return YES;
+}
+
+- (NSInteger)findVBAMatchingLoopFromLines:(NSArray<NSString *> *)lines start:(NSInteger)start {
+    NSInteger depth=0;
+    for(NSInteger i=start+1;i<(NSInteger)lines.count;i++) {
+        NSString *up=[lines[i] uppercaseString];
+        if([up hasPrefix:@"DO"] || [up hasPrefix:@"WHILE "]) depth++;
+        if([up isEqualToString:@"LOOP"] || [up hasPrefix:@"LOOP WHILE "] || [up hasPrefix:@"LOOP UNTIL "] || [up isEqualToString:@"WEND"]) {
+            if(depth==0) return i;
+            depth--;
+        }
+    }
+    return NSNotFound;
+}
+
 - (BOOL)evaluateVBACondition:(NSString *)condition variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
     NSString *trim=[condition stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if(trim.length==0) return NO;
+
+    NSRange orR=[trim.uppercaseString rangeOfString:@" OR "];
+    if(orR.location!=NSNotFound) {
+        NSString *left=[trim substringToIndex:orR.location];
+        NSString *right=[trim substringFromIndex:orR.location+4];
+        return [self evaluateVBACondition:left variables:vars sheet:sheet] || [self evaluateVBACondition:right variables:vars sheet:sheet];
+    }
+    NSRange andR=[trim.uppercaseString rangeOfString:@" AND "];
+    if(andR.location!=NSNotFound) {
+        NSString *left=[trim substringToIndex:andR.location];
+        NSString *right=[trim substringFromIndex:andR.location+5];
+        return [self evaluateVBACondition:left variables:vars sheet:sheet] && [self evaluateVBACondition:right variables:vars sheet:sheet];
+    }
+    if([trim.uppercaseString hasPrefix:@"NOT "]) {
+        return ![self evaluateVBACondition:[trim substringFromIndex:4] variables:vars sheet:sheet];
+    }
+
     NSArray<NSString *> *ops=@[@">=",@"<=",@"<>",@"=",@">",@"<"];
     for(NSString *op in ops) {
         NSRange r=[trim rangeOfString:op];
@@ -2585,8 +2783,9 @@ static const CGFloat kRowHeaderW = 40;
             if([op isEqualToString:@"<"]) return cmp==NSOrderedAscending;
         }
     }
-    return [self numericVBAToken:trim variables:vars sheet:sheet]!=0;
+    return [self booleanFromVBAValue:[self resolvedVBAToken:trim variables:vars sheet:sheet]];
 }
+
 
 - (NSString *)executeVBAScript:(NSString *)script onSheet:(SpreadSheet *)targetSheet {
     if(script.length==0) return @"ERR: empty module";
@@ -2621,6 +2820,7 @@ static const CGFloat kRowHeaderW = 40;
     NSMutableArray<NSString *> *outputs=[NSMutableArray array];
     NSMutableArray<NSMutableDictionary *> *forStack=[NSMutableArray array];
     NSMutableArray<NSMutableDictionary *> *ifStack=[NSMutableArray array];
+    NSMutableArray<NSMutableDictionary *> *doStack=[NSMutableArray array];
 
     NSInteger pc=0;
     while(pc<(NSInteger)lines.count) {
@@ -2642,9 +2842,27 @@ static const CGFloat kRowHeaderW = 40;
             if(ifStack.count) {
                 NSMutableDictionary *top=ifStack.lastObject;
                 if(![top[@"seenElse"] boolValue]) {
-                    BOOL cur=[top[@"active"] boolValue];
-                    top[@"active"]=@(!cur);
+                    BOOL alreadyTaken=[top[@"branchTaken"] boolValue];
+                    top[@"active"]=@(!alreadyTaken);
                     top[@"seenElse"]=@YES;
+                    top[@"branchTaken"]=@YES;
+                }
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"ELSEIF "] && [upper hasSuffix:@" THEN"]) {
+            if(ifStack.count) {
+                NSMutableDictionary *top=ifStack.lastObject;
+                BOOL alreadyTaken=[top[@"branchTaken"] boolValue];
+                if(alreadyTaken) {
+                    top[@"active"]=@NO;
+                } else {
+                    NSString *cond=[line substringWithRange:NSMakeRange(7, line.length-12)];
+                    BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+                    top[@"active"]=@(ok);
+                    if(ok) top[@"branchTaken"]=@YES;
                 }
             }
             pc++;
@@ -2654,7 +2872,7 @@ static const CGFloat kRowHeaderW = 40;
         if([upper hasPrefix:@"IF "] && [upper hasSuffix:@" THEN"]) {
             NSString *cond=[line substringWithRange:NSMakeRange(3, line.length-8)];
             BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
-            [ifStack addObject:[@{ @"active":@(ok), @"seenElse":@NO } mutableCopy]];
+            [ifStack addObject:[@{ @"active":@(ok), @"seenElse":@NO, @"branchTaken":@(ok) } mutableCopy]];
             pc++;
             continue;
         }
@@ -2762,6 +2980,80 @@ static const CGFloat kRowHeaderW = 40;
                     }
                 }
             }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"DO WHILE "]) {
+            NSString *cond=[line substringFromIndex:9];
+            BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+            if(ok) {
+                [doStack addObject:[@{ @"startPc":@(pc), @"mode":@"WHILE", @"cond":cond?:@"" } mutableCopy]];
+                pc++;
+            } else {
+                NSInteger jump=[self findVBAMatchingLoopFromLines:lines start:pc];
+                pc=(jump==NSNotFound)?(pc+1):(jump+1);
+            }
+            continue;
+        }
+
+        if([upper hasPrefix:@"DO UNTIL "]) {
+            NSString *cond=[line substringFromIndex:9];
+            BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+            if(!ok) {
+                [doStack addObject:[@{ @"startPc":@(pc), @"mode":@"UNTIL", @"cond":cond?:@"" } mutableCopy]];
+                pc++;
+            } else {
+                NSInteger jump=[self findVBAMatchingLoopFromLines:lines start:pc];
+                pc=(jump==NSNotFound)?(pc+1):(jump+1);
+            }
+            continue;
+        }
+
+        if([upper isEqualToString:@"DO"]) {
+            [doStack addObject:[@{ @"startPc":@(pc), @"mode":@"PLAIN", @"cond":@"" } mutableCopy]];
+            pc++;
+            continue;
+        }
+
+        if([upper isEqualToString:@"EXIT DO"]) {
+            if(doStack.count) {
+                NSInteger jump=[self findVBAMatchingLoopFromLines:lines start:[doStack.lastObject[@"startPc"] integerValue]];
+                [doStack removeLastObject];
+                pc=(jump==NSNotFound)?(pc+1):(jump+1);
+            } else {
+                pc++;
+            }
+            continue;
+        }
+
+        if([upper isEqualToString:@"LOOP"] || [upper isEqualToString:@"WEND"] || [upper hasPrefix:@"LOOP WHILE "] || [upper hasPrefix:@"LOOP UNTIL "]) {
+            if(doStack.count) {
+                NSMutableDictionary *frame=doStack.lastObject;
+                NSString *mode=frame[@"mode"];
+                NSString *cond=frame[@"cond"];
+                BOOL cont=NO;
+                if([upper hasPrefix:@"LOOP WHILE "]) {
+                    cont=[self evaluateVBACondition:[line substringFromIndex:11] variables:vars sheet:targetSheet];
+                } else if([upper hasPrefix:@"LOOP UNTIL "]) {
+                    cont=![self evaluateVBACondition:[line substringFromIndex:11] variables:vars sheet:targetSheet];
+                } else if([mode isEqualToString:@"WHILE"]) {
+                    cont=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+                } else if([mode isEqualToString:@"UNTIL"]) {
+                    cont=![self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+                } else {
+                    cont=YES;
+                }
+                if(cont) pc=[frame[@"startPc"] integerValue]+1;
+                else { [doStack removeLastObject]; pc++; }
+            } else {
+                pc++;
+            }
+            continue;
+        }
+
+        if([upper isEqualToString:@"EXIT FOR"]) {
+            if(forStack.count) { [forStack removeLastObject]; }
             pc++;
             continue;
         }
