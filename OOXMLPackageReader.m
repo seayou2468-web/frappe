@@ -16,8 +16,9 @@
     for (mz_uint i = 0; i < count; i++) {
         mz_zip_archive_file_stat stat;
         if (!mz_zip_reader_file_stat(&zip, i, &stat)) continue;
-        if (!stat.m_filename) continue;
+        if (stat.m_filename[0] == '\0') continue;
         NSString *name = [NSString stringWithUTF8String:stat.m_filename];
+        if (!name) continue;
         if (name.length > 0) [names addObject:name];
     }
 

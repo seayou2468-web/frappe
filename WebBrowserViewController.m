@@ -15,9 +15,125 @@
 #import "WebHistoryViewController.h"
 #import "Logger.h"
 #import "FileManagerCore.h"
+#import <Network/Network.h>
 
 static WKWebsiteDataStore *_nonPersistentStore = nil;
 static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+
+@interface LocalHTTPFileServer : NSObject
+@property (nonatomic, assign) nw_listener_t listener;
+@property (nonatomic, copy) NSString *rootDirectory;
+@property (nonatomic, assign) uint16_t port;
+- (BOOL)startWithDirectory:(NSString *)directory port:(uint16_t)port;
+- (void)stop;
+@end
+
+@implementation LocalHTTPFileServer
+
+- (NSData *)dataFromDispatchData:(dispatch_data_t)data {
+    if (!data) return [NSData data];
+    __block NSMutableData *buffer = [NSMutableData data];
+    dispatch_data_apply(data, ^bool(dispatch_data_t region, size_t offset, const void *bytes, size_t size) {
+        [buffer appendBytes:bytes length:size];
+        return true;
+    });
+    return buffer;
+}
+
+- (NSString *)mimeTypeForPath:(NSString *)path {
+    NSString *ext = path.pathExtension.lowercaseString;
+    NSDictionary<NSString *, NSString *> *map = @{@"html":@"text/html; charset=utf-8", @"htm":@"text/html; charset=utf-8", @"js":@"application/javascript", @"css":@"text/css", @"json":@"application/json", @"wasm":@"application/wasm", @"png":@"image/png", @"jpg":@"image/jpeg", @"jpeg":@"image/jpeg", @"gif":@"image/gif", @"svg":@"image/svg+xml", @"txt":@"text/plain; charset=utf-8"};
+    return map[ext] ?: @"application/octet-stream";
+}
+
+- (NSData *)responseForRequestData:(NSData *)requestData {
+    NSString *request = [[NSString alloc] initWithData:requestData encoding:NSUTF8StringEncoding] ?: @"";
+    NSArray<NSString *> *lines = [request componentsSeparatedByString:@"\r\n"];
+    NSString *requestLine = lines.firstObject ?: @"";
+    NSArray<NSString *> *parts = [requestLine componentsSeparatedByString:@" "];
+    NSString *method = parts.count > 0 ? parts[0] : @"";
+    NSString *pathPart = parts.count > 1 ? parts[1] : @"/";
+    NSRange queryRange = [pathPart rangeOfString:@"?"];
+    if (queryRange.location != NSNotFound) pathPart = [pathPart substringToIndex:queryRange.location];
+    if (![method isEqualToString:@"GET"]) {
+        return [@"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding];
+    }
+
+    NSString *decodedPath = [pathPart stringByRemovingPercentEncoding] ?: @"/";
+    if ([decodedPath hasPrefix:@"/"]) decodedPath = [decodedPath substringFromIndex:1];
+    if (decodedPath.length == 0) decodedPath = @"index.html";
+    while ([decodedPath hasPrefix:@"/"]) decodedPath = [decodedPath substringFromIndex:1];
+    if ([decodedPath containsString:@".."] || [decodedPath containsString:@"\\"]) {
+        return [@"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" dataUsingEncoding:NSUTF8StringEncoding];
+    }
+
+    NSString *fullPath = [self.rootDirectory stringByAppendingPathComponent:decodedPath];
+    BOOL isDir = NO;
+    if ([[NSFileManager defaultManager] fileExistsAtPath:fullPath isDirectory:&isDir] && isDir) {
+        fullPath = [fullPath stringByAppendingPathComponent:@"index.html"];
+    }
+    NSData *body = [NSData dataWithContentsOfFile:fullPath];
+    if (!body) {
+        body = [@"404 Not Found" dataUsingEncoding:NSUTF8StringEncoding];
+        NSString *header = [NSString stringWithFormat:@"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: %lu\r\nConnection: close\r\n\r\n", (unsigned long)body.length];
+        NSMutableData *res = [NSMutableData dataWithData:[header dataUsingEncoding:NSUTF8StringEncoding]];
+        [res appendData:body];
+        return res;
+    }
+
+    NSString *mime = [self mimeTypeForPath:fullPath];
+    NSString *header = [NSString stringWithFormat:@"HTTP/1.1 200 OK\r\nContent-Type: %@\r\nContent-Length: %lu\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", mime, (unsigned long)body.length];
+    NSMutableData *res = [NSMutableData dataWithData:[header dataUsingEncoding:NSUTF8StringEncoding]];
+    [res appendData:body];
+    return res;
+}
+
+- (void)handleConnection:(nw_connection_t)connection {
+    nw_connection_set_queue(connection, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    nw_connection_start(connection);
+    __weak typeof(self) weakSelf = self;
+    nw_connection_receive(connection, 1, 65536, ^(dispatch_data_t content, nw_content_context_t context, bool isComplete, nw_error_t error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || error || !content) {
+            nw_connection_cancel(connection);
+            return;
+        }
+        NSData *requestData = [self dataFromDispatchData:content];
+        NSData *responseData = [self responseForRequestData:requestData];
+        dispatch_data_t out = dispatch_data_create(responseData.bytes, responseData.length, dispatch_get_main_queue(), DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        nw_connection_send(connection, out, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t sendError) {
+            (void)sendError;
+            nw_connection_cancel(connection);
+        });
+    });
+}
+
+- (BOOL)startWithDirectory:(NSString *)directory port:(uint16_t)port {
+    [self stop];
+    self.rootDirectory = directory;
+    self.port = port;
+    NSString *portString = [NSString stringWithFormat:@"%hu", port];
+    nw_parameters_t parameters = nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+    nw_listener_t listener = nw_listener_create_with_port(portString.UTF8String, parameters);
+    if (!listener) return NO;
+    self.listener = listener;
+    nw_listener_set_queue(listener, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    __weak typeof(self) weakSelf = self;
+    nw_listener_set_new_connection_handler(listener, ^(nw_connection_t connection) {
+        [weakSelf handleConnection:connection];
+    });
+    nw_listener_start(listener);
+    return YES;
+}
+
+- (void)stop {
+    if (self.listener) {
+        nw_listener_cancel(self.listener);
+        self.listener = NULL;
+    }
+}
+
+@end
 
 @interface WeakScriptMessageProxy : NSObject <WKScriptMessageHandler>
 @property (nonatomic, weak) id<WKScriptMessageHandler> delegate;
@@ -40,6 +156,13 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
 @property (nonatomic, assign) BOOL isAdBlockEnabled;
 @property (nonatomic, assign) BOOL isDesktopMode;
 @property (nonatomic, assign) BOOL javaScriptEnabled;
+@property (nonatomic, strong) LocalHTTPFileServer *localFileServer;
+
+- (void)promptAndRunWebAssembly;
+- (void)runWebAssemblyWithURLString:(NSString *)wasmURL exportName:(NSString *)exportName;
+- (void)promptAndToggleLocalFileServer;
+- (NSString *)sanitizedRelativeDirectory:(NSString *)raw;
+- (NSString *)defaultHTMLRelativePathInDirectory:(NSString *)directory;
 @end
 
 @implementation WebBrowserViewController
@@ -57,6 +180,7 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
         _initialURL = ([url hasPrefix:@"http"] || [url containsString:@"."]) ? url : nil;
         _consoleLogs = [NSMutableArray array];
         _networkLogs = [NSMutableArray array];
+        _localFileServer = [[LocalHTTPFileServer alloc] init];
     }
     return self;
 }
@@ -75,6 +199,7 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
 }
 
 - (void)dealloc {
+    [self.localFileServer stop];
     [self.webView removeObserver:self forKeyPath:@"estimatedProgress"];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"logger"];
     [self.webView.configuration.userContentController removeScriptMessageHandlerForName:@"network"];
@@ -121,7 +246,9 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
 - (WKWebView *)buildWebViewWithDataStore:(WKWebsiteDataStore *)dataStore {
     WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
     config.userContentController = [self configuredUserContentController];
-    config.preferences.javaScriptEnabled = self.javaScriptEnabled;
+    WKWebpagePreferences *pagePreferences = [[WKWebpagePreferences alloc] init];
+    pagePreferences.allowsContentJavaScript = self.javaScriptEnabled;
+    config.defaultWebpagePreferences = pagePreferences;
     config.websiteDataStore = dataStore;
 
     WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
@@ -232,6 +359,152 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
     if (self.isAdBlockEnabled) {
         [self applyAdBlockRules];
     }
+}
+
+- (void)promptAndRunWebAssembly {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"WebAssembly実行"
+                                                                   message:@"Wasm URL と実行したい export 関数名（任意）を指定"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"https://example.com/module.wasm";
+        textField.keyboardType = UIKeyboardTypeURL;
+    }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"main (任意)";
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"実行" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *wasmURL = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSString *exportName = [alert.textFields.lastObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (wasmURL.length == 0) return;
+        [self runWebAssemblyWithURLString:wasmURL exportName:exportName];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)runWebAssemblyWithURLString:(NSString *)wasmURL exportName:(NSString *)exportName {
+    NSString *escapedURL = [[wasmURL stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"] stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+    NSString *escapedExport = [[exportName stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"] stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+
+    NSString *js = [NSString stringWithFormat:
+                    @"(async function(){"
+                    "const u=\"%@\";const fn=\"%@\";"
+                    "const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('WASM timeout')),8000));"
+                    "const run=(async()=>{"
+                    "const r=await fetch(u,{cache:'no-store'});"
+                    "if(!r.ok) throw new Error('fetch failed: '+r.status);"
+                    "const bytes=await r.arrayBuffer();"
+                    "const mod=await WebAssembly.instantiate(bytes,{});"
+                    "if(fn&&mod.instance.exports[fn]){return mod.instance.exports[fn]();}"
+                    "return Object.keys(mod.instance.exports);"
+                    "})();"
+                    "return await Promise.race([run,timeout]);"
+                    "})();", escapedURL, escapedExport];
+
+    __weak typeof(self) weakSelf = self;
+    [self.webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *log = error ? [NSString stringWithFormat:@"WASM ERR: %@", error.localizedDescription] : [NSString stringWithFormat:@"WASM OK: %@", result ?: @"(null)"];
+            [weakSelf.consoleLogs addObject:log];
+            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] %@", log]];
+        });
+    }];
+}
+
+- (NSString *)sanitizedRelativeDirectory:(NSString *)raw {
+    NSString *trim = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trim.length == 0) return nil;
+    NSString *normalized = [trim stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    while ([normalized hasPrefix:@"/"]) normalized = [normalized substringFromIndex:1];
+    if ([normalized containsString:@".."] || [normalized hasPrefix:@"~"]) return nil;
+    return normalized;
+}
+
+- (NSString *)defaultHTMLRelativePathInDirectory:(NSString *)directory {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray<NSString *> *preferred = @[@"index.html", @"index.htm", @"main.html", @"default.html"];
+    for (NSString *name in preferred) {
+        NSString *path = [directory stringByAppendingPathComponent:name];
+        BOOL isDir = NO;
+        if ([fm fileExistsAtPath:path isDirectory:&isDir] && !isDir) return name;
+    }
+
+    NSDirectoryEnumerator *enumerator = [fm enumeratorAtURL:[NSURL fileURLWithPath:directory]
+                                  includingPropertiesForKeys:@[NSURLIsDirectoryKey]
+                                                     options:NSDirectoryEnumerationSkipsHiddenFiles
+                                                errorHandler:nil];
+    for (NSURL *url in enumerator) {
+        NSNumber *isDir = nil;
+        [url getResourceValue:&isDir forKey:NSURLIsDirectoryKey error:nil];
+        if (isDir.boolValue) continue;
+        NSString *ext = url.pathExtension.lowercaseString;
+        if ([ext isEqualToString:@"html"] || [ext isEqualToString:@"htm"]) {
+            NSString *full = url.path;
+            if ([full hasPrefix:directory]) {
+                NSString *rel = [full substringFromIndex:directory.length];
+                while ([rel hasPrefix:@"/"]) rel = [rel substringFromIndex:1];
+                if (rel.length) return rel;
+            }
+        }
+    }
+    return @"index.html";
+}
+
+- (void)promptAndToggleLocalFileServer {
+    if (self.localFileServer.listener) {
+        [self.localFileServer stop];
+        [[Logger sharedLogger] log:@"[BROWSER] Local file server stopped"];
+        return;
+    }
+
+    NSString *home = [FileManagerCore effectiveHomeDirectory];
+    NSString *docs = [home stringByAppendingPathComponent:@"Documents"];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"ローカルWebサーバー起動"
+                                                                   message:@"Documents配下のディレクトリ（相対）とポートを指定"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"例: WebRoot";
+        textField.text = @"WebRoot";
+    }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"8080";
+        textField.keyboardType = UIKeyboardTypeNumberPad;
+        textField.text = @"8080";
+    }];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:@"起動" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        NSString *relativeDir = [self sanitizedRelativeDirectory:alert.textFields.firstObject.text ?: @""];
+        NSString *portText = [alert.textFields.lastObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (relativeDir.length == 0) {
+            [[Logger sharedLogger] log:@"[BROWSER] Local server start failed: invalid directory path"];
+            return;
+        }
+
+        NSString *target = [docs stringByAppendingPathComponent:relativeDir];
+        BOOL isDir = NO;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:target isDirectory:&isDir] || !isDir) {
+            [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Local server start failed: directory not found %@", target]];
+            return;
+        }
+
+        NSInteger portValue = portText.integerValue;
+        if (portValue <= 0 || portValue > 65535) portValue = 8080;
+        BOOL started = [self.localFileServer startWithDirectory:target port:(uint16_t)portValue];
+        if (!started) {
+            [[Logger sharedLogger] log:@"[BROWSER] Local server start failed"];
+            return;
+        }
+
+        NSString *htmlPath = [self defaultHTMLRelativePathInDirectory:target];
+        NSString *escapedHTML = [htmlPath stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]] ?: @"index.html";
+        NSString *urlString = [NSString stringWithFormat:@"http://127.0.0.1:%ld/%@", (long)portValue, escapedHTML];
+        [[Logger sharedLogger] log:[NSString stringWithFormat:@"[BROWSER] Local server started: %@ -> %@", urlString, target]];
+        [self.webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlString]]];
+    }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -490,6 +763,9 @@ static NSString * const kDesktopUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac 
     [menu addAction:[CustomMenuAction actionWithTitle:@"Cookieの管理" systemImage:@"lock.shield" style:CustomMenuActionStyleDefault handler:^{ [self showCookieEditor]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページ内検索" systemImage:@"magnifyingglass" style:CustomMenuActionStyleDefault handler:^{ [self promptFindOnPage]; }]];
     [menu addAction:[CustomMenuAction actionWithTitle:@"ページを共有" systemImage:@"square.and.arrow.up" style:CustomMenuActionStyleDefault handler:^{ [self handleMenuAction:BottomMenuActionWebShare]; }]];
+    [menu addAction:[CustomMenuAction actionWithTitle:@"WebAssembly実行" systemImage:@"cpu" style:CustomMenuActionStyleDefault handler:^{ [self promptAndRunWebAssembly]; }]];
+    NSString *serverTitle = self.localFileServer.listener ? @"ローカルWebサーバー停止" : @"ローカルWebサーバー起動";
+    [menu addAction:[CustomMenuAction actionWithTitle:serverTitle systemImage:@"network" style:CustomMenuActionStyleDefault handler:^{ [self promptAndToggleLocalFileServer]; }]];
 
     NSString *privateTitle = self.isPrivateMode ? @"プライベートモード: ON" : @"プライベートモード: OFF";
     [menu addAction:[CustomMenuAction actionWithTitle:privateTitle systemImage:@"eye.slash" style:CustomMenuActionStyleDefault handler:^{ [self togglePrivateMode]; }]];

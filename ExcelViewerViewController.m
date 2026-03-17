@@ -100,6 +100,7 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
 + (NSString *)cleanArg:(NSString *)arg;
 + (NSString *)stringValueForArg:(NSString *)arg sheet:(SpreadSheet *)sheet;
 + (BOOL)criteria:(NSString *)crit match:(double)value;
++ (BOOL)parseRef:(NSString *)ref row:(NSInteger *)r col:(NSInteger *)c;
 @end
 
 @implementation FormulaEngine
@@ -769,6 +770,24 @@ typedef NS_ENUM(NSUInteger, CellType)      { CellTypeText, CellTypeNumber, CellT
 // Edit state
 @property (nonatomic, assign) BOOL isDirty;
 
+- (void)renameSheet:(NSInteger)sheetIndex;
+- (NSString *)uniqueSheetNameFromBase:(NSString *)base excludingIndex:(NSInteger)excludingIndex;
+- (SpreadSheet *)ensureVBASheet;
+- (void)createVBAModule;
+- (void)editVBAModule;
+- (void)runVBAModule;
+- (NSInteger)activeVBARowInSheet:(SpreadSheet *)vba;
+- (void)deleteVBAModule;
+- (NSString *)executeVBAScript:(NSString *)script onSheet:(SpreadSheet *)targetSheet;
+- (NSString *)resolvedVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (double)numericVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (BOOL)parseCellReference:(NSString *)ref row:(NSInteger *)row col:(NSInteger *)col;
+- (void)setSheet:(SpreadSheet *)sheet cellRef:(NSString *)ref value:(NSString *)value;
+- (NSString *)cellRefFromVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (NSString *)valueForVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (void)setVBATarget:(NSString *)target value:(NSString *)value variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+- (BOOL)evaluateVBACondition:(NSString *)condition variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet;
+
 @end
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -936,6 +955,7 @@ static const CGFloat kRowHeaderW = 40;
         @[@"SRTS",@"sortRowsBySelection"],@[@"NWS",@"duplicateToNewSheet"],
         @[@"COL#",@"seriesByColumn"],@[@"F↑",@"fillBlanksFromAbove"],
         @[@"R2",@"round2Decimals"],@[@"AVG+",@"addAverageRow"],
+        @[@"VBA+",@"vbaNew"],@[@"VBA✎",@"vbaEdit"],@[@"VBA▶︎",@"vbaRun"],@[@"VBA🗑",@"vbaDelete"],
     ];
 
     UIStackView *stack=[[UIStackView alloc] init];
@@ -1083,6 +1103,14 @@ static const CGFloat kRowHeaderW = 40;
         [self duplicateSheet:self.currentSheetIndex];
     } else if([action isEqualToString:@"renameSheet"]){
         [self renameSheet:self.currentSheetIndex];
+    } else if([action isEqualToString:@"vbaNew"]){
+        [self createVBAModule];
+    } else if([action isEqualToString:@"vbaEdit"]){
+        [self editVBAModule];
+    } else if([action isEqualToString:@"vbaRun"]){
+        [self runVBAModule];
+    } else if([action isEqualToString:@"vbaDelete"]){
+        [self deleteVBAModule];
     } else if([action isEqualToString:@"prependText"]){
         [self promptAffixText:YES];
     } else if([action isEqualToString:@"appendText"]){
@@ -1274,13 +1302,46 @@ static const CGFloat kRowHeaderW = 40;
 }
 
 - (void)promptRenameSheet:(NSInteger)idx {
+    [self renameSheet:idx];
+}
+
+- (NSString *)uniqueSheetNameFromBase:(NSString *)base excludingIndex:(NSInteger)excludingIndex {
+    NSString *trimmed=[base stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *candidate=trimmed.length?trimmed:@"Sheet";
+    NSMutableSet<NSString *> *used=[NSMutableSet set];
+    for(NSInteger i=0;i<(NSInteger)self.sheets.count;i++) {
+        if(i==excludingIndex) continue;
+        [used addObject:self.sheets[i].name.lowercaseString?:@""];
+    }
+    if(![used containsObject:candidate.lowercaseString]) return candidate;
+    NSInteger suffix=2;
+    while(YES) {
+        NSString *next=[NSString stringWithFormat:@"%@ (%ld)",candidate,(long)suffix];
+        if(![used containsObject:next.lowercaseString]) return next;
+        suffix++;
+    }
+}
+
+- (void)renameSheet:(NSInteger)sheetIndex {
+    if(sheetIndex<0 || sheetIndex>=(NSInteger)self.sheets.count) return;
+    SpreadSheet *sheet=self.sheets[sheetIndex];
     UIAlertController *a=[UIAlertController alertControllerWithTitle:@"Rename Sheet"
-        message:nil preferredStyle:UIAlertControllerStyleAlert];
-    [a addTextFieldWithConfigurationHandler:^(UITextField *tf){tf.text=self.sheets[idx].name;}];
+        message:@"新しいシート名を入力してください" preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf){
+        tf.text=sheet.name;
+        tf.clearButtonMode=UITextFieldViewModeWhileEditing;
+    }];
+    __weak typeof(self) weakSelf=self;
     [a addAction:[UIAlertAction actionWithTitle:@"Rename" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){
-        NSString *n=a.textFields.firstObject.text;
-        if(n.length) self.sheets[idx].name=n;
+        __strong typeof(weakSelf) self=weakSelf;
+        if(!self) return;
+        NSString *rawName=a.textFields.firstObject.text?:@"";
+        NSString *newName=[self uniqueSheetNameFromBase:rawName excludingIndex:sheetIndex];
+        if([sheet.name isEqualToString:newName]) return;
+        [self saveUndo];
+        sheet.name=newName;
         [self reloadSheetTabs];
+        self.isDirty=YES;
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
@@ -1288,7 +1349,9 @@ static const CGFloat kRowHeaderW = 40;
 
 - (void)duplicateSheet:(NSInteger)idx {
     SpreadSheet *src=self.sheets[idx];
-    SpreadSheet *dup=[[SpreadSheet alloc] initWithName:[NSString stringWithFormat:@"%@ Copy",src.name]
+    NSString *baseName=[NSString stringWithFormat:@"%@ Copy",src.name?:@"Sheet"];
+    NSString *dupName=[self uniqueSheetNameFromBase:baseName excludingIndex:NSNotFound];
+    SpreadSheet *dup=[[SpreadSheet alloc] initWithName:dupName
         rows:src.rowCount cols:src.colCount];
     for(NSString *key in src.cells) dup.cells[key]=[src.cells[key] copy];
     dup.colWidths=[src.colWidths mutableCopy];
@@ -2262,13 +2325,532 @@ static const CGFloat kRowHeaderW = 40;
 #pragma mark - Add Sheet
 
 - (void)addNewSheet {
-    NSString *name=[NSString stringWithFormat:@"Sheet%lu",(unsigned long)(self.sheets.count+1)];
+    NSString *name=[self uniqueSheetNameFromBase:[NSString stringWithFormat:@"Sheet%lu",(unsigned long)(self.sheets.count+1)] excludingIndex:NSNotFound];
     SpreadSheet *s=[[SpreadSheet alloc] initWithName:name rows:100 cols:26];
     [self.sheets addObject:s];
     self.currentSheetIndex=(NSInteger)self.sheets.count-1;
     [self reloadGrid];
     [self reloadSheetTabs];
 }
+
+- (SpreadSheet *)ensureVBASheet {
+    for(SpreadSheet *sheet in self.sheets) {
+        if([sheet.name.lowercaseString isEqualToString:@"vba"]) return sheet;
+    }
+    SpreadSheet *vba=[[SpreadSheet alloc] initWithName:[self uniqueSheetNameFromBase:@"VBA" excludingIndex:NSNotFound] rows:80 cols:4];
+    NSArray<NSString *> *headers=@[@"Module",@"Code",@"Last Result",@"Updated"];
+    for(NSInteger c=0;c<(NSInteger)headers.count;c++) {
+        SpreadCell *cell=[SpreadCell new];
+        cell.raw=headers[c]; cell.display=headers[c]; cell.type=CellTypeText; cell.bold=YES;
+        [vba setCell:cell row:0 col:c];
+    }
+    [self.sheets addObject:vba];
+    [self reloadSheetTabs];
+    return vba;
+}
+
+- (void)createVBAModule {
+    SpreadSheet *vba=[self ensureVBASheet];
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"New VBA Module" message:@"モジュール名" preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf){ tf.placeholder=@"Module1"; }];
+    [a addAction:[UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){
+        NSString *module=[a.textFields.firstObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if(module.length==0) module=[NSString stringWithFormat:@"Module%u",arc4random_uniform(900)+100];
+        NSInteger targetRow=1;
+        while(targetRow<vba.rowCount && [vba cellAtRow:targetRow col:0].display.length) targetRow++;
+        if(targetRow>=vba.rowCount) return;
+        [self saveUndo];
+        SpreadCell *nameCell=[SpreadCell new];
+        nameCell.raw=module; nameCell.display=module; nameCell.type=CellTypeText;
+        [vba setCell:nameCell row:targetRow col:0];
+        SpreadCell *codeCell=[SpreadCell new];
+        codeCell.raw=@"PRINT \"Hello from VBA module\"";
+        codeCell.display=codeCell.raw; codeCell.type=CellTypeText;
+        [vba setCell:codeCell row:targetRow col:1];
+        self.currentSheetIndex=[self.sheets indexOfObject:vba];
+        [self reloadGrid];
+        [self reloadSheetTabs];
+        self.isDirty=YES;
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (NSInteger)activeVBARowInSheet:(SpreadSheet *)vba {
+    if([self.sheets indexOfObject:vba]==self.currentSheetIndex && self.selRow>0) return self.selRow;
+    for(NSInteger r=1;r<vba.rowCount;r++) if([vba cellAtRow:r col:0].display.length) return r;
+    return NSNotFound;
+}
+
+- (void)editVBAModule {
+    SpreadSheet *vba=[self ensureVBASheet];
+    NSInteger row=[self activeVBARowInSheet:vba];
+    if(row==NSNotFound) { [self createVBAModule]; return; }
+    NSString *module=[vba cellAtRow:row col:0].display?:@"Module";
+    NSString *code=[vba cellAtRow:row col:1].display?:@"";
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Edit %@",module] message:nil preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf){ tf.text=code; tf.placeholder=@"PRINT \"hello\""; }];
+    [a addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *_){
+        NSString *newCode=a.textFields.firstObject.text?:@"";
+        [self saveUndo];
+        SpreadCell *codeCell=[SpreadCell new];
+        codeCell.raw=newCode; codeCell.display=newCode; codeCell.type=CellTypeText;
+        [vba setCell:codeCell row:row col:1];
+        SpreadCell *updated=[SpreadCell new];
+        updated.raw=[[NSDate date] description]; updated.display=updated.raw; updated.type=CellTypeText;
+        [vba setCell:updated row:row col:3];
+        self.currentSheetIndex=[self.sheets indexOfObject:vba];
+        [self reloadGrid];
+        self.isDirty=YES;
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)runVBAModule {
+    SpreadSheet *vba=[self ensureVBASheet];
+    NSInteger row=[self activeVBARowInSheet:vba];
+    if(row==NSNotFound) return;
+    NSString *code=[vba cellAtRow:row col:1].display?:@"";
+    SpreadSheet *targetSheet=nil;
+    for(SpreadSheet *sheet in self.sheets) {
+        if(![sheet.name.lowercaseString isEqualToString:@"vba"]) {
+            targetSheet=sheet;
+            break;
+        }
+    }
+    if(!targetSheet) targetSheet=vba;
+
+    NSString *result=[self executeVBAScript:code onSheet:targetSheet];
+    SpreadCell *out=[SpreadCell new];
+    out.raw=result; out.display=result; out.type=CellTypeText;
+    [vba setCell:out row:row col:2];
+    SpreadCell *updated=[SpreadCell new];
+    updated.raw=[[NSDate date] description]; updated.display=updated.raw; updated.type=CellTypeText;
+    [vba setCell:updated row:row col:3];
+    [self reloadGrid];
+    self.isDirty=YES;
+}
+
+- (void)deleteVBAModule {
+    SpreadSheet *vba=[self ensureVBASheet];
+    NSInteger row=[self activeVBARowInSheet:vba];
+    if(row==NSNotFound) return;
+    [self saveUndo];
+    for(NSInteger c=0;c<4;c++) {
+        SpreadCell *empty=[SpreadCell new];
+        empty.raw=@""; empty.display=@""; empty.type=CellTypeText;
+        [vba setCell:empty row:row col:c];
+    }
+    [self reloadGrid];
+    self.isDirty=YES;
+}
+
+- (BOOL)parseCellReference:(NSString *)ref row:(NSInteger *)row col:(NSInteger *)col {
+    if(ref.length==0) return NO;
+    return [FormulaEngine parseRef:ref row:row col:col];
+}
+
+- (void)setSheet:(SpreadSheet *)sheet cellRef:(NSString *)ref value:(NSString *)value {
+    NSInteger r=0,c=0;
+    if(![self parseCellReference:ref row:&r col:&c]) return;
+    SpreadCell *cell=[sheet cellAtRow:r col:c]?:[SpreadCell new];
+    cell.raw=value?:@"";
+    if([cell.raw hasPrefix:@"="]) {
+        cell.type=CellTypeFormula;
+        cell.display=[FormulaEngine evaluate:cell.raw sheet:sheet];
+    } else {
+        cell.type=[self isNumeric:cell.raw]?CellTypeNumber:CellTypeText;
+        cell.display=cell.raw;
+    }
+    [sheet setCell:cell row:r col:c];
+}
+
+- (NSString *)cellRefFromVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *trim=[target stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if(trim.length==0) return nil;
+    if([[trim uppercaseString] hasSuffix:@".VALUE"]) trim=[trim substringToIndex:trim.length-6];
+
+    NSInteger r=0,c=0;
+    if([self parseCellReference:trim row:&r col:&c]) return [NSString stringWithFormat:@"%@%ld",[self colName:c],(long)(r+1)];
+
+    NSRegularExpression *cellsRe=[NSRegularExpression regularExpressionWithPattern:@"(?i)^CELLS\\s*\\(([^,]+),([^\\)]+)\\)$" options:0 error:nil];
+    NSTextCheckingResult *cellsMatch=[cellsRe firstMatchInString:trim options:0 range:NSMakeRange(0, trim.length)];
+    if(cellsMatch.numberOfRanges==3) {
+        NSString *rowExpr=[trim substringWithRange:[cellsMatch rangeAtIndex:1]];
+        NSString *colExpr=[trim substringWithRange:[cellsMatch rangeAtIndex:2]];
+        NSInteger row=(NSInteger)llround([self numericVBAToken:rowExpr variables:vars sheet:sheet]);
+        NSInteger col=(NSInteger)llround([self numericVBAToken:colExpr variables:vars sheet:sheet]);
+        if(row>0 && col>0) return [NSString stringWithFormat:@"%@%ld",[self colName:col-1],(long)row];
+    }
+
+    NSRegularExpression *rangeRe=[NSRegularExpression regularExpressionWithPattern:@"(?i)^RANGE\\s*\\(\\s*\"([^\"]+)\"\\s*\\)$" options:0 error:nil];
+    NSTextCheckingResult *rangeMatch=[rangeRe firstMatchInString:trim options:0 range:NSMakeRange(0, trim.length)];
+    if(rangeMatch.numberOfRanges==2) {
+        NSString *ref=[trim substringWithRange:[rangeMatch rangeAtIndex:1]];
+        return ref;
+    }
+    return nil;
+}
+
+- (NSString *)valueForVBATarget:(NSString *)target variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *ref=[self cellRefFromVBATarget:target variables:vars sheet:sheet];
+    if(!ref.length) return nil;
+    NSString *first=[[ref componentsSeparatedByString:@":"] firstObject];
+    NSInteger r=0,c=0;
+    if([self parseCellReference:first row:&r col:&c]) {
+        return [sheet cellAtRow:r col:c].display?:@"";
+    }
+    return nil;
+}
+
+- (void)setVBATarget:(NSString *)target value:(NSString *)value variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *ref=[self cellRefFromVBATarget:target variables:vars sheet:sheet];
+    if(!ref.length) return;
+    NSArray<NSString *> *parts=[ref componentsSeparatedByString:@":"];
+    if(parts.count==2) {
+        NSInteger r1=0,c1=0,r2=0,c2=0;
+        if([self parseCellReference:parts[0] row:&r1 col:&c1] && [self parseCellReference:parts[1] row:&r2 col:&c2]) {
+            NSInteger rs=MIN(r1,r2), re=MAX(r1,r2), cs=MIN(c1,c2), ce=MAX(c1,c2);
+            for(NSInteger r=rs;r<=re;r++) for(NSInteger c=cs;c<=ce;c++) {
+                [self setSheet:sheet cellRef:[NSString stringWithFormat:@"%@%ld",[self colName:c],(long)(r+1)] value:value];
+            }
+            return;
+        }
+    }
+    [self setSheet:sheet cellRef:ref value:value];
+}
+
+- (NSString *)resolvedVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *trim=[token stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if(trim.length==0) return @"";
+    if([trim hasPrefix:@"\""] && [trim hasSuffix:@"\""] && trim.length>=2) {
+        return [trim substringWithRange:NSMakeRange(1, trim.length-2)];
+    }
+
+    NSString *targetValue=[self valueForVBATarget:trim variables:vars sheet:sheet];
+    if(targetValue) return targetValue;
+
+    NSString *var=vars[trim.uppercaseString];
+    if(var) return var;
+
+    NSInteger r=0,c=0;
+    if([self parseCellReference:trim row:&r col:&c]) {
+        SpreadCell *cell=[sheet cellAtRow:r col:c];
+        return cell.display?:@"";
+    }
+    if([trim hasPrefix:@"="]) {
+        return [FormulaEngine evaluate:trim sheet:sheet]?:@"";
+    }
+    return trim;
+}
+
+- (double)numericVBAToken:(NSString *)token variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *resolved=[self resolvedVBAToken:token variables:vars sheet:sheet];
+    NSScanner *scanner=[NSScanner scannerWithString:resolved];
+    double value=0;
+    if([scanner scanDouble:&value] && scanner.isAtEnd) return value;
+    return 0;
+}
+
+- (BOOL)evaluateVBACondition:(NSString *)condition variables:(NSMutableDictionary<NSString *, NSString *> *)vars sheet:(SpreadSheet *)sheet {
+    NSString *trim=[condition stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSArray<NSString *> *ops=@[@">=",@"<=",@"<>",@"=",@">",@"<"];
+    for(NSString *op in ops) {
+        NSRange r=[trim rangeOfString:op];
+        if(r.location==NSNotFound) continue;
+        NSString *left=[trim substringToIndex:r.location];
+        NSString *right=[trim substringFromIndex:r.location+r.length];
+        NSString *lv=[self resolvedVBAToken:left variables:vars sheet:sheet]?:@"";
+        NSString *rv=[self resolvedVBAToken:right variables:vars sheet:sheet]?:@"";
+        NSScanner *ls=[NSScanner scannerWithString:lv];
+        NSScanner *rs=[NSScanner scannerWithString:rv];
+        double ln=0, rn=0;
+        BOOL lnum=[ls scanDouble:&ln] && ls.isAtEnd;
+        BOOL rnum=[rs scanDouble:&rn] && rs.isAtEnd;
+        if(lnum && rnum) {
+            if([op isEqualToString:@">="]) return ln>=rn;
+            if([op isEqualToString:@"<="]) return ln<=rn;
+            if([op isEqualToString:@"<>"]) return ln!=rn;
+            if([op isEqualToString:@"="]) return ln==rn;
+            if([op isEqualToString:@">"]) return ln>rn;
+            if([op isEqualToString:@"<"]) return ln<rn;
+        } else {
+            NSComparisonResult cmp=[lv compare:rv options:NSCaseInsensitiveSearch];
+            if([op isEqualToString:@">="]) return cmp!=NSOrderedAscending;
+            if([op isEqualToString:@"<="]) return cmp!=NSOrderedDescending;
+            if([op isEqualToString:@"<>"]) return cmp!=NSOrderedSame;
+            if([op isEqualToString:@"="]) return cmp==NSOrderedSame;
+            if([op isEqualToString:@">"]) return cmp==NSOrderedDescending;
+            if([op isEqualToString:@"<"]) return cmp==NSOrderedAscending;
+        }
+    }
+    return [self numericVBAToken:trim variables:vars sheet:sheet]!=0;
+}
+
+- (NSString *)executeVBAScript:(NSString *)script onSheet:(SpreadSheet *)targetSheet {
+    if(script.length==0) return @"ERR: empty module";
+
+    NSMutableDictionary<NSString *, NSString *> *vars=[NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *lines=[NSMutableArray array];
+    for(NSString *raw in [script componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+        NSString *line=[raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if(line.length==0) continue;
+
+        NSString *upper=line.uppercaseString;
+        if([line hasPrefix:@"'"] || [upper hasPrefix:@"REM "]) continue;
+        if([upper hasPrefix:@"OPTION EXPLICIT"]) continue;
+        if([upper hasPrefix:@"SUB "] || [upper hasPrefix:@"END SUB"]) continue;
+        if([upper hasPrefix:@"FUNCTION "] || [upper hasPrefix:@"END FUNCTION"]) continue;
+        if([upper hasPrefix:@"DIM "]) {
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *varsDecl=[payload componentsSeparatedByString:@","];
+            for(NSString *decl in varsDecl) {
+                NSString *name=[[decl componentsSeparatedByString:@" "] firstObject];
+                name=[name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if(name.length) vars[name.uppercaseString]=vars[name.uppercaseString]?:@"";
+            }
+            continue;
+        }
+
+        if([upper hasPrefix:@"DEBUG.PRINT "]) line=[@"PRINT " stringByAppendingString:[line substringFromIndex:12]];
+        if([upper hasPrefix:@"MSGBOX "]) line=[@"MSG " stringByAppendingString:[line substringFromIndex:7]];
+        [lines addObject:line];
+    }
+
+    NSMutableArray<NSString *> *outputs=[NSMutableArray array];
+    NSMutableArray<NSMutableDictionary *> *forStack=[NSMutableArray array];
+    NSMutableArray<NSMutableDictionary *> *ifStack=[NSMutableArray array];
+
+    NSInteger pc=0;
+    while(pc<(NSInteger)lines.count) {
+        NSString *line=lines[pc];
+        NSString *upper=line.uppercaseString;
+
+        BOOL skipping=NO;
+        for(NSMutableDictionary *frame in ifStack) {
+            if(![frame[@"active"] boolValue]) { skipping=YES; break; }
+        }
+
+        if([upper isEqualToString:@"ENDIF"] || [upper isEqualToString:@"END IF"]) {
+            if(ifStack.count) [ifStack removeLastObject];
+            pc++;
+            continue;
+        }
+
+        if([upper isEqualToString:@"ELSE"]) {
+            if(ifStack.count) {
+                NSMutableDictionary *top=ifStack.lastObject;
+                if(![top[@"seenElse"] boolValue]) {
+                    BOOL cur=[top[@"active"] boolValue];
+                    top[@"active"]=@(!cur);
+                    top[@"seenElse"]=@YES;
+                }
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"IF "] && [upper hasSuffix:@" THEN"]) {
+            NSString *cond=[line substringWithRange:NSMakeRange(3, line.length-8)];
+            BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+            [ifStack addObject:[@{ @"active":@(ok), @"seenElse":@NO } mutableCopy]];
+            pc++;
+            continue;
+        }
+
+        NSRange inlineThen=[upper rangeOfString:@" THEN "];
+        if([upper hasPrefix:@"IF "] && inlineThen.location!=NSNotFound) {
+            NSString *cond=[line substringWithRange:NSMakeRange(3, inlineThen.location-3)];
+            NSString *stmt=[line substringFromIndex:inlineThen.location+6];
+            BOOL ok=[self evaluateVBACondition:cond variables:vars sheet:targetSheet];
+            if(ok && stmt.length) {
+                [lines insertObject:stmt atIndex:pc+1];
+            }
+            pc++;
+            continue;
+        }
+
+        if(skipping) { pc++; continue; }
+
+        if([upper hasPrefix:@"PRINT "] || [upper hasPrefix:@"MSG "]) {
+            NSInteger cut=[upper hasPrefix:@"PRINT "]?6:4;
+            NSString *expr=[line substringFromIndex:cut];
+            [outputs addObject:[self resolvedVBAToken:expr variables:vars sheet:targetSheet]?:@""];
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"LET "]) {
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *kv=[payload componentsSeparatedByString:@"="];
+            if(kv.count>=2) {
+                NSString *name=[kv[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].uppercaseString;
+                NSString *expr=[[kv subarrayWithRange:NSMakeRange(1, kv.count-1)] componentsJoinedByString:@"="];
+                vars[name]=[self resolvedVBAToken:expr variables:vars sheet:targetSheet]?:@"";
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"GET "]) {
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *kv=[payload componentsSeparatedByString:@"="];
+            if(kv.count>=2) {
+                NSString *name=[kv[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].uppercaseString;
+                NSString *ref=[[kv subarrayWithRange:NSMakeRange(1, kv.count-1)] componentsJoinedByString:@"="];
+                vars[name]=[self resolvedVBAToken:ref variables:vars sheet:targetSheet]?:@"";
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"SET "]) {
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *kv=[payload componentsSeparatedByString:@"="];
+            if(kv.count>=2) {
+                NSString *target=[kv[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                NSString *expr=[[kv subarrayWithRange:NSMakeRange(1, kv.count-1)] componentsJoinedByString:@"="];
+                NSString *val=[self resolvedVBAToken:expr variables:vars sheet:targetSheet]?:@"";
+                [self setVBATarget:target value:val variables:vars sheet:targetSheet];
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"CLEAR "]) {
+            NSString *range=[[line substringFromIndex:6] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            NSString *ref=[self cellRefFromVBATarget:range variables:vars sheet:targetSheet] ?: range;
+            NSArray<NSString *> *parts=[ref componentsSeparatedByString:@":"];
+            NSInteger r1=0,c1=0,r2=0,c2=0;
+            if(parts.count==2 && [self parseCellReference:parts[0] row:&r1 col:&c1] && [self parseCellReference:parts[1] row:&r2 col:&c2]) {
+                NSInteger rs=MIN(r1,r2), re=MAX(r1,r2), cs=MIN(c1,c2), ce=MAX(c1,c2);
+                for(NSInteger r=rs;r<=re;r++) for(NSInteger c=cs;c<=ce;c++) {
+                    SpreadCell *cell=[SpreadCell new]; cell.raw=@""; cell.display=@""; cell.type=CellTypeText;
+                    [targetSheet setCell:cell row:r col:c];
+                }
+            } else {
+                [self setVBATarget:range value:@"" variables:vars sheet:targetSheet];
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"COPY "] && [upper containsString:@"->"]) {
+            NSString *payload=[line substringFromIndex:5];
+            NSArray<NSString *> *lr=[payload componentsSeparatedByString:@"->"];
+            if(lr.count==2) {
+                NSString *srcExpr=[lr[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                NSString *dstExpr=[lr[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                NSString *src=[self cellRefFromVBATarget:srcExpr variables:vars sheet:targetSheet] ?: srcExpr;
+                NSString *dst=[self cellRefFromVBATarget:dstExpr variables:vars sheet:targetSheet] ?: dstExpr;
+                NSArray<NSString *> *sp=[src componentsSeparatedByString:@":"];
+                NSInteger sr1=0,sc1=0,sr2=0,sc2=0,dr=0,dc=0;
+                if([self parseCellReference:dst row:&dr col:&dc]) {
+                    if(sp.count==2 && [self parseCellReference:sp[0] row:&sr1 col:&sc1] && [self parseCellReference:sp[1] row:&sr2 col:&sc2]) {
+                        NSInteger rs=MIN(sr1,sr2), re=MAX(sr1,sr2), cs=MIN(sc1,sc2), ce=MAX(sc1,sc2);
+                        for(NSInteger r=rs;r<=re;r++) for(NSInteger c=cs;c<=ce;c++) {
+                            SpreadCell *srcCell=[targetSheet cellAtRow:r col:c];
+                            [targetSheet setCell:(srcCell?[srcCell copy]:[SpreadCell new]) row:dr+(r-rs) col:dc+(c-cs)];
+                        }
+                    } else {
+                        NSInteger sr=0,sc=0;
+                        if([self parseCellReference:src row:&sr col:&sc]) {
+                            SpreadCell *srcCell=[targetSheet cellAtRow:sr col:sc];
+                            [targetSheet setCell:(srcCell?[srcCell copy]:[SpreadCell new]) row:dr col:dc];
+                        }
+                    }
+                }
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper hasPrefix:@"FOR "] && [upper containsString:@" TO "]) {
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *eq=[payload componentsSeparatedByString:@"="];
+            if(eq.count>=2) {
+                NSString *var=[eq[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].uppercaseString;
+                NSString *right=[[eq subarrayWithRange:NSMakeRange(1, eq.count-1)] componentsJoinedByString:@"="];
+                NSString *upRight=right.uppercaseString;
+                NSRange toR=[upRight rangeOfString:@" TO "];
+                if(toR.location!=NSNotFound) {
+                    NSString *startExpr=[right substringToIndex:toR.location];
+                    NSString *tail=[right substringFromIndex:toR.location+4];
+                    NSString *endExpr=tail;
+                    NSString *stepExpr=@"1";
+                    NSRange stepR=[tail.uppercaseString rangeOfString:@" STEP "];
+                    if(stepR.location!=NSNotFound) {
+                        endExpr=[tail substringToIndex:stepR.location];
+                        stepExpr=[tail substringFromIndex:stepR.location+6];
+                    }
+                    double startVal=[self numericVBAToken:startExpr variables:vars sheet:targetSheet];
+                    double endVal=[self numericVBAToken:endExpr variables:vars sheet:targetSheet];
+                    double stepVal=[self numericVBAToken:stepExpr variables:vars sheet:targetSheet];
+                    if(stepVal==0) stepVal=1;
+                    vars[var]=[NSString stringWithFormat:@"%g",startVal];
+                    [forStack addObject:[@{ @"var":var, @"end":@(endVal), @"step":@(stepVal), @"startPc":@(pc+1) } mutableCopy]];
+                }
+            }
+            pc++;
+            continue;
+        }
+
+        if([upper isEqualToString:@"NEXT"] || [upper hasPrefix:@"NEXT "]) {
+            if(forStack.count) {
+                NSMutableDictionary *frame=forStack.lastObject;
+                NSString *var=frame[@"var"];
+                double end=[frame[@"end"] doubleValue];
+                double step=[frame[@"step"] doubleValue];
+                double cur=[vars[var] doubleValue] + step;
+                vars[var]=[NSString stringWithFormat:@"%g",cur];
+                BOOL cont=(step>0)?(cur<=end):(cur>=end);
+                if(cont) pc=[frame[@"startPc"] integerValue];
+                else { [forStack removeLastObject]; pc++; }
+            } else {
+                pc++;
+            }
+            continue;
+        }
+
+        if([upper hasPrefix:@"ADD "] || [upper hasPrefix:@"SUB "] || [upper hasPrefix:@"MUL "] || [upper hasPrefix:@"DIV "]) {
+            NSString *op=[upper substringToIndex:3];
+            NSString *payload=[line substringFromIndex:4];
+            NSArray<NSString *> *parts=[payload componentsSeparatedByString:@","];
+            if(parts.count>=2) {
+                NSString *target=[parts[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                double current=[self numericVBAToken:target variables:vars sheet:targetSheet];
+                double delta=[self numericVBAToken:parts[1] variables:vars sheet:targetSheet];
+                if([op isEqualToString:@"ADD"]) current+=delta;
+                else if([op isEqualToString:@"SUB"]) current-=delta;
+                else if([op isEqualToString:@"MUL"]) current*=delta;
+                else if([op isEqualToString:@"DIV"]) current=(delta==0?0:(current/delta));
+                [self setVBATarget:target value:[NSString stringWithFormat:@"%g",current] variables:vars sheet:targetSheet];
+            }
+            pc++;
+            continue;
+        }
+
+        NSRange eqRange=[line rangeOfString:@"="];
+        if(eqRange.location!=NSNotFound && ![upper hasPrefix:@"IF "]) {
+            NSString *lhs=[[line substringToIndex:eqRange.location] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            NSString *rhs=[[line substringFromIndex:eqRange.location+1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            NSString *v=[self resolvedVBAToken:rhs variables:vars sheet:targetSheet]?:@"";
+            NSString *cellRef=[self cellRefFromVBATarget:lhs variables:vars sheet:targetSheet];
+            if(cellRef.length) [self setVBATarget:lhs value:v variables:vars sheet:targetSheet];
+            else if(lhs.length) vars[lhs.uppercaseString]=v;
+            pc++;
+            continue;
+        }
+
+        pc++;
+    }
+
+    [self recalculateAllFormulas];
+    if(outputs.count==0) return @"OK";
+    return [outputs componentsJoinedByString:@" | "];
+}
+
 
 #pragma mark - Undo/Redo
 
